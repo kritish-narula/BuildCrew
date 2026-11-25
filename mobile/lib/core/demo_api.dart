@@ -1992,9 +1992,9 @@ class DemoApi implements Api {
     final a = _row(d, 'assignments', assignmentId);
     if (a['job_id'] != jobId) _err('err.not_found');
     final p = _paymentFor(d, assignmentId) ?? _err('err.not_found');
-    if (p['state'] != 'held') _err('err.payment_not_held');
     final rs = d['ratings'] as List;
     if (rs.cast<Map>().any((r) => r['assignment_id'] == assignmentId && r['direction'] == 'customer_to_worker')) _err('err.already_rated');
+    if (p['state'] != 'held') _err('err.payment_not_held');
     final v = [stars['quality'], stars['timeliness'], stars['behaviour'], stars['value_for_money']].cast<int>();
     if (v.any((x) => x < 1 || x > 5)) _err('err.validation');
     final wage = _row(d, 'bids', a['bid_id'] as String)['price'] as num;

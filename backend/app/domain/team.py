@@ -169,12 +169,12 @@ def settle_worker(db: Session, customer: User, job: Job, a: Assignment, *, quali
     from . import flows
     if job.customer_id != customer.id or a.job_id != job.id:
         raise AppError("err.not_your_job", 403)
+    if db.scalar(select(Rating.id).where(Rating.assignment_id == a.id, Rating.direction == RatingDirection.customer_to_worker)):
+        raise AppError("err.already_rated", 409)
     p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
     if not p or p.escrow_state != EscrowState.held:
         raise AppError("err.payment_not_held", 409)
     flows._check_stars(quality, timeliness, behaviour, value_for_money)
-    if db.scalar(select(Rating.id).where(Rating.assignment_id == a.id, Rating.direction == RatingDirection.customer_to_worker)):
-        raise AppError("err.already_rated", 409)
     wage, worked = wage_paise(db, a), days_worked(db, a)
     unworked = a.days_planned - worked
     if job.status == JobStatus.assigned:
