@@ -1302,6 +1302,7 @@ class DemoApi implements Api {
     if (proof.isEmpty) _err('err.proof_required');
     final n = note?.trim();
     if (n != null && n.length > 1000) _err('err.validation');
+    _requirePaid(d, a); // nobody finishes (or starts) before the money is held
     if (_codeRequired(d, a)) _err('err.start_code_required'); // the customer's code proves he really arrived
     _startNow(d, a);
     a['worker_done_at'] = _now();
