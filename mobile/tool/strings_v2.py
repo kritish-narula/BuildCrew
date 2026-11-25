@@ -1,7 +1,7 @@
 # Phase 2–5 UI strings: (key, English, Hindi). Placeholders in {braces}; types in PH below.
 S = [
 ("aadhaar","Aadhaar","आधार"),("accept","Accept","मंज़ूर करें"),("addNow","Add now","अभी जोड़ें"),
-("addWorkItem","+ Add another work","+ एक और काम जोड़ें"),
+("addWorkItem","Add another work","एक और काम जोड़ें"),
 ("addressPrivacy","Only the worker you hire sees your full address.","आपका पूरा पता सिर्फ़ चुने गए कारीगर को दिखेगा।"),
 ("agree","I agree","मैं सहमत हूँ"),("all","All","सभी"),("area","Area","इलाका"),
 ("askByVoice","Ask by voice","बोलकर पूछें"),("askByVoiceSub","Ask anything — we answer out loud","कुछ भी पूछें — जवाब सुनाई देगा"),

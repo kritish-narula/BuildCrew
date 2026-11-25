@@ -197,7 +197,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 }
 
-/// One work card: number + trade, gallery, translated text, audio player, transcript toggle.
+/// One work card: number + trade, gallery, translated text, audio player.
 class WorkItemView extends StatefulWidget {
   const WorkItemView({super.key, required this.item, required this.lang});
   final Json item;
@@ -207,7 +207,6 @@ class WorkItemView extends StatefulWidget {
 }
 
 class _WorkItemViewState extends State<WorkItemView> {
-  bool _showText = false;
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
@@ -251,28 +250,6 @@ class _WorkItemViewState extends State<WorkItemView> {
             sizeKb: (audio['size_kb'] as num?)?.toInt(),
             label: it['translated'] == true && fromLang != null ? l.listenIn(nativeName(fromLang)) : l.customerVoiceNote,
           ),
-          if (it['transcript'] != null) ...[
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => setState(() => _showText = !_showText),
-                icon: Icon(_showText ? Icons.expand_less_rounded : Icons.notes_rounded),
-                label: BtnLabel(_showText ? l.hideText : l.showText),
-              ),
-            ),
-            AnimatedCrossFade(
-              duration: const Duration(milliseconds: 200),
-              crossFadeState: _showText ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-              firstChild: const SizedBox(width: double.infinity),
-              secondChild: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: BC.bg, borderRadius: BorderRadius.circular(BC.rSm), border: Border.all(color: BC.line)),
-                child: Text(it['transcript'] as String, style: context.tt.bodyLarge),
-              ),
-            ),
-          ],
         ],
       ]),
     );

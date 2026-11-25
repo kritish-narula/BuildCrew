@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 
@@ -14,6 +15,13 @@ import 'widgets/common.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    systemNavigationBarColor: Colors.white,
+    systemNavigationBarIconBrightness: Brightness.dark,
+    systemNavigationBarDividerColor: Colors.transparent,
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+  ));
   final state = await AppState.load();
   await Updater.instance.init();
   runApp(BuildCrewApp(state: state));
@@ -84,6 +92,12 @@ class _BuildCrewAppState extends State<BuildCrewApp> {
           GlobalCupertinoLocalizations.delegate,
         ],
         routerConfig: _router,
+        // Android 15 draws apps edge-to-edge: keep every screen (and its bottom buttons) above the
+        // phone's back / home / recents bar instead of underneath it.
+        builder: (context, child) => ColoredBox(
+          color: Colors.white,
+          child: SafeArea(top: false, left: false, right: false, child: child ?? const SizedBox.shrink()),
+        ),
       ),
     );
   }

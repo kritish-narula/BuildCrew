@@ -76,7 +76,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         final e = await widget.state.api.priceEstimate(
           _works.map((w) => w.trade).toList(),
           _area.text.trim(),
-          texts: _works.map<String?>((w) => '${w.text.text} ${w.transcript.text}'.trim()).toList(),
+          texts: _works.map<String?>((w) => w.text.text.trim()).toList(),
           city: _city.isEmpty ? null : _city,
         );
         if (mounted) setState(() => _estimate = e);
@@ -133,10 +133,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
     });
     try {
       w.audioKey = (await widget.state.api.upload('audio', a.path))['key'] as String;
-      if (!mounted) return;
-      setState(() => w.transcribing = true);
-      final t = await widget.state.api.transcribe(w.audioKey!, _lang);
-      if (w.transcript.text.isEmpty) w.transcript.text = t;
     } on ApiException catch (e) {
       if (e.isNetwork) {
         w.uploadFailed = true; // kept on the phone; retried when posting
@@ -195,7 +191,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         items.add({
           'trade': w.trade,
           'text_description': w.text.text.trim().isEmpty ? null : w.text.text.trim(),
-          'transcript': w.transcript.text.trim().isEmpty ? null : w.transcript.text.trim(),
+          'transcript': null,
           'description_language': _lang,
           'audio_key': w.audioKey,
           'audio_duration_sec': w.audio?.seconds,
@@ -552,7 +548,7 @@ class _WorkCardEditor extends StatelessWidget {
             const SizedBox(height: 6),
             Row(children: [
               if (draft.uploading)
-                StatusPill(label: draft.transcribing ? l.transcribing : l.uploading, color: BC.info, bg: BC.infoSoft, icon: Icons.cloud_upload_outlined)
+                StatusPill(label: l.uploading, color: BC.info, bg: BC.infoSoft, icon: Icons.cloud_upload_outlined)
               else if (draft.uploadFailed)
                 InkWell(
                   onTap: onRetryUpload,
@@ -563,18 +559,6 @@ class _WorkCardEditor extends StatelessWidget {
               const Spacer(),
               TextButton.icon(onPressed: onRecord, icon: const Icon(Icons.replay_rounded), label: BtnLabel(l.recordAgain)),
             ]),
-            if (draft.transcript.text.isNotEmpty || draft.transcribing) ...[
-              const SizedBox(height: 8),
-              Text(l.reviewTranscript, style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 4),
-              TextField(
-                controller: draft.transcript,
-                minLines: 2,
-                maxLines: 5,
-                style: const TextStyle(fontSize: 15),
-                decoration: InputDecoration(hintText: l.transcribing, helperText: l.reviewTranscriptHelp),
-              ),
-            ],
           ],
         ]),
       ),
