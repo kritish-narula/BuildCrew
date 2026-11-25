@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
@@ -438,7 +437,7 @@ class _RecorderSheetState extends State<_RecorderSheet> {
   }
 }
 
-// ------------------------------------------------------------------ photos & location
+// ------------------------------------------------------------------ photos
 Future<String?> pickPhoto(BuildContext context, {bool cameraOnly = false}) async {
   final l = L.of(context);
   ImageSource? src = ImageSource.camera;
@@ -460,19 +459,6 @@ Future<String?> pickPhoto(BuildContext context, {bool cameraOnly = false}) async
   final x = await ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 72,
       preferredCameraDevice: cameraOnly ? CameraDevice.front : CameraDevice.rear);
   return x?.path;
-}
-
-Future<Position?> currentPosition() async {
-  try {
-    if (!await Geolocator.isLocationServiceEnabled()) return null;
-    var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return null;
-    return await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high))
-        .timeout(const Duration(seconds: 15));
-  } catch (_) {
-    return Geolocator.getLastKnownPosition();
-  }
 }
 
 // ------------------------------------------------------------------ ratings

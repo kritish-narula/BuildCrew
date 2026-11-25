@@ -33,8 +33,28 @@ NOW = datetime.now(timezone.utc)
 INR = 100  # paise
 
 
-def photo(seed: str) -> str:
+def photo(seed: str) -> str:  # neutral placeholder (KYC document sample only)
     return f"https://picsum.photos/seed/bc-{seed}/800/600"
+
+
+def _u(pid: str) -> str:
+    """Real work photos (Unsplash License, hot-linked from Unsplash's CDN)."""
+    return f"https://images.unsplash.com/{pid}?w=800&q=65&auto=format&fit=crop"
+
+
+TRADE_PHOTOS = {
+    "plumber": [_u("photo-1697374981215-ce207e5ab8c0"), _u("photo-1749532125405-70950966b0e5"), _u("photo-1720889589894-497c4f4f569e")],
+    "mason": [_u("photo-1704005445445-2747074be8ac"), _u("photo-1701850009190-2859ba2aeea6"), _u("photo-1673865641469-34498379d8af")],
+    "electrician": [_u("photo-1751486289947-4f5f5961b3aa"), _u("photo-1621905251189-08b45d6a269e"), _u("photo-1635335874521-7987db781153")],
+    "painter": [_u("photo-1717281234297-3def5ae3eee1"), _u("photo-1688372199140-cade7ae820fe"), _u("photo-1525909002-1b05e0c869d8")],
+    "carpenter": [_u("photo-1779031242515-205111711b23"), _u("photo-1561297331-a9c00b9c2c44"), _u("photo-1544164560-adac3045edb2")],
+    "helper": [_u("photo-1577199001468-44c049e7603f"), _u("photo-1632201147654-f6f54427e538"), _u("photo-1758210878793-a7bf2b089bc6")],
+}
+
+
+def trade_photo(trade: str, i: int) -> str:
+    lst = TRADE_PHOTOS.get(trade, TRADE_PHOTOS["helper"])
+    return lst[i % len(lst)]
 
 
 WORKERS = [  # phone, name, lang, trades, locality, rating, count, kyc, badges, online
@@ -117,7 +137,7 @@ def run(do_reset: bool = False):
         db.flush()
         lat, lng = PUNE_LOCALITIES[loc]
         db.add(WorkerProfile(
-            user_id=u.id, trades=trades, selfie_url=photo(f"selfie{i}") if kyc >= 1 else None,
+            user_id=u.id, trades=trades, selfie_url=None,
             upi_id=f"{name.split()[0].lower()}{i}@okaxis" if kyc >= 1 else None,
             aadhaar_status=DocStatus.approved if kyc == 2 else (DocStatus.pending if i == 7 else DocStatus.not_submitted),
             pan_status=DocStatus.approved if kyc == 2 else DocStatus.not_submitted,
@@ -149,7 +169,7 @@ def run(do_reset: bool = False):
             db.add(wi)
             db.flush()
             for p in range(random.randint(1, 3)):
-                db.add(WorkItemPhoto(work_item_id=wi.id, photo_url=photo(f"j{j}w{k}p{p}"), sort_order=p))
+                db.add(WorkItemPhoto(work_item_id=wi.id, photo_url=trade_photo(trade.value, p + k), sort_order=p))
         audit(db, actor_id=job.customer_id, action="job.posted", entity="job", entity_id=job.id, seed=True)
         jobs.append(job)
     db.flush()
@@ -194,14 +214,14 @@ def run(do_reset: bool = False):
     for d, offline in ((2, False), (1, True)):
         day = (NOW - timedelta(days=d)).replace(hour=3, minute=40)  # 09:10 IST
         db.add(Attendance(assignment_id=a4.id, checkin_at=day, checkin_lat=lat + 0.0002, checkin_lng=lng - 0.0001,
-                          checkin_selfie_url=photo(f"att{d}"), checkout_at=day + timedelta(hours=8, minutes=20),
+                          checkin_selfie_url=None, checkout_at=day + timedelta(hours=8, minutes=20),
                           offline_synced=offline))
 
     # Dispute with the customer's audio note as evidence.
     plumb_item = next(wi for wi in j6.work_items if wi.trade == Trade.plumber)
     db.add(Dispute(assignment_id=a6.id, raised_by=j6.customer_id,
                    reason="Leak returned in master bathroom 2 days after completion; worker not answering calls.",
-                   evidence_refs=[plumb_item.audio_url, photo("dispute1"), photo("dispute2")],
+                   evidence_refs=[plumb_item.audio_url, TRADE_PHOTOS["plumber"][0], TRADE_PHOTOS["plumber"][2]],
                    status=DisputeStatus.open, created_at=NOW - timedelta(days=2)))
     for who, body, h in ((j6.customer_id, "Bathroom mein phir se leak ho raha hai.", 50),
                          (a6.worker_id, "Sir kal aata hoon check karne.", 49),
@@ -232,7 +252,7 @@ def run(do_reset: bool = False):
             hwi = WorkItem(job_id=hj.id, sort_order=0, trade=trade, text_description=f"{trade.value.title()} work", description_language="en")
             db.add(hwi)
             db.flush()
-            db.add(WorkItemPhoto(work_item_id=hwi.id, photo_url=photo(f"hist-{w.phone}-{h}"), sort_order=0))
+            db.add(WorkItemPhoto(work_item_id=hwi.id, photo_url=trade_photo(trade.value, h), sort_order=0))
             price = random.randint(12, 60) * 100 * INR
             hb = Bid(job_id=hj.id, worker_id=w.id, quoted_price_paise=price, status=BidStatus.accepted,
                      created_at=hj.created_at + timedelta(hours=2))

@@ -309,5 +309,16 @@
   "yourName": "Your name",
   "yourPrice": "Your price for all the work",
   "yourPriceSub": "Include material only if the customer asked.",
-  "yourSkills": "Your skills"
+  "yourSkills": "Your skills",
+  "gpsOffTitle": "Location is off",
+  "gpsOffBody": "Turn on location so we can find work near you and mark attendance at the site.",
+  "turnOnLocation": "Turn on location",
+  "locPermTitle": "Allow location",
+  "locPermBody": "BuildCrew needs your location only while you use the app. Open settings → Permissions → Location → Allow.",
+  "gpsWeak": "Could not get your location. Go near a window or outside and try again.",
+  "directions": "Directions",
+  "moveMapToAdjust": "Move the map to put the pin on the exact spot",
+  "kmFromYou": "{km} km from you",
+  "turnOnLocationForJobs": "Turn on location to see work near you and distances.",
+  "turnOn": "Turn on"
 }

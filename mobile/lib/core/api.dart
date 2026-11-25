@@ -67,6 +67,9 @@ abstract class Api {
   Future<void> kycLevel1({required String name, required String upi, String? selfieKey, List<String>? trades});
   Future<void> kycLevel2(String docType, String docKey);
   Future<void> setOnline(bool online);
+  /// Worker's current position → feed distances + "jobs near you". (Demo: also moves the
+  /// sample jobs to the user's real area so maps, distances and check-in work anywhere.)
+  Future<void> updateMyLocation(double lat, double lng);
 
   // customer
   Future<List<Json>> customerJobs();
@@ -181,6 +184,8 @@ class HttpApi implements Api {
   Future<void> kycLevel2(String docType, String docKey) => _post('/worker/kyc/level2', {'doc_type': docType, 'doc_key': docKey});
   @override
   Future<void> setOnline(bool online) => _patch('/worker/profile', {'is_online': online});
+  @override
+  Future<void> updateMyLocation(double lat, double lng) => _patch('/worker/profile', {'home_lat': lat, 'home_lng': lng});
 
   @override
   Future<List<Json>> customerJobs() async => _list(await _get('/customer/jobs'));

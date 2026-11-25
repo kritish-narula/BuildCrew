@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'location.dart';
 
 /// On-device stand-in for the backend — same JSON shapes, same business rules:
 ///  * fees: quote + ₹30 flat, escrow HELD on accept
@@ -13,6 +14,21 @@ import 'api.dart';
 /// It also plays the *other side* of the marketplace so one person can try every flow:
 /// workers quote on a newly posted job; a customer accepts the lowest quote after a while.
 /// State is saved on the phone, so it survives restarts.
+/// Real job photos (Unsplash License — free for commercial use, hot-linked from Unsplash's CDN
+/// as their guidelines require). Sized for phones: 800 px, ~60–90 KB each.
+String _u(String id) => 'https://images.unsplash.com/$id?w=800&q=65&auto=format&fit=crop';
+final demoPhotos = <String, List<String>>{
+  'tap_leak': [_u('photo-1697374981215-ce207e5ab8c0'), _u('photo-1720889589894-497c4f4f569e')],
+  'plumber': [_u('photo-1749532125405-70950966b0e5'), _u('photo-1697374981215-ce207e5ab8c0')],
+  'damp_wall': [_u('photo-1693594560514-258c66283f0d'), _u('photo-1693594560383-8292e83de622'), _u('photo-1768839725085-829e6ac7ac26')],
+  'mason': [_u('photo-1704005445445-2747074be8ac'), _u('photo-1701850009190-2859ba2aeea6'), _u('photo-1673865641469-34498379d8af')],
+  'electrician': [_u('photo-1751486289947-4f5f5961b3aa'), _u('photo-1621905251189-08b45d6a269e'), _u('photo-1635335874521-7987db781153')],
+  'painter': [_u('photo-1717281234297-3def5ae3eee1'), _u('photo-1688372199140-cade7ae820fe'), _u('photo-1525909002-1b05e0c869d8')],
+  'carpenter': [_u('photo-1779031242515-205111711b23'), _u('photo-1561297331-a9c00b9c2c44'), _u('photo-1544164560-adac3045edb2')],
+  'helper': [_u('photo-1577199001468-44c049e7603f'), _u('photo-1632201147654-f6f54427e538')],
+  'tiles': [_u('photo-1523413307857-ef24c53571ae'), _u('photo-1523350165414-082d792c4bcc')],
+};
+
 class DemoApi implements Api {
   DemoApi();
 
@@ -473,6 +489,58 @@ class DemoApi implements Api {
     await _save();
   }
 
+  /// The sample data is seeded in Pune. The first time we learn where the user really is, we
+  /// move the whole sample marketplace there (keeping the shape of the city), put jobs that are
+  /// already assigned ~100 m away (so check-in passes the 300 m geofence), and rename areas
+  /// with the phone's geocoder. Re-anchors if the user travels > 50 km.
+  @override
+  Future<void> updateMyLocation(double lat, double lng) async {
+    final d = await _d;
+    final me = _me == null ? null : _user(d);
+    if (me != null) {
+      me['lat'] = lat;
+      me['lng'] = lng;
+    }
+    final anchor = d['anchor'] as Map?;
+    final far = anchor == null || _dist({'lat': anchor['lat'], 'lng': anchor['lng']}, {'lat': lat, 'lng': lng}) > 50;
+    if (far) {
+      const cLat = 18.5204, cLng = 73.8567; // Pune centre the seed was drawn around
+      final oLat = (anchor?['lat'] as num?)?.toDouble() ?? cLat, oLng = (anchor?['lng'] as num?)?.toDouble() ?? cLng;
+      void shift(Json x) {
+        x['lat'] = (x['lat'] as num) - oLat + lat;
+        x['lng'] = (x['lng'] as num) - oLng + lng;
+      }
+      for (final j in _all(d, 'jobs')) {
+        if (j['sim'] == true) continue; // the user's own posts already have real coordinates
+        shift(j);
+      }
+      for (final u in _all(d, 'users')) {
+        if (u['id'] != _me) shift(u);
+      }
+      var k = 0;
+      for (final j in _all(d, 'jobs').where((j) => j['status'] == 'assigned' || j['status'] == 'in_progress')) {
+        j['lat'] = lat + 0.0007 + 0.0003 * k;
+        j['lng'] = lng + 0.0005 - 0.0004 * k++;
+      }
+      d['anchor'] = {'lat': lat, 'lng': lng};
+      await _save();
+      // Rename sample areas to real nearby place names (best effort, in the background).
+      () async {
+        final seen = <String, String>{};
+        for (final j in _all(d, 'jobs').where((j) => j['sim'] != true && !(j['id'] as String).startsWith('hj')).toList()) {
+          final a = await LocationService.address((j['lat'] as num).toDouble(), (j['lng'] as num).toDouble());
+          if (a == null || a.area.isEmpty) continue;
+          final old = j['locality'] as String;
+          j['locality'] = seen.putIfAbsent(old, () => a.area);
+          j['address'] = a.line.isEmpty ? j['address'] : a.line;
+        }
+        await _save();
+      }();
+    } else {
+      await _save();
+    }
+  }
+
   // ---------------------------------------------------------------- customer
   @override
   Future<List<Json>> customerJobs() async {
@@ -719,7 +787,6 @@ class DemoApi implements Api {
   Json _seed() {
     final now = DateTime.now();
     String ago(Duration x) => now.subtract(x).toIso8601String();
-    String ph(String s) => 'https://picsum.photos/seed/bc-$s/800/600';
     const audio = 'asset:assets/audio/sample.ogg';
     final users = <String, dynamic>{};
     void user(String id, String phone, String role, String name, String lang,
@@ -729,7 +796,7 @@ class DemoApi implements Api {
       users[id] = {'id': id, 'phone': phone, 'role': role, 'name': name, 'lang': lang, 'kyc': kyc, 'trades': trades, 'rating': rating,
         'rating_count': count, 'completed': count, 'badges': badges, 'lat': ll[loc]![0], 'lng': ll[loc]![1], 'online': true,
         'earned': count * 2500, 'upi': kyc >= 1 ? '${name.split(' ').first.toLowerCase()}@okaxis' : null, 'eshram': eshram,
-        'selfie': kyc >= 1 ? ph('selfie$id') : null};
+        'selfie': null};
     }
 
     user('a1', '9000000001', 'admin', 'Ops Admin', 'en', kyc: 2);
@@ -747,8 +814,10 @@ class DemoApi implements Api {
     user('w9', '9200000009', 'worker', 'Selvam K', 'ta', trades: ['painter'], rating: 4.4, count: 15);
     user('w10', '9200000010', 'worker', 'Deepak Gupta', 'hi', trades: ['painter', 'helper'], rating: 4.0, count: 8, loc: 'Hadapsar');
 
-    Json item(String id, String trade, Map<String, String> text, String lang, {bool withAudio = false, int photos = 2, String? transcript, int secs = 24}) => {
-          'id': id, 'trade': trade, 'lang': lang, 'text': text, 'photos': [for (var i = 0; i < photos; i++) ph('$id-p$i')],
+    Json item(String id, String trade, Map<String, String> text, String lang,
+            {bool withAudio = false, int photos = 2, String? transcript, int secs = 24, String? scene}) =>
+        {
+          'id': id, 'trade': trade, 'lang': lang, 'text': text, 'photos': (demoPhotos[scene ?? trade] ?? demoPhotos['helper']!).take(photos).toList(),
           'transcript': withAudio ? {'hi': transcript ?? text['hi'] ?? text.values.first, 'en': text['en'] ?? text.values.first} : null,
           'audio': withAudio ? {'url': audio, 'duration_sec': secs, 'size_kb': 18} : null,
         };
@@ -763,11 +832,11 @@ class DemoApi implements Api {
     }
 
     job('j1', 'c1', 'Kothrud', 'open', const Duration(minutes: 40), [
-      item('j1w1', 'plumber', {'hi': 'बाथरूम का नल टपक रहा है, पाइप बदलना है।', 'en': 'Bathroom tap is leaking, the pipe needs replacing.'}, 'hi', withAudio: true),
-      item('j1w2', 'mason', {'hi': 'दीवार में सीलन, प्लास्टर ठीक करना है।', 'en': 'Damp wall, plaster needs repair.'}, 'hi'),
+      item('j1w1', 'plumber', {'hi': 'बाथरूम का नल टपक रहा है, पाइप बदलना है।', 'en': 'Bathroom tap is leaking, the pipe needs replacing.'}, 'hi', withAudio: true, scene: 'tap_leak'),
+      item('j1w2', 'mason', {'hi': 'दीवार में सीलन, प्लास्टर ठीक करना है।', 'en': 'Damp wall, plaster needs repair.'}, 'hi', scene: 'damp_wall', photos: 3),
     ]);
     job('j2', 'c3', 'Baner', 'bidding', const Duration(hours: 5), [
-      item('j2w1', 'electrician', {'en': 'Rewire the kitchen, add 4 new 16A sockets and a chimney point.', 'hi': 'किचन की वायरिंग बदलनी है, 4 नए 16A सॉकेट और चिमनी पॉइंट।'}, 'en', withAudio: true, secs: 37),
+      item('j2w1', 'electrician', {'en': 'Rewire the kitchen, add 4 new 16A sockets and a chimney point.', 'hi': 'किचन की वायरिंग बदलनी है, 4 नए 16A सॉकेट और चिमनी पॉइंट।'}, 'en', withAudio: true, secs: 37, photos: 3),
       item('j2w2', 'painter', {'en': 'Paint the kitchen after wiring — primer + 2 coats.', 'hi': 'वायरिंग के बाद किचन की पुताई — प्राइमर + 2 कोट।'}, 'en'),
       item('j2w3', 'helper', {'en': 'Move appliances out and clean up debris.', 'hi': 'सामान बाहर निकालना और मलबा साफ़ करना।'}, 'en', photos: 1),
     ]);
@@ -783,7 +852,7 @@ class DemoApi implements Api {
     ]);
     job('j6', 'c1', 'Wakad', 'bidding', const Duration(hours: 20), [
       item('j6w1', 'plumber', {'hi': 'पूरे फ्लैट की पाइपलाइन बदलनी है, लीकेज टेस्ट के साथ।', 'en': 'Replace the full flat pipeline with leak test.'}, 'hi', withAudio: true, secs: 18),
-      item('j6w2', 'mason', {'en': 'Bathroom floor tiling after plumbing, 60 sq ft.', 'hi': 'प्लंबिंग के बाद बाथरूम फ़र्श टाइलिंग, 60 वर्ग फ़ुट।'}, 'en'),
+      item('j6w2', 'mason', {'en': 'Bathroom floor tiling after plumbing, 60 sq ft.', 'hi': 'प्लंबिंग के बाद बाथरूम फ़र्श टाइलिंग, 60 वर्ग फ़ुट।'}, 'en', scene: 'tiles'),
     ]);
 
     final bids = <String, dynamic>{};
@@ -820,7 +889,10 @@ class DemoApi implements Api {
         final when = now.subtract(Duration(days: 14 + k * 10));
         jobs[jid] = {'id': jid, 'customer_id': ['c1', 'c2', 'c3'][k % 3], 'lat': w['lat'], 'lng': w['lng'], 'address': 'Pune', 'locality': ['Kothrud', 'Baner', 'Aundh'][k],
           'start_date': when.toIso8601String().substring(0, 10), 'status': 'completed', 'created_at': when.subtract(const Duration(days: 3)).toIso8601String(),
-          'items': [item('${jid}w', trade, {'en': '${trade[0].toUpperCase()}${trade.substring(1)} work', 'hi': 'काम'}, 'en', photos: 1)]};
+          'items': [
+            {...item('${jid}w', trade, {'en': '${trade[0].toUpperCase()}${trade.substring(1)} work', 'hi': 'काम'}, 'en', photos: 1),
+              'photos': [demoPhotos[trade]![k % demoPhotos[trade]!.length]]}
+          ]};
         final price = 1500 + _rnd.nextInt(30) * 100;
         bids[bid0] = {'id': bid0, 'job_id': jid, 'worker_id': w['id'], 'price': price, 'status': 'accepted', 'created_at': when.toIso8601String()};
         assignments[aid] = {'id': aid, 'job_id': jid, 'worker_id': w['id'], 'bid_id': bid0, 'started_at': when.toIso8601String(), 'completed_at': when.toIso8601String()};

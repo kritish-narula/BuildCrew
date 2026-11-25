@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
+import '../../core/location.dart';
 import '../../core/app_state.dart';
 import '../../core/outbox.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 import '../common/chat.dart';
 import '../onboarding/onboarding.dart' show nativeName;
@@ -94,6 +96,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               const Spacer(),
               Text(l.quotesSoFar(job['bid_count'] as int), style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
             ]),
+            const SizedBox(height: 12),
+            // Area only (soft circle) until hired; exact pin + directions once the job is yours.
+            JobMap(
+              lat: (job['lat'] as num).toDouble(),
+              lng: (job['lng'] as num).toDouble(),
+              exact: myBid?['status'] == 'accepted',
+              me: LocationService.last == null ? null : (LocationService.last!.latitude, LocationService.last!.longitude),
+              height: 160,
+              onDirections: myBid?['status'] == 'accepted'
+                  ? () => LocationService.directions((job['lat'] as num).toDouble(), (job['lng'] as num).toDouble())
+                  : null,
+            ),
             const SizedBox(height: 16),
             for (final it in items) ...[
               WorkItemView(item: it, lang: lang),

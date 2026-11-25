@@ -122,3 +122,23 @@ for k, en, hi in S:
     ps = re.findall(r"\{(\w+)\}", en)
     if ps:
         PH[k] = {"placeholders": {p: {"type": "int" if p in INT else "String"} for p in dict.fromkeys(ps)}}
+
+S3 = [
+("gpsOffTitle","Location is off","लोकेशन बंद है"),
+("gpsOffBody","Turn on location so we can find work near you and mark attendance at the site.","लोकेशन चालू करें ताकि पास का काम मिले और साइट पर हाज़िरी लग सके।"),
+("turnOnLocation","Turn on location","लोकेशन चालू करें"),
+("locPermTitle","Allow location","लोकेशन की अनुमति दें"),
+("locPermBody","BuildCrew needs your location only while you use the app. Open settings → Permissions → Location → Allow.","BuildCrew को लोकेशन सिर्फ़ ऐप चलाते समय चाहिए। सेटिंग → अनुमतियाँ → लोकेशन → अनुमति दें।"),
+("gpsWeak","Could not get your location. Go near a window or outside and try again.","आपकी लोकेशन नहीं मिली। खिड़की के पास या बाहर जाकर फिर कोशिश करें।"),
+("directions","Directions","रास्ता देखें"),
+("moveMapToAdjust","Move the map to put the pin on the exact spot","पिन को सही जगह लाने के लिए नक्शा खिसकाएँ"),
+("kmFromYou","{km} km from you","आपसे {km} कि.मी."),
+("turnOnLocationForJobs","Turn on location to see work near you and distances.","पास का काम और दूरी देखने के लिए लोकेशन चालू करें।"),
+("turnOn","Turn on","चालू करें"),
+]
+for k, en, hi in S3:
+    import re as _re
+    ps = _re.findall(r"\{(\w+)\}", en)
+    if ps:
+        PH[k] = {"placeholders": {p: {"type": "int" if p in INT else "String"} for p in dict.fromkeys(ps)}}
+S += S3

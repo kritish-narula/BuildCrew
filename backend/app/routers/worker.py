@@ -266,6 +266,9 @@ def kyc_level2(body: KycL2In, user: User = Depends(W), db: Session = Depends(get
 class ProfilePatch(BaseModel):
     trades: list[Trade] | None = None
     is_online: bool | None = None
+    # Current position from the phone → feed radius + distances. Bounded to India.
+    home_lat: float | None = Field(default=None, ge=6, le=37.5)
+    home_lng: float | None = Field(default=None, ge=68, le=97.5)
 
 
 @router.patch("/profile")
@@ -275,5 +278,7 @@ def patch_profile(body: ProfilePatch, user: User = Depends(W), db: Session = Dep
         wp.trades = [tr.value for tr in body.trades]
     if body.is_online is not None:
         wp.is_online = body.is_online
+    if body.home_lat is not None and body.home_lng is not None:
+        wp.home_lat, wp.home_lng = body.home_lat, body.home_lng
     db.commit()
     return {"ok": True}

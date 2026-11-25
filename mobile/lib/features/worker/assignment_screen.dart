@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
+import '../../core/location.dart';
 import '../../core/app_state.dart';
 import '../../core/outbox.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 import '../common/chat.dart';
 import 'worker_shell.dart' show PendingChip;
@@ -44,11 +46,9 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
           if (!e.isNetwork) rethrow; // offline: keep the local path; attendance still recorded
         }
       }
-      final pos = await currentPosition();
-      if (pos == null) {
-        if (mounted) showError(context, ApiException('gps', l.gpsNeeded));
-        return;
-      }
+      if (!mounted) return;
+      final pos = await LocationService.get(context);
+      if (pos == null) return; // LocationService already told the user what to fix
       final sent = await Outbox.instance.attendance({'assignment_id': widget.assignmentId, 'kind': kind, 'lat': pos.latitude,
         'lng': pos.longitude, 'selfie_key': selfie});
       if (!mounted) return;
@@ -92,6 +92,19 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
                     const SizedBox(width: 6),
                     Expanded(child: Text(job['address'] as String, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700))),
                   ]),
+                  const SizedBox(height: 12),
+                  JobMap(
+                    lat: (job['lat'] as num).toDouble(),
+                    lng: (job['lng'] as num).toDouble(),
+                    exact: true,
+                    me: LocationService.last == null ? null : (LocationService.last!.latitude, LocationService.last!.longitude),
+                    onDirections: () => LocationService.directions((job['lat'] as num).toDouble(), (job['lng'] as num).toDouble()),
+                  ),
+                  if (distanceFromMe((job['lat'] as num).toDouble(), (job['lng'] as num).toDouble()) case final km?)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(l.kmFromYou(km), style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
+                    ),
                   if (a['customer_name'] != null) ...[
                     const SizedBox(height: 6),
                     Row(children: [

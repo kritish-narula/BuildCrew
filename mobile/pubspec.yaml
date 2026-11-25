@@ -3,7 +3,7 @@ description: BuildCrew — hyperlocal construction labour marketplace (worker + 
 publish_to: "none"
 # versionName comes from here; versionCode (build number) is set by CI from the run number,
 # so every release is strictly higher and installs as an UPDATE over the previous one.
-version: 0.2.0+1
+version: 0.2.1+1
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -31,6 +31,10 @@ dependencies:
   speech_to_text: ">=7.0.0 <8.0.0"
   share_plus: ^10.1.4
   url_launcher: ^6.3.1
+  # maps & addresses (OpenStreetMap tiles: no API key; Android's built-in geocoder)
+  flutter_map: ">=7.0.0 <9.0.0"
+  latlong2: ^0.9.1
+  geocoding: ">=3.0.0 <5.0.0"
 
 dev_dependencies:
   flutter_test:

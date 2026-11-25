@@ -6,6 +6,7 @@ import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 import '../common/chat.dart';
 import '../worker/assignment_screen.dart' show EscrowLine;
@@ -86,6 +87,8 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
             Wrap(spacing: 8, runSpacing: 8, children: [for (final t in (job['trades'] as List).toSet()) TradeChip(t as String)]),
             const SizedBox(height: 8),
             Text('📍 ${job['locality']} · ${l.startsOn(job['start_date'] as String)}', style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            JobMap(lat: (job['lat'] as num).toDouble(), lng: (job['lng'] as num).toDouble(), exact: true, height: 140),
             const SizedBox(height: 16),
             if (a != null) ...[
               _Tracker(status: status, assignment: a),

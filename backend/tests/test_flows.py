@@ -188,3 +188,12 @@ def test_chat_between_customer_and_bidder_only():
         msgs = client.get(f"/jobs/{job['id']}/chat?with={job['id']}", headers=worker).json()
         assert msgs and not msgs[-1]["mine"]
     assert client.get(f"/jobs/{job['id']}/chat?with={wid}", headers=stranger).status_code == 403
+
+
+def test_worker_location_update_changes_feed_distance():
+    h = tok("9200000009")
+    assert client.patch("/worker/profile", headers=h, json={"home_lat": 31.326, "home_lng": 75.5762}).status_code == 200  # Jalandhar
+    assert client.get("/worker/feed", headers=h).json() == []  # Pune jobs are outside the radius
+    client.patch("/worker/profile", headers=h, json={"home_lat": 18.5074, "home_lng": 73.8077})
+    assert client.get("/worker/feed", headers=h).json()
+    assert client.patch("/worker/profile", headers=h, json={"home_lat": 51.5, "home_lng": -0.12}).status_code == 422

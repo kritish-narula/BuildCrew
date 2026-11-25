@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
+import '../../core/location.dart';
 import '../../core/outbox.dart';
 import '../../core/speech.dart';
 import '../../core/theme.dart';
@@ -102,13 +103,38 @@ class JobsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = L.of(context);
     return AsyncList<(List<Json>, List<Json>)>(
-      load: () async => (await state.api.workerFeed(), await state.api.assignments()),
+      load: () async {
+        // "Near you" must mean near the worker's real position, not a saved home address.
+        final p = await LocationService.quiet();
+        if (p != null) {
+          try {
+            await state.api.updateMyLocation(p.latitude, p.longitude);
+          } catch (_) {}
+        }
+        return (await state.api.workerFeed(), await state.api.assignments());
+      },
       builder: (ctx, data, reload) {
         final (jobs, work) = data;
         final active = work.where((a) => const ['assigned', 'in_progress'].contains((a['job'] as Json)['status'])).toList();
         final toRate = work.where((a) => (a['job'] as Json)['status'] == 'completed' && (a['ratings'] as Map)['worker_to_customer'] == null).toList();
         return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), children: [
           const PendingChip(),
+          if (LocationService.last == null) ...[
+            InfoBanner(
+              icon: Icons.location_searching_rounded,
+              color: BC.info,
+              text: l.turnOnLocationForJobs,
+              action: l.turnOn,
+              onTap: () async {
+                final p = await LocationService.get(context, precise: false);
+                if (p != null) {
+                  await state.api.updateMyLocation(p.latitude, p.longitude);
+                  await reload();
+                }
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
           if (state.user != null && state.user!.kycLevel < 1 && work.isNotEmpty) ...[
             KycNudge(state: state, onDone: reload),
             const SizedBox(height: 14),

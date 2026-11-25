@@ -124,6 +124,8 @@ def price_estimate(trades: str = Query(..., description="comma-separated"), loca
         scope = "locality"
         if len(prices) < 5:
             prices, scope = db.scalars(q).all(), "city"
+        if len(prices) < 5:  # new city with no history yet → national data
+            prices, scope = db.scalars(select(PriceHistory.price_paise).where(PriceHistory.trade == trade)).all(), "all"
         if not prices:
             continue
         qs = statistics.quantiles(sorted(prices), n=4) if len(prices) >= 4 else [min(prices), statistics.median(prices), max(prices)]

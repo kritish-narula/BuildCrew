@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:latlong2/latlong.dart';
+
 import '../../core/api.dart';
+import '../../core/location.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 
 const trades = ['mason', 'plumber', 'electrician', 'carpenter', 'painter', 'helper'];
-const localities = ['Kothrud', 'Baner', 'Hadapsar', 'Wakad', 'Viman Nagar', 'Aundh', 'Kharadi', 'Shivajinagar'];
-const _ll = {
-  'Kothrud': (18.5074, 73.8077), 'Baner': (18.5590, 73.7868), 'Hadapsar': (18.5089, 73.9260), 'Wakad': (18.5986, 73.7604),
-  'Viman Nagar': (18.5679, 73.9143), 'Aundh': (18.5580, 73.8075), 'Kharadi': (18.5515, 73.9348), 'Shivajinagar': (18.5308, 73.8475),
-};
 
 /// One "work card" = one trade with photos + text + voice note (both allowed, never either/or).
 class WorkDraft {
@@ -39,9 +38,12 @@ class PostJobScreen extends StatefulWidget {
 class _PostJobScreenState extends State<PostJobScreen> {
   int _step = 0;
   final List<WorkDraft> _works = [];
-  String? _locality;
-  double? _lat, _lng;
+  LatLng? _point; // exact job location (map pin)
+  final _area = TextEditingController(); // locality, auto-filled from the pin, editable
+  String _city = '';
   final _address = TextEditingController();
+  final _picker = GlobalKey<LocationPickerState>();
+  bool _lookingUp = false, _askedGps = false;
   DateTime _start = DateTime.now().add(const Duration(days: 1));
   Json? _estimate;
   bool _posting = false, _locating = false;
@@ -51,7 +53,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   bool get _canNext => switch (_step) {
         0 => _works.isNotEmpty,
         1 => _works.every((w) => w.hasContent) && !_works.any((w) => w.uploading),
-        2 => _locality != null && _address.text.trim().length >= 3,
+        2 => _point != null && _area.text.trim().isNotEmpty && _address.text.trim().length >= 3,
         _ => true,
       };
 
@@ -64,12 +66,17 @@ class _PostJobScreenState extends State<PostJobScreen> {
     if (_step == 2) {
       setState(() => _step = 3);
       try {
-        final e = await widget.state.api.priceEstimate(_works.map((w) => w.trade).toList(), _locality);
+        final e = await widget.state.api.priceEstimate(_works.map((w) => w.trade).toList(), _area.text.trim());
         if (mounted) setState(() => _estimate = e);
       } catch (_) {}
       return;
     }
     if (_step < 3) setState(() => _step++);
+    if (_step == 2 && !_askedGps) {
+      _askedGps = true;
+      final p = LocationService.last ?? await LocationService.quiet();
+      if (p != null && mounted && _point == null) _setPoint(LatLng(p.latitude, p.longitude), move: true);
+    }
   }
 
   // ---------------------------------------------------------------- audio
@@ -136,27 +143,26 @@ class _PostJobScreenState extends State<PostJobScreen> {
   // ---------------------------------------------------------------- location
   Future<void> _useGps() async {
     setState(() => _locating = true);
-    final p = await currentPosition();
+    final p = await LocationService.get(context);
     if (!mounted) return;
     setState(() => _locating = false);
-    if (p == null) {
-      showError(context, ApiException('gps', L.of(context).gpsNeeded));
-      return;
-    }
-    // nearest known locality
-    String best = localities.first;
-    double bd = double.infinity;
-    for (final e in _ll.entries) {
-      final d = (e.value.$1 - p.latitude).abs() + (e.value.$2 - p.longitude).abs();
-      if (d < bd) {
-        bd = d;
-        best = e.key;
-      }
-    }
+    if (p != null) _setPoint(LatLng(p.latitude, p.longitude), move: true);
+  }
+
+  /// Pin moved (GPS or drag) → look up the real address for it.
+  Future<void> _setPoint(LatLng pt, {bool move = false}) async {
+    setState(() => _point = pt);
+    if (move) WidgetsBinding.instance.addPostFrameCallback((_) => _picker.currentState?.moveTo(pt));
+    setState(() => _lookingUp = true);
+    final a = await LocationService.address(pt.latitude, pt.longitude);
+    if (!mounted) return;
     setState(() {
-      _lat = p.latitude;
-      _lng = p.longitude;
-      _locality = best;
+      _lookingUp = false;
+      if (a != null) {
+        _area.text = a.area;
+        _city = a.city;
+        if (a.line.isNotEmpty) _address.text = a.line;
+      }
     });
   }
 
@@ -184,10 +190,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
           'photo_keys': keys,
         });
       }
-      final ll = _ll[_locality]!;
       await widget.state.api.createJob({
-        'location_lat': _lat ?? ll.$1, 'location_lng': _lng ?? ll.$2, 'address_text': _address.text.trim(),
-        'city': 'Pune', 'locality': _locality, 'start_date': _start.toIso8601String().substring(0, 10), 'work_items': items,
+        'location_lat': _point!.latitude, 'location_lng': _point!.longitude, 'address_text': _address.text.trim(),
+        'city': _city.isEmpty ? _area.text.trim() : _city, 'locality': _area.text.trim(),
+        'start_date': _start.toIso8601String().substring(0, 10), 'work_items': items,
       });
       if (!mounted) return;
       await showDialog<void>(
@@ -325,18 +331,32 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   // ---------------------------------------------------------------- step 3
   Widget _whereStep(L l) => ListView(padding: const EdgeInsets.all(16), children: [
+        LocationPicker(
+          key: _picker,
+          initial: _point ?? (LocationService.last != null ? LatLng(LocationService.last!.latitude, LocationService.last!.longitude) : const LatLng(20.59, 78.96)),
+          initialZoom: _point != null || LocationService.last != null ? 16 : 4.5,
+          onChanged: (p) => _setPoint(p),
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          const Icon(Icons.pan_tool_alt_rounded, size: 18, color: BC.inkSoft),
+          const SizedBox(width: 6),
+          Expanded(child: Text(l.moveMapToAdjust, style: const TextStyle(color: BC.inkSoft))),
+          if (_lookingUp) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+        ]),
+        const SizedBox(height: 10),
         FilledButton.tonalIcon(
           onPressed: _locating ? null : _useGps,
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(BC.tap)),
           icon: _locating ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 3)) : const Icon(Icons.my_location_rounded),
-          label: Text(_lat != null ? l.locationCaptured : l.useMyLocation, style: const TextStyle(fontSize: 17)),
+          label: Text(_point != null ? l.locationCaptured : l.useMyLocation, style: const TextStyle(fontSize: 17)),
         ),
         const SizedBox(height: 16),
-        DropdownButtonFormField<String>(
-          value: _locality,
+        TextField(
+          controller: _area,
+          style: const TextStyle(fontSize: 17),
           decoration: InputDecoration(labelText: l.area, prefixIcon: const Icon(Icons.map_rounded)),
-          items: [for (final x in localities) DropdownMenuItem(value: x, child: Text(x, style: const TextStyle(fontSize: 17)))],
-          onChanged: (v) => setState(() => _locality = v),
+          onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 14),
         TextField(
@@ -391,7 +411,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
                 style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, color: BC.money, fontFeatures: BC.tabular)),
           ),
           const SizedBox(height: 4),
-          Text(l.fairPriceSub(_locality ?? 'Pune'), style: const TextStyle(color: BC.inkSoft)),
+          Text(l.fairPriceSub(_area.text.trim()), style: const TextStyle(color: BC.inkSoft)),
         ]),
       ),
       const SizedBox(height: 16),
@@ -415,7 +435,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       for (final (i, w) in _works.indexed)
         Text('${l.workN(i + 1)} · ${tradeLabel(l, w.trade)} · ${w.photos.length} 📷${w.audio != null ? ' · 🔊 ${mmss(w.audio!.seconds)}' : ''}',
             style: const TextStyle(fontSize: 16)),
-      Text('📍 $_locality · ${_start.day}/${_start.month}', style: const TextStyle(fontSize: 16)),
+      Text('📍 ${_area.text.trim()} · ${_start.day}/${_start.month}', style: const TextStyle(fontSize: 16)),
     ]);
   }
 }
