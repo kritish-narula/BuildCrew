@@ -38,41 +38,54 @@ class KycStatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = L.of(context);
     final level = kyc['level'] as int;
-    Widget step(int n, String title, bool done, {VoidCallback? onTap, String? status}) => ListTile(
-          minTileHeight: 64,
+    Widget step(int n, String title, bool done, {VoidCallback? onTap, String? status}) => InkWell(
           onTap: done ? null : onTap,
-          leading: CircleAvatar(
-            backgroundColor: done ? BC.money : BC.closedSoft,
-            child: done ? const Icon(Icons.check_rounded, color: Colors.white) : Text('$n', style: const TextStyle(fontWeight: FontWeight.w800)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: BC.pad, vertical: 10),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Row(children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: done ? BC.money : BC.closedSoft,
+                  child: done
+                      ? const Icon(Icons.check_rounded, color: Colors.white, size: 20)
+                      : Text('$n', style: context.tt.labelLarge),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium),
+                    if (status != null) Text(status, maxLines: 2, overflow: TextOverflow.ellipsis, style: BC.subtle),
+                  ]),
+                ),
+                if (!done && onTap != null) const Icon(Icons.chevron_right_rounded, color: BC.inkFaint),
+              ]),
+            ),
           ),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: status == null ? null : Text(status),
-          trailing: done || onTap == null ? null : const Icon(Icons.chevron_right_rounded),
         );
     final doc = kyc['doc_status'] as String;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text(l.verification, style: Theme.of(context).textTheme.titleLarge),
-          ),
-          step(0, l.kycPhone, true),
-          step(1, l.kycL1Title, level >= 1, onTap: () async {
-            await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => KycLevel1Screen(state: state)));
-            await onChanged();
-          }),
-          step(2, l.kycL2Title, level >= 2,
-              status: doc == 'pending' ? l.kycUnderReview : (doc == 'rejected' ? l.kycRejected : l.kycL2When),
-              onTap: doc == 'pending'
-                  ? null
-                  : () async {
-                      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => KycLevel2Screen(state: state)));
-                      await onChanged();
-                    }),
-        ]),
-      ),
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(BC.pad, 8, BC.pad, 4),
+          child: Text(l.verification, style: context.tt.titleLarge),
+        ),
+        step(0, l.kycPhone, true),
+        step(1, l.kycL1Title, level >= 1, onTap: () async {
+          await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => KycLevel1Screen(state: state)));
+          await onChanged();
+        }),
+        step(2, l.kycL2Title, level >= 2,
+            status: doc == 'pending' ? l.kycUnderReview : (doc == 'rejected' ? l.kycRejected : l.kycL2When),
+            onTap: doc == 'pending'
+                ? null
+                : () async {
+                    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => KycLevel2Screen(state: state)));
+                    await onChanged();
+                  }),
+      ]),
     );
   }
 }
@@ -90,6 +103,13 @@ class _KycLevel1ScreenState extends State<KycLevel1Screen> {
   String? _selfie;
   final Set<String> _trades = {};
   bool _busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _upi.dispose();
+    super.dispose();
+  }
 
   bool get _valid =>
       _name.text.trim().length >= 2 && RegExp(r'^[a-zA-Z0-9.\-_]{2,64}@[a-zA-Z]{2,32}$').hasMatch(_upi.text.trim()) && _selfie != null;
@@ -112,9 +132,9 @@ class _KycLevel1ScreenState extends State<KycLevel1Screen> {
   Widget build(BuildContext context) {
     final l = L.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l.kycL1Title)),
+      appBar: AppBar(title: Text(l.kycL1Title, maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 24), children: [
-        Text(l.kycL1Why, style: const TextStyle(color: BC.inkSoft, fontSize: 16)),
+        Text(l.kycL1Why, style: context.tt.bodyLarge!.copyWith(color: BC.inkSoft)),
         const SizedBox(height: 20),
         Center(
           child: GestureDetector(
@@ -131,19 +151,19 @@ class _KycLevel1ScreenState extends State<KycLevel1Screen> {
                     : ClipOval(child: AppImage(_selfie, width: 128, height: 128)),
               ),
               const SizedBox(height: 8),
-              Text(l.takeSelfie, style: const TextStyle(fontWeight: FontWeight.w700, color: BC.brandDark, fontSize: 16)),
+              Text(l.takeSelfie, style: context.tt.titleMedium!.copyWith(color: BC.brandDark)),
             ]),
           ),
         ),
         const SizedBox(height: 20),
-        TextField(controller: _name, textCapitalization: TextCapitalization.words, style: const TextStyle(fontSize: 20),
+        TextField(controller: _name, textCapitalization: TextCapitalization.words, style: context.tt.titleLarge,
             decoration: InputDecoration(labelText: l.yourName, prefixIcon: const Icon(Icons.person_rounded)), onChanged: (_) => setState(() {})),
         const SizedBox(height: 14),
-        TextField(controller: _upi, keyboardType: TextInputType.emailAddress, autocorrect: false, style: const TextStyle(fontSize: 20),
+        TextField(controller: _upi, keyboardType: TextInputType.emailAddress, autocorrect: false, style: context.tt.titleLarge,
             decoration: InputDecoration(labelText: l.upiId, hintText: 'name@okaxis', prefixIcon: const Icon(Icons.account_balance_wallet_rounded)),
             onChanged: (_) => setState(() {})),
         const SizedBox(height: 20),
-        Text(l.yourSkills, style: Theme.of(context).textTheme.titleMedium),
+        Text(l.yourSkills, style: context.tt.titleMedium),
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final t in const ['mason', 'plumber', 'electrician', 'carpenter', 'painter', 'helper'])
@@ -151,16 +171,13 @@ class _KycLevel1ScreenState extends State<KycLevel1Screen> {
               selected: _trades.contains(t),
               onSelected: (v) => setState(() => v ? _trades.add(t) : _trades.remove(t)),
               avatar: Icon(TradeStyle.of(t).icon, color: TradeStyle.of(t).color),
-              label: Text(tradeLabel(l, t), style: const TextStyle(fontSize: 16)),
+              label: Text(tradeLabel(l, t), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
         ]),
         const SizedBox(height: 16),
         InfoBanner(icon: Icons.lock_rounded, color: BC.info, text: l.kycPrivacy),
         const SizedBox(height: 20),
-        FilledButton(
-          onPressed: _valid && !_busy ? _save : null,
-          child: _busy ? const CircularProgressIndicator(color: Colors.white) : Text(l.save),
-        ),
+        PrimaryButton(big: true, busy: _busy, onPressed: _valid ? _save : null, label: l.save),
       ]),
     );
   }
@@ -182,14 +199,14 @@ class _KycLevel2ScreenState extends State<KycLevel2Screen> {
   Widget build(BuildContext context) {
     final l = L.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l.kycL2Title)),
+      appBar: AppBar(title: Text(l.kycL2Title, maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 24), children: [
-        Text(l.kycL2Why, style: const TextStyle(color: BC.inkSoft, fontSize: 16)),
+        Text(l.kycL2Why, style: context.tt.bodyLarge!.copyWith(color: BC.inkSoft)),
         const SizedBox(height: 16),
         SegmentedButton<String>(
           segments: [
-            ButtonSegment(value: 'aadhaar', label: Text(l.aadhaar), icon: const Icon(Icons.fingerprint_rounded)),
-            ButtonSegment(value: 'pan', label: Text(l.pan), icon: const Icon(Icons.credit_card_rounded)),
+            ButtonSegment(value: 'aadhaar', label: Text(l.aadhaar, maxLines: 1, overflow: TextOverflow.ellipsis), icon: const Icon(Icons.fingerprint_rounded)),
+            ButtonSegment(value: 'pan', label: Text(l.pan, maxLines: 1, overflow: TextOverflow.ellipsis), icon: const Icon(Icons.credit_card_rounded)),
           ],
           selected: {_type},
           onSelectionChanged: (s) => setState(() => _type = s.first),
@@ -202,13 +219,13 @@ class _KycLevel2ScreenState extends State<KycLevel2Screen> {
           },
           child: Container(
             height: 200,
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(BC.rLg), border: Border.all(color: BC.line, width: 2)),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(BC.rMd), border: Border.all(color: BC.line, width: 1.5)),
             clipBehavior: Clip.antiAlias,
             child: _photo == null
                 ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                     const Icon(Icons.document_scanner_rounded, size: 56, color: BC.brand),
                     const SizedBox(height: 8),
-                    Text(l.photoOfCard, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    Text(l.photoOfCard, style: context.tt.titleMedium),
                   ])
                 : AppImage(_photo, width: double.infinity),
           ),
@@ -216,22 +233,24 @@ class _KycLevel2ScreenState extends State<KycLevel2Screen> {
         const SizedBox(height: 16),
         InfoBanner(icon: Icons.lock_rounded, color: BC.info, text: l.kycL2Privacy),
         const SizedBox(height: 20),
-        FilledButton(
-          onPressed: _photo == null || _busy
+        PrimaryButton(
+          big: true,
+          busy: _busy,
+          label: l.submitForReview,
+          onPressed: _photo == null
               ? null
               : () async {
                   setState(() => _busy = true);
                   try {
                     final key = (await widget.state.api.upload('kyc', _photo!))['key'] as String;
                     await widget.state.api.kycLevel2(_type, key);
-                    if (context.mounted) Navigator.pop(context);
+                    if (mounted) Navigator.pop(context);
                   } catch (e) {
-                    if (context.mounted) showError(context, e);
+                    if (mounted) showError(context, e);
                   } finally {
                     if (mounted) setState(() => _busy = false);
                   }
                 },
-          child: _busy ? const CircularProgressIndicator(color: Colors.white) : Text(l.submitForReview),
         ),
       ]),
     );
@@ -247,7 +266,7 @@ class LabourCardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = L.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l.myLabourCard)),
+      appBar: AppBar(title: Text(l.myLabourCard, maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: AsyncList<Json>(
         load: state.api.labourCard,
         builder: (ctx, c, _) {
@@ -267,25 +286,27 @@ class LabourCardScreen extends StatelessWidget {
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(colors: [Color(0xFF1C1917), Color(0xFF44403C)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: BorderRadius.circular(BC.rLg),
+                boxShadow: BC.softShadow,
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: BC.brand, borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.construction_rounded, color: Colors.white),
-                  ),
+                  const IconBadge(Icons.construction_rounded, color: BC.brand, size: 36, solid: true),
                   const SizedBox(width: 10),
-                  const Text('BuildCrew', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-                  const Spacer(),
-                  Text(c['card_id'] as String, style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                  Text('BuildCrew', style: context.tt.titleLarge!.copyWith(color: Colors.white)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(c['card_id'] as String,
+                        textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: context.tt.labelMedium!.copyWith(color: Colors.white54, fontFeatures: BC.tabular)),
+                  ),
                 ]),
+                const SizedBox(height: 22),
+                Text(c['name'] as String? ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.headlineMedium!.copyWith(color: Colors.white)),
+                Text(trades.map((t) => tradeLabel(l, t)).join(' · '),
+                    maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleSmall!.copyWith(color: BC.pending)),
                 const SizedBox(height: 20),
-                Text(c['name'] as String? ?? '', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800)),
-                Text(trades.map((t) => tradeLabel(l, t)).join(' · '), style: const TextStyle(color: BC.pending, fontSize: 17, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 18),
-                Row(children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   _CardStat(value: '★ ${(c['rating'] as num).toStringAsFixed(1)}', label: l.rating),
                   _CardStat(value: '${c['completed_jobs']}', label: l.jobsLabel),
                   _CardStat(value: 'L${c['verified_level']}', label: l.verified),
@@ -293,22 +314,35 @@ class LabourCardScreen extends StatelessWidget {
                 const SizedBox(height: 14),
                 for (final bd in (c['badges'] as List).cast<String>())
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text('🏅 ${badgeLabel(l, bd, c['rating'] as num, c['rating_count'] as int)}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Icon(Icons.workspace_premium_rounded, color: BC.pending, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(badgeLabel(l, bd, c['rating'] as num, c['rating_count'] as int),
+                            style: context.tt.labelLarge!.copyWith(color: Colors.white, fontWeight: FontWeight.w500)),
+                      ),
+                    ]),
                   ),
                 if (c['eshram_registered'] == true)
-                  Padding(padding: const EdgeInsets.only(top: 4), child: Text('✓ ${l.eshramRegistered}', style: const TextStyle(color: Colors.white70))),
-                const SizedBox(height: 10),
-                Text('${l.memberSince} ${c['member_since']}', style: const TextStyle(color: Colors.white38, fontSize: 13)),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(children: [
+                      const Icon(Icons.check_circle_rounded, color: Colors.white70, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(l.eshramRegistered, style: context.tt.bodyMedium!.copyWith(color: Colors.white70))),
+                    ]),
+                  ),
+                const SizedBox(height: 12),
+                Text('${l.memberSince} ${c['member_since']}', style: BC.caption.copyWith(color: Colors.white54)),
               ]),
             ),
-            const SizedBox(height: 20),
-            Card(child: Padding(padding: const EdgeInsets.all(16), child: RatingBars(breakdown: b))),
-            const SizedBox(height: 20),
-            FilledButton.icon(onPressed: () => Share.share(text), icon: const Icon(Icons.share_rounded), label: Text(l.shareCard)),
-            const SizedBox(height: 8),
-            Text(l.labourCardNote, textAlign: TextAlign.center, style: const TextStyle(color: BC.inkSoft)),
+            const SizedBox(height: 16),
+            AppCard(padding: const EdgeInsets.all(BC.pad), child: RatingBars(breakdown: b)),
+            const SizedBox(height: 16),
+            PrimaryButton(onPressed: () => Share.share(text), icon: Icons.share_rounded, label: l.shareCard),
+            const SizedBox(height: 10),
+            Text(l.labourCardNote, textAlign: TextAlign.center, style: BC.subtle),
           ]);
         },
       ),
@@ -322,8 +356,12 @@ class _CardStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-          Text(label, style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w600)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value, maxLines: 1, style: context.tt.headlineSmall!.copyWith(color: Colors.white, fontFeatures: BC.tabular)),
+          ),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: BC.caption.copyWith(color: Colors.white54)),
         ]),
       );
 }

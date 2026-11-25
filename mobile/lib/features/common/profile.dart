@@ -20,22 +20,25 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
   final l = L.of(context);
   Widget tile(IconData icon, Color color, String title, {String? sub, VoidCallback? onTap, Widget? trailing}) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: Material(
-          color: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r), side: const BorderSide(color: BC.line)),
-          child: ListTile(
-            onTap: onTap,
-            minTileHeight: 72,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r)),
-            leading: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
-              child: Icon(icon, color: color),
-            ),
-            title: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            subtitle: sub == null ? null : Text(sub, style: const TextStyle(fontSize: 14, color: BC.inkSoft)),
-            trailing: trailing ?? const Icon(Icons.chevron_right_rounded, color: BC.inkFaint),
+        child: AppCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Row(children: [
+              IconBadge(icon, color: color, size: 40),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium),
+                  if (sub != null) Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: BC.subtle),
+                ]),
+              ),
+              if (trailing != null)
+                trailing
+              else
+                const Icon(Icons.chevron_right_rounded, color: BC.inkFaint),
+            ]),
           ),
         ),
       );
@@ -45,11 +48,11 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
       Container(
         padding: const EdgeInsets.all(14),
         margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(color: BC.infoSoft, borderRadius: BorderRadius.circular(BC.r)),
+        decoration: BoxDecoration(color: BC.infoSoft, borderRadius: BorderRadius.circular(BC.rMd)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(l.switchAccount, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: BC.info)),
-          const SizedBox(height: 4),
-          Text(l.switchAccountSub, style: const TextStyle(color: BC.info)),
+          Text(l.switchAccount, style: context.tt.titleMedium!.copyWith(color: BC.info)),
+          const SizedBox(height: 2),
+          Text(l.switchAccountSub, style: BC.subtle.copyWith(color: BC.info)),
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 8, children: [
             for (final (p, trade, name, role) in demoAccounts)
@@ -57,8 +60,9 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
                 ActionChip(
                   backgroundColor: Colors.white,
                   avatar: Icon(role == 'customer' ? Icons.home_work_rounded : TradeStyle.of(trade).icon,
-                      color: role == 'customer' ? BC.info : TradeStyle.of(trade).color, size: 20),
-                  label: Text('${name.split(' ').first} · ${role == 'customer' ? l.role_customer : tradeLabel(l, trade)}'),
+                      color: role == 'customer' ? BC.info : TradeStyle.of(trade).color, size: 18),
+                  label: Text('${name.split(' ').first} · ${role == 'customer' ? l.role_customer : tradeLabel(l, trade)}',
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                   onPressed: () async {
                     Navigator.of(context).popUntil((r) => r.isFirst);
                     await state.switchAccount(p);
@@ -74,15 +78,18 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
                   title: Text(l.resetDemo),
                   content: Text(l.resetDemoSub),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(c, false), child: Text(l.cancel)),
-                    FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(l.resetDemo)),
+                    TextButton(onPressed: () => Navigator.pop(c, false), child: BtnLabel(l.cancel)),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(c, true),
+                        style: FilledButton.styleFrom(minimumSize: const Size(0, BC.btnSm)),
+                        child: BtnLabel(l.resetDemo)),
                   ],
                 ),
               );
               if (ok == true) await state.resetDemo();
             },
             icon: const Icon(Icons.restart_alt_rounded),
-            label: Text(l.resetDemo),
+            label: BtnLabel(l.resetDemo),
           ),
         ]),
       ),
@@ -108,7 +115,7 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
         });
       },
     ),
-    tile(Icons.logout_rounded, BC.closed, l.profileLogout, onTap: state.signOut, trailing: const SizedBox.shrink()),
+    tile(Icons.logout_rounded, BC.danger, l.profileLogout, onTap: state.signOut, trailing: const SizedBox.shrink()),
   ];
 }
 
@@ -117,8 +124,9 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
 Future<void> showVoiceHelp(BuildContext context, AppState state) => showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(BC.rLg))),
       builder: (_) => _VoiceHelp(state: state),
     );
 
@@ -134,10 +142,18 @@ class _VoiceHelpState extends State<_VoiceHelp> {
   String _q = '', _a = '';
   bool _listening = false;
 
+  @override
+  void dispose() {
+    _stt.cancel(); // release the microphone if the sheet is closed mid-listen
+    super.dispose();
+  }
+
   Future<void> _ask(String q) async {
+    if (q.trim().isEmpty) return;
     setState(() => _q = q);
     try {
       final a = await widget.state.api.voiceQuery(q);
+      if (!mounted) return;
       setState(() => _a = a);
       await Speaker.instance.say(a, widget.state.language ?? 'hi');
     } catch (e) {
@@ -146,12 +162,23 @@ class _VoiceHelpState extends State<_VoiceHelp> {
   }
 
   Future<void> _listen() async {
-    if (!await _stt.initialize()) return;
+    if (_listening) {
+      await _stt.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+    if (!await _stt.initialize(onStatus: (s) {
+      if ((s == 'done' || s == 'notListening') && mounted) setState(() => _listening = false);
+    })) {
+      return;
+    }
+    if (!mounted) return;
     setState(() => _listening = true);
     await _stt.listen(
       localeId: '${widget.state.language ?? 'hi'}_IN',
       listenFor: const Duration(seconds: 8),
       onResult: (r) {
+        if (!mounted) return;
         setState(() => _q = r.recognizedWords);
         if (r.finalResult) {
           setState(() => _listening = false);
@@ -165,34 +192,38 @@ class _VoiceHelpState extends State<_VoiceHelp> {
   Widget build(BuildContext context) {
     final l = L.of(context);
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(l.askByVoice, style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
+          Text(l.askByVoice, style: context.tt.headlineSmall, textAlign: TextAlign.center),
           const SizedBox(height: 20),
           Center(
             child: GestureDetector(
               onTap: _listen,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
-                width: _listening ? 120 : 104,
-                height: _listening ? 120 : 104,
-                decoration: BoxDecoration(color: _listening ? BC.danger : BC.brand, shape: BoxShape.circle),
-                child: const Icon(Icons.mic_rounded, color: Colors.white, size: 52),
+                width: _listening ? 104 : 92,
+                height: _listening ? 104 : 92,
+                decoration: BoxDecoration(
+                  color: _listening ? BC.danger : BC.brand,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: (_listening ? BC.danger : BC.brand).withValues(alpha: 0.3), blurRadius: 20, spreadRadius: 2)],
+                ),
+                child: const Icon(Icons.mic_rounded, color: Colors.white, size: 46),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          if (_q.isNotEmpty) Text('“$_q”', textAlign: TextAlign.center, style: const TextStyle(fontSize: 17, fontStyle: FontStyle.italic)),
+          if (_q.isNotEmpty) Text('“$_q”', textAlign: TextAlign.center, style: context.tt.titleMedium!.copyWith(fontStyle: FontStyle.italic, fontWeight: FontWeight.w500)),
           if (_a.isNotEmpty) ...[
             const SizedBox(height: 12),
             InfoBanner(icon: Icons.volume_up_rounded, color: BC.money, text: _a, onTap: () => Speaker.instance.say(_a, widget.state.language ?? 'hi')),
           ],
           const SizedBox(height: 16),
-          Text(l.tryAsking, style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w700)),
+          Text(l.tryAsking, style: context.tt.labelLarge!.copyWith(color: BC.inkSoft)),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final q in [l.qWhenPaid, l.qHowWork]) ActionChip(label: Text(q, style: const TextStyle(fontSize: 15)), onPressed: () => _ask(q)),
+            for (final q in [l.qWhenPaid, l.qHowWork]) ActionChip(label: Text(q, maxLines: 2, overflow: TextOverflow.ellipsis), onPressed: () => _ask(q)),
           ]),
         ]),
       ),
@@ -212,27 +243,32 @@ class ProfileView extends StatelessWidget {
     final name = (u?.name?.isNotEmpty ?? false) ? u!.name! : '+91 ${u?.phone ?? ''}';
     final initials = name.trim().split(RegExp(r'\s+')).take(2).map((w) => w.isEmpty ? '' : w.characters.first).join().toUpperCase();
     return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 32), children: [
-      Row(children: [
-        CircleAvatar(
-          radius: 36,
-          backgroundColor: BC.info,
-          child: Text(initials, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800)),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 2),
-            Row(children: [
-              const Icon(Icons.verified_rounded, size: 18, color: BC.money),
-              const SizedBox(width: 4),
-              Text('${u?.role == 'worker' ? l.role_worker : l.role_customer} · ${l.workerSince}',
-                  style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
+      AppCard(
+        padding: const EdgeInsets.all(BC.padLg),
+        child: Row(children: [
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: BC.info,
+            child: Text(initials, style: context.tt.headlineSmall!.copyWith(color: Colors.white)),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.headlineSmall),
+              const SizedBox(height: 2),
+              Row(children: [
+                const Icon(Icons.verified_rounded, size: 18, color: BC.money),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text('${u?.role == 'worker' ? l.role_worker : l.role_customer} · ${l.workerSince}',
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: BC.subtle),
+                ),
+              ]),
             ]),
-          ]),
-        ),
-      ]),
-      const SizedBox(height: 24),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 16),
       ...settingsTiles(context, state),
     ]);
   }

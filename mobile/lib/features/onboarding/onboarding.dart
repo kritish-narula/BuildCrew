@@ -32,30 +32,25 @@ class LanguageScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+            padding: EdgeInsets.fromLTRB(20, fromSettings ? 4 : 24, 20, 8),
             child: Row(children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(color: BC.brand, borderRadius: BorderRadius.circular(18)),
-                child: const Icon(Icons.translate_rounded, color: Colors.white, size: 30),
-              ),
-              const SizedBox(width: 16),
+              const IconBadge(Icons.translate_rounded, color: BC.brand, size: 52, solid: true),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   // Before a choice we show Hindi + English together: the two most widely read.
-                  Text(selected == null ? 'भाषा चुनें' : l.chooseLanguage, style: Theme.of(context).textTheme.headlineMedium),
+                  Text(selected == null ? 'भाषा चुनें' : l.chooseLanguage, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.headlineMedium),
                   Text(selected == null ? 'Choose your language' : l.chooseLanguageHint,
-                      style: const TextStyle(color: BC.inkSoft, fontSize: 15)),
+                      maxLines: 2, overflow: TextOverflow.ellipsis, style: BC.subtle),
                 ]),
               ),
             ]),
           ),
           Expanded(
             child: GridView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, mainAxisExtent: 96),
+                  crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, mainAxisExtent: 80),
               itemCount: languages.length,
               itemBuilder: (ctx, i) {
                 final (code, native, english) = languages[i];
@@ -63,26 +58,25 @@ class LanguageScreen extends StatelessWidget {
                 return Material(
                   color: on ? BC.brandSoft : Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(BC.rLg),
-                    side: BorderSide(color: on ? BC.brand : BC.line, width: on ? 2.5 : 1.2),
+                    borderRadius: BorderRadius.circular(BC.rMd),
+                    side: BorderSide(color: on ? BC.brand : BC.line, width: on ? 2 : 1),
                   ),
+                  clipBehavior: Clip.antiAlias,
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(BC.rLg),
                     onTap: () => state.setLanguage(code),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                      padding: const EdgeInsets.fromLTRB(14, 6, 4, 6),
                       child: Row(children: [
                         Expanded(
                           child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(native, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.3)),
-                            if (code != 'en')
-                              Text(english, style: const TextStyle(fontSize: 13, color: BC.inkFaint, fontWeight: FontWeight.w600)),
+                                style: context.tt.titleLarge!.copyWith(height: 1.4)),
+                            if (code != 'en') Text(english, maxLines: 1, overflow: TextOverflow.ellipsis, style: BC.caption.copyWith(color: BC.inkFaint)),
                           ]),
                         ),
                         on
-                            ? const Padding(padding: EdgeInsets.all(8), child: Icon(Icons.check_circle_rounded, color: BC.brand, size: 30))
-                            : SpeakButton(text: native, lang: code, size: 40),
+                            ? const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Icon(Icons.check_circle_rounded, color: BC.brand, size: 28))
+                            : SpeakButton(text: native, lang: code, size: 36),
                       ]),
                     ),
                   ),
@@ -91,16 +85,14 @@ class LanguageScreen extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-            child: FilledButton(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+            child: PrimaryButton(
+              big: true,
+              icon: Icons.arrow_forward_rounded,
               onPressed: selected == null
                   ? null
                   : () => fromSettings ? context.pop() : context.go(state.loggedIn ? '/' : '/role'),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text(selected == null ? 'आगे बढ़ें · Continue' : l.continueBtn),
-                const SizedBox(width: 8),
-                const Icon(Icons.arrow_forward_rounded),
-              ]),
+              label: selected == null ? 'आगे बढ़ें · Continue' : l.continueBtn,
             ),
           ),
         ]),
@@ -117,48 +109,39 @@ class RoleScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
-    Widget card(String role, IconData icon, Color color, String title, String sub) => Material(
-          color: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28), side: const BorderSide(color: BC.line, width: 1.2)),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(28),
-            onTap: () async {
-              await state.setRoleIntent(role);
-              if (context.mounted) context.push('/phone');
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(children: [
-                Container(
-                  width: 84,
-                  height: 84,
-                  decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(24)),
-                  child: Icon(icon, size: 48, color: color),
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(title, style: Theme.of(context).textTheme.headlineSmall),
-                    const SizedBox(height: 4),
-                    Text(sub, style: const TextStyle(color: BC.inkSoft, fontSize: 15)),
-                  ]),
-                ),
-                const Icon(Icons.chevron_right_rounded, size: 32, color: BC.inkFaint),
+    Widget card(String role, IconData icon, Color color, String title, String sub) => AppCard(
+          radius: BC.rLg,
+          padding: const EdgeInsets.all(BC.padLg),
+          shadow: true,
+          onTap: () async {
+            await state.setRoleIntent(role);
+            if (context.mounted) context.push('/phone');
+          },
+          child: Row(children: [
+            IconBadge(icon, color: color, size: 68),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.headlineSmall),
+                const SizedBox(height: 2),
+                Text(sub, maxLines: 3, overflow: TextOverflow.ellipsis, style: BC.subtle),
               ]),
             ),
-          ),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right_rounded, size: 28, color: BC.inkFaint),
+          ]),
         );
 
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => context.go('/language')),
         actions: [
-          Padding(padding: const EdgeInsets.only(right: 16), child: SpeakButton(text: l.roleQuestion, lang: state.language ?? 'hi')),
+          Padding(padding: const EdgeInsets.only(right: 12), child: SpeakButton(text: l.roleQuestion, lang: state.language ?? 'hi')),
         ],
       ),
       body: SafeArea(
         child: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 20), children: [
-          Text(l.roleQuestion, style: Theme.of(context).textTheme.headlineMedium),
+          Text(l.roleQuestion, style: context.tt.headlineMedium),
           const SizedBox(height: 24),
           card('worker', Icons.construction_rounded, BC.brand, l.roleWorker, l.roleWorkerSub),
           const SizedBox(height: 16),

@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../core/location.dart';
 import '../core/theme.dart';
 import '../l10n/gen/app_localizations.dart';
+import 'common.dart' show BtnLabel;
 
 const _tiles = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
@@ -12,8 +13,8 @@ Widget _attribution() => const Positioned(
       right: 6,
       bottom: 4,
       child: DecoratedBox(
-        decoration: BoxDecoration(color: Colors.white70),
-        child: Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('© OpenStreetMap', style: TextStyle(fontSize: 10))),
+        decoration: BoxDecoration(color: Color(0xB3FFFFFF), borderRadius: BorderRadius.all(Radius.circular(6))),
+        child: Padding(padding: EdgeInsets.symmetric(horizontal: 6, vertical: 1), child: Text('© OpenStreetMap', style: TextStyle(fontSize: 10, height: 1.3, color: BC.inkSoft))),
       ),
     );
 
@@ -68,9 +69,12 @@ class JobMap extends StatelessWidget {
               bottom: 10,
               child: FilledButton.icon(
                 onPressed: onDirections,
-                style: FilledButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 16)),
-                icon: const Icon(Icons.directions_rounded),
-                label: Text(l.directions),
+                style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, BC.btnXs),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                icon: const Icon(Icons.directions_rounded, size: 20),
+                label: BtnLabel(l.directions),
               ),
             ),
         ]),
@@ -95,6 +99,12 @@ class LocationPickerState extends State<LocationPicker> {
   final _map = MapController();
   bool _moving = false;
 
+  @override
+  void dispose() {
+    _map.dispose();
+    super.dispose();
+  }
+
   void moveTo(LatLng p) {
     try {
       _map.move(p, 17);
@@ -104,7 +114,7 @@ class LocationPickerState extends State<LocationPicker> {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(BC.rLg),
+      borderRadius: BorderRadius.circular(BC.rMd),
       child: SizedBox(
         height: widget.height,
         child: Stack(alignment: Alignment.center, children: [
@@ -114,9 +124,10 @@ class LocationPickerState extends State<LocationPicker> {
               initialCenter: widget.initial,
               initialZoom: widget.initialZoom,
               onPositionChanged: (camera, gesture) {
-                if (gesture && !_moving) setState(() => _moving = true);
+                if (gesture && !_moving && mounted) setState(() => _moving = true);
               },
               onMapEvent: (e) {
+                if (!mounted) return;
                 if (e is MapEventMoveEnd || e is MapEventFlingAnimationEnd || e is MapEventDoubleTapZoomEnd) {
                   setState(() => _moving = false);
                   widget.onChanged(_map.camera.center);

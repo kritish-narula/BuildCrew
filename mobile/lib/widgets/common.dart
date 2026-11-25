@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../core/api.dart';
@@ -39,6 +42,169 @@ String timeAgo(L l, DateTime t) {
   return l.agoDays(d.inDays);
 }
 
+// ------------------------------------------------------------------ buttons
+/// Button label that can never wrap onto a second line: it shrinks slightly instead.
+/// Use as the `child`/`label` of any Material button.
+class BtnLabel extends StatelessWidget {
+  const BtnLabel(this.text, {super.key});
+  final String text;
+  @override
+  Widget build(BuildContext context) =>
+      FittedBox(fit: BoxFit.scaleDown, child: Text(text, maxLines: 1, softWrap: false, textAlign: TextAlign.center));
+}
+
+/// Primary action: 52dp (56dp when [big] — worker-critical actions like "Check in").
+/// While [busy] it keeps its colour and shows a spinner (a disabled grey button with a white
+/// spinner is invisible).
+class PrimaryButton extends StatelessWidget {
+  const PrimaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.busy = false,
+    this.big = false,
+    this.color,
+    this.expand = true,
+  });
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final bool busy, big, expand;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final h = big ? BC.tap : BC.btn;
+    final bg = color ?? BC.brand;
+    return FilledButton(
+      onPressed: busy ? null : onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: color,
+        minimumSize: Size(expand ? double.infinity : 0, h),
+        disabledBackgroundColor: busy ? bg : null,
+        disabledForegroundColor: busy ? Colors.white : null,
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+        if (busy)
+          const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+        else if (icon != null)
+          Icon(icon, size: 22),
+        if (busy || icon != null) const SizedBox(width: 8),
+        Flexible(child: BtnLabel(label)),
+      ]),
+    );
+  }
+}
+
+/// Secondary / outlined action: 48dp, or 40dp when [compact].
+class SecondaryButton extends StatelessWidget {
+  const SecondaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.compact = false,
+    this.color,
+    this.expand = true,
+  });
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final bool compact, expand;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final h = compact ? BC.btnXs : BC.btnSm;
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        minimumSize: Size(expand ? double.infinity : 0, h),
+        padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 20),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+        if (icon != null) ...[Icon(icon, size: compact ? 20 : 22), const SizedBox(width: 8)],
+        Flexible(child: BtnLabel(label)),
+      ]),
+    );
+  }
+}
+
+// ------------------------------------------------------------------ layout building blocks
+/// The one card look: white, 1px warm border, 20 radius, 16 padding. Optional tap ripple.
+class AppCard extends StatelessWidget {
+  const AppCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(BC.pad),
+    this.onTap,
+    this.color = BC.card,
+    this.borderColor = BC.line,
+    this.radius = BC.rMd,
+    this.shadow = false,
+    this.clip = true,
+  });
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final VoidCallback? onTap;
+  final Color color, borderColor;
+  final double radius;
+  final bool shadow, clip;
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius), side: BorderSide(color: borderColor));
+    final inner = Padding(padding: padding, child: child);
+    return DecoratedBox(
+      decoration: shadow ? BoxDecoration(borderRadius: BorderRadius.circular(radius), boxShadow: BC.softShadow) : const BoxDecoration(),
+      child: Material(
+        color: color,
+        shape: shape,
+        clipBehavior: clip ? Clip.antiAlias : Clip.none,
+        child: onTap == null ? inner : InkWell(onTap: onTap, child: inner),
+      ),
+    );
+  }
+}
+
+/// Section title with an optional trailing widget (count, "See all", speaker…).
+class SectionHeader extends StatelessWidget {
+  const SectionHeader(this.title, {super.key, this.trailing, this.padding = const EdgeInsets.fromLTRB(2, 8, 2, 8)});
+  final String title;
+  final Widget? trailing;
+  final EdgeInsetsGeometry padding;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: padding,
+        child: Row(children: [
+          Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleLarge)),
+          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+        ]),
+      );
+}
+
+/// Soft rounded-square icon (used in list rows, settings, steps).
+class IconBadge extends StatelessWidget {
+  const IconBadge(this.icon, {super.key, this.color = BC.brand, this.size = 44, this.solid = false});
+  final IconData icon;
+  final Color color;
+  final double size;
+  final bool solid;
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: solid ? color : color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(size * 0.3),
+        ),
+        child: Icon(icon, color: solid ? Colors.white : color, size: size * 0.54),
+      );
+}
+
+// ------------------------------------------------------------------ chips & pills
 class TradeChip extends StatelessWidget {
   const TradeChip(this.code, {super.key});
   final String code;
@@ -46,22 +212,24 @@ class TradeChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = TradeStyle.of(code);
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 6, 12, 6),
+      padding: const EdgeInsets.fromLTRB(8, 4, 12, 4),
       decoration: BoxDecoration(color: s.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(s.icon, size: 20, color: s.color),
+        Icon(s.icon, size: 18, color: s.color),
         const SizedBox(width: 6),
-        Text(tradeLabel(L.of(context), code),
-            style: TextStyle(fontWeight: FontWeight.w700, color: s.color, fontSize: 15)),
+        Flexible(
+          child: Text(tradeLabel(L.of(context), code),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.labelLarge!.copyWith(color: s.color, fontSize: 14)),
+        ),
       ]),
     );
   }
 }
 
 /// Round speaker button — reads [text] aloud in [lang]. Used next to anything a worker might
-/// not be able to read comfortably.
+/// not be able to read comfortably. Tap again while speaking to stop.
 class SpeakButton extends StatefulWidget {
-  const SpeakButton({super.key, required this.text, required this.lang, this.size = 44});
+  const SpeakButton({super.key, required this.text, required this.lang, this.size = 40});
   final String text, lang;
   final double size;
   @override
@@ -70,25 +238,54 @@ class SpeakButton extends StatefulWidget {
 
 class _SpeakButtonState extends State<SpeakButton> {
   bool _speaking = false;
+  Timer? _reset;
+
+  @override
+  void dispose() {
+    _reset?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _tap() async {
+    if (_speaking) {
+      _reset?.cancel();
+      setState(() => _speaking = false);
+      await Speaker.instance.stop();
+      return;
+    }
+    setState(() => _speaking = true);
+    await Speaker.instance.say(widget.text, widget.lang);
+    if (!mounted) return;
+    // TTS returns as soon as speech STARTS; keep the "speaking" look for roughly its length.
+    _reset?.cancel();
+    final ms = math.min(30000, math.max(1500, widget.text.length * 70));
+    _reset = Timer(Duration(milliseconds: ms), () {
+      if (mounted) setState(() => _speaking = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hit = math.max(48.0, widget.size);
     return Semantics(
       button: true,
       label: L.of(context).listen,
-      child: InkResponse(
-        radius: widget.size * 0.7,
-        onTap: () async {
-          setState(() => _speaking = true);
-          await Speaker.instance.say(widget.text, widget.lang);
-          if (mounted) setState(() => _speaking = false);
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          width: widget.size,
-          height: widget.size,
-          decoration: BoxDecoration(color: _speaking ? BC.brand : BC.brandSoft, shape: BoxShape.circle),
-          child: Icon(_speaking ? Icons.graphic_eq : Icons.volume_up_rounded,
-              color: _speaking ? Colors.white : BC.brandDark, size: widget.size * 0.52),
+      child: SizedBox(
+        width: hit,
+        height: hit,
+        child: Center(
+          child: InkResponse(
+            radius: hit * 0.5,
+            onTap: _tap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: widget.size,
+              height: widget.size,
+              decoration: BoxDecoration(color: _speaking ? BC.brand : BC.brandSoft, shape: BoxShape.circle),
+              child: Icon(_speaking ? Icons.graphic_eq : Icons.volume_up_rounded,
+                  color: _speaking ? Colors.white : BC.brandDark, size: widget.size * 0.54),
+            ),
+          ),
         ),
       ),
     );
@@ -104,11 +301,13 @@ class StatusPill extends StatelessWidget {
   final IconData? icon;
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (icon != null) ...[Icon(icon, size: 16, color: color), const SizedBox(width: 6)],
-          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13)),
+          if (icon != null) ...[Icon(icon, size: 15, color: color), const SizedBox(width: 5)],
+          Flexible(
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.labelMedium!.copyWith(color: color, fontWeight: FontWeight.w600)),
+          ),
         ]),
       );
 }
@@ -124,15 +323,15 @@ class ComingSoon extends StatelessWidget {
         padding: const EdgeInsets.all(32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
-            width: 120,
-            height: 120,
+            width: 112,
+            height: 112,
             decoration: const BoxDecoration(color: BC.brandSoft, shape: BoxShape.circle),
-            child: Icon(icon, size: 56, color: BC.brandDark),
+            child: Icon(icon, size: 52, color: BC.brandDark),
           ),
           const SizedBox(height: 24),
-          Text(l.comingSoon, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
+          Text(l.comingSoon, textAlign: TextAlign.center, style: context.tt.headlineSmall),
           const SizedBox(height: 8),
-          Text(l.comingSoonSub, textAlign: TextAlign.center, style: const TextStyle(color: BC.inkSoft, fontSize: 16)),
+          Text(l.comingSoonSub, textAlign: TextAlign.center, style: context.tt.bodyLarge!.copyWith(color: BC.inkSoft)),
         ]),
       ),
     );
@@ -148,10 +347,12 @@ void showError(BuildContext context, Object e) {
     ApiException(:final message) when message.isNotEmpty => message,
     _ => l.errorGeneric,
   };
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-    content: Text(msg, style: const TextStyle(fontSize: 16)),
-    backgroundColor: BC.ink,
-  ));
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.white)),
+      backgroundColor: BC.ink,
+    ));
 }
 
 class DemoChip extends StatelessWidget {
@@ -170,13 +371,13 @@ class EmptyState extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
         child: Column(children: [
           Container(
-            width: 96,
-            height: 96,
+            width: 88,
+            height: 88,
             decoration: const BoxDecoration(color: BC.closedSoft, shape: BoxShape.circle),
-            child: Icon(icon, size: 44, color: BC.inkFaint),
+            child: Icon(icon, size: 40, color: BC.inkFaint),
           ),
-          const SizedBox(height: 14),
-          Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, color: BC.inkSoft)),
+          const SizedBox(height: 16),
+          Text(text, textAlign: TextAlign.center, style: context.tt.bodyLarge!.copyWith(color: BC.inkSoft)),
         ]),
       );
 }
@@ -191,20 +392,26 @@ class InfoBanner extends StatelessWidget {
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Material(
-        color: color.withValues(alpha: 0.09),
-        borderRadius: BorderRadius.circular(BC.r),
+        color: color.withValues(alpha: 0.08),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r), side: BorderSide(color: color.withValues(alpha: 0.18))),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
-          borderRadius: BorderRadius.circular(BC.r),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(children: [
-              Icon(icon, color: color, size: 26),
+              Icon(icon, color: color, size: 24),
               const SizedBox(width: 12),
-              Expanded(child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 15, height: 1.4))),
+              Expanded(child: Text(text, style: context.tt.labelLarge!.copyWith(color: color, fontWeight: FontWeight.w600, height: 1.4))),
               if (action != null) ...[
-                const SizedBox(width: 8),
-                Text(action!, style: TextStyle(color: color, fontWeight: FontWeight.w800, decoration: TextDecoration.underline)),
+                const SizedBox(width: 10),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 110),
+                  child: Text(action!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.tt.labelLarge!.copyWith(color: color, fontWeight: FontWeight.w700, decoration: TextDecoration.underline)),
+                ),
               ],
             ]),
           ),
