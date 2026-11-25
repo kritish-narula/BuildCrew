@@ -8,7 +8,22 @@ Hyperlocal daily-wage construction labour marketplace for India. Customers post 
 | API | FastAPI · PostgreSQL · SQLAlchemy · Alembic | `backend/` |
 | Admin panel | React · Vite · TypeScript · Tailwind | `admin/` |
 
-**Status: Phase 1 (foundation) done.** Phases 2–6 follow the build plan in the spec.
+**Status:** all six phases are built: foundation, worker app, customer app, ratings + escrow, admin panel, and polish. English and Hindi are complete. The other 10 languages have onboarding and trade names translated, and the remaining strings fall back to English (run `python3 mobile/tool/check_l10n.py` to see what's left).
+
+### What's in the app
+| Worker (S1–S9) | Customer (C1–C6) | Admin (A1–A6) |
+|---|---|---|
+| Language select with 🔊 · phone OTP | Home: Post a Job / Browse workers / your jobs | KPIs + live job map |
+| Jobs feed: photos, 🔊 badge with KB size, distance; audio never auto-plays | Posting flow: trades → work cards (1–5 photos + text + voice note with timer, level meter, pause, 2-min cap and a consent line) → review/edit the transcript → place & date → fair-price estimate | KYC queue (approve/reject) · worker directory with filters · suspend/reinstate |
+| Job detail: Work 1/2/3 with gallery, translated text, big audio player (one plays at a time), "Show text" toggle | Bid comparison (sort by price/rating), worker profiles, chat | Jobs by status, bids, audit trail, cancel + refund stuck jobs |
+| Price entry with large numerals **and voice** ("बोलिए, कितना पैसा चाहिए?") | Accept → escrow (quote + ₹30) → tracker: Assigned → In progress → Completed → Rated → Paid | Dispute evidence viewer: photos, text, **inline audio player + transcript side by side**, chat, attendance, ratings → release / refund / split / penalise; flag or mute audio |
+| My Bids: amber waiting · green won · grey not selected | **Mandatory rating** (4 parameters, overall = average) releases payment | Escrow ledger, payout queue, revenue |
+| Earnings: one big ₹ figure, withdraw to UPI, rows read aloud | Payments/receipts with escrow status | eShram/KYC compliance + CSV export |
+| Profile: rating breakdown, badges, history, **My Labour Card** (shareable) | Report a problem (dispute) | |
+| Attendance: selfie + GPS check-in/out, **works offline**, geofence flag | | |
+| Offline queue: "Saved. Will send when network returns." + pending chip | | |
+| Progressive KYC: L0 can bid → L1 (name, selfie, UPI) to get paid → L2 (Aadhaar/PAN photo) near ₹50k | | |
+| Voice help ("mera paisa kab aayega?"), call + WhatsApp support, two-way ratings | | |
 
 ---
 
@@ -19,7 +34,7 @@ Hyperlocal daily-wage construction labour marketplace for India. Customers post 
 
 **Updates install inside the app.** When a new version is published, the app shows a **"New update ready"** banner and a notification. Tap **Update now** and the app downloads and checks the new version, then Android replaces it in place. Your login and data are kept, and there's nothing to uninstall.
 
-Until the backend is deployed, the APK runs in **demo mode** (blue "Demo" chip) on built-in sample data. Log in with any seeded number below; the OTP is `123456`.
+Until the backend is deployed, the APK runs in **demo mode** (blue "Demo" chip). Every flow works on built-in sample data that is saved on the phone. The demo also plays the other side of the marketplace: workers quote about 15 seconds after you post a job, and a customer accepts a worker's quote about 30 seconds after it's sent. Log in with any seeded number below; the OTP is `123456`.
 
 ## 2. Run everything locally
 
@@ -29,7 +44,7 @@ docker compose up --build
 ```
 
 - API + interactive docs: http://localhost:8000/docs
-- Admin panel: http://localhost:5173
+- Admin panel: http://localhost:5173 (without `VITE_API_BASE_URL` it runs in **demo mode** on sample data in the browser)
 - Dev SMS outbox (see the OTP texts in each language): http://localhost:8000/dev/sms-outbox
 
 The database is migrated and seeded automatically on first start. Reset with `docker compose exec api python -m app.seed --reset`.
