@@ -124,7 +124,7 @@ function Shell({ children, onLogout }: { children: ReactNode; onLogout: () => vo
         <button onClick={onLogout} className="m-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold hover:bg-stone-800">⎋ Log out</button>
       </aside>
       <main className="flex-1 p-8 overflow-auto">
-        {DEMO && <div className="mb-4 rounded-xl bg-sky-50 text-sky-800 px-4 py-2 text-sm font-semibold">Demo mode — sample Pune data in your browser. Set VITE_API_BASE_URL to connect the real API.</div>}
+        {DEMO && <div className="mb-4 rounded-xl bg-sky-50 text-sky-800 px-4 py-2 text-sm font-semibold">Demo mode — sample India-wide data in your browser. Set VITE_API_BASE_URL to connect the real API.</div>}
         {children}
       </main>
       <AskHost />

@@ -73,7 +73,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
     if (_step == 2) {
       setState(() => _step = 3);
       try {
-        final e = await widget.state.api.priceEstimate(_works.map((w) => w.trade).toList(), _area.text.trim());
+        final e = await widget.state.api.priceEstimate(
+          _works.map((w) => w.trade).toList(),
+          _area.text.trim(),
+          texts: _works.map<String?>((w) => '${w.text.text} ${w.transcript.text}'.trim()).toList(),
+          city: _city.isEmpty ? null : _city,
+        );
         if (mounted) setState(() => _estimate = e);
       } catch (_) {}
       return;

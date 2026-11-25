@@ -78,7 +78,7 @@ abstract class Api {
 
   // customer
   Future<List<Json>> customerJobs();
-  Future<Json> priceEstimate(List<String> trades, String? locality);
+  Future<Json> priceEstimate(List<String> trades, String? locality, {List<String?>? texts, String? city});
   Future<Json> createJob(Json body);
   Future<Json> customerJob(String id);
   Future<Json> acceptBid(String jobId, String bidId);
@@ -208,8 +208,13 @@ class HttpApi implements Api {
   @override
   Future<List<Json>> customerJobs() async => _list(await _get('/customer/jobs'));
   @override
-  Future<Json> priceEstimate(List<String> trades, String? locality) async =>
-      _map(await _get('/customer/price-estimate', {'trades': trades.join(','), if (locality != null) 'locality': locality}));
+  Future<Json> priceEstimate(List<String> trades, String? locality, {List<String?>? texts, String? city}) async =>
+      _map(await _get('/customer/price-estimate', {
+        'trades': trades.join(','),
+        if (locality != null) 'locality': locality,
+        if (city != null && city.isNotEmpty) 'city': city,
+        if (texts != null) 'texts': texts.map((t) => (t ?? '').replaceAll('|', ' ')).join('|'),
+      }));
   @override
   Future<Json> createJob(Json body) async => _map(await _post('/customer/jobs', body));
   @override

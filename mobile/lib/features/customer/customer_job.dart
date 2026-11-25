@@ -8,6 +8,7 @@ import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import '../../widgets/fair_price.dart';
 import 'customer_home.dart' show customerRoute;
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
@@ -485,6 +486,10 @@ class _BidCard extends StatelessWidget {
               ]),
             ]),
           ),
+          if (bid['fair'] is Map) ...[
+            const SizedBox(height: 10),
+            FairBidBadge(fair: (bid['fair'] as Map).cast<String, dynamic>()),
+          ],
           if (badges.isNotEmpty) ...[
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [
