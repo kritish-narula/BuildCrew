@@ -33,4 +33,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: alembic upgrade head
       - run: python -m app.seed --reset
-      - run: pytest -q
+      - name: pytest
+        run: |
+          pytest -q -rf > /tmp/p.txt 2>&1 || { grep -E "^FAILED|^E  " /tmp/p.txt | head -40 | sed -E 's/^/::error::/'; tail -60 /tmp/p.txt; exit 1; }
+          tail -2 /tmp/p.txt
