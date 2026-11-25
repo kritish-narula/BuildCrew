@@ -1,14 +1,21 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
-import { api, ApiError, getToken, setToken, type Kpis } from "./api";
+import { api, ApiError, DEMO, getToken, setToken } from "./api";
+import Compliance from "./pages/Compliance";
+import Dashboard from "./pages/Dashboard";
+import Disputes from "./pages/Disputes";
+import Jobs from "./pages/Jobs";
+import Payments from "./pages/Payments";
+import Workers from "./pages/Workers";
+import { AskHost } from "./ui";
 
 const NAV = [
-  { to: "/", label: "Dashboard", icon: "▦", phase: 1 },
-  { to: "/workers", label: "Workers & KYC", icon: "👷", phase: 5 },
-  { to: "/jobs", label: "Jobs & Bids", icon: "🔨", phase: 5 },
-  { to: "/disputes", label: "Disputes", icon: "⚖️", phase: 5 },
-  { to: "/payments", label: "Payments & Payouts", icon: "₹", phase: 5 },
-  { to: "/compliance", label: "Compliance", icon: "📋", phase: 5 },
+  { to: "/", label: "Dashboard", icon: "▦" },
+  { to: "/workers", label: "Workers & KYC", icon: "👷" },
+  { to: "/jobs", label: "Jobs & Bids", icon: "🔨" },
+  { to: "/disputes", label: "Disputes", icon: "⚖️" },
+  { to: "/payments", label: "Payments & Payouts", icon: "₹" },
+  { to: "/compliance", label: "Compliance", icon: "📋" },
 ];
 
 export default function App() {
@@ -17,10 +24,12 @@ export default function App() {
   return (
     <Shell onLogout={() => { setToken(null); setAuthed(false); }}>
       <Routes>
-        <Route path="/" element={<Dashboard onAuthLost={() => setAuthed(false)} />} />
-        {NAV.slice(1).map((n) => (
-          <Route key={n.to} path={n.to} element={<Placeholder title={n.label} icon={n.icon} />} />
-        ))}
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/workers" element={<Workers />} />
+        <Route path="/jobs" element={<Jobs />} />
+        <Route path="/disputes" element={<Disputes />} />
+        <Route path="/payments" element={<Payments />} />
+        <Route path="/compliance" element={<Compliance />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Shell>
@@ -81,7 +90,7 @@ function Login({ onDone }: { onDone: () => void }) {
             <input autoFocus inputMode="numeric" maxLength={6} value={code} autoComplete="one-time-code"
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               className="mt-2 w-full rounded-xl border-2 border-stone-200 focus:border-brand px-4 py-3 text-2xl tracking-[0.5em] tabular-nums outline-none" />
-            <span className="mt-2 block text-xs text-stone-400">Dev: code is always 123456</span>
+            <span className="mt-2 block text-xs text-stone-400">Dev / demo: code is always 123456</span>
           </label>
         )}
         {err && <p className="mt-4 text-sm text-red-600 font-medium">{err}</p>}
@@ -97,7 +106,7 @@ function Login({ onDone }: { onDone: () => void }) {
 function Shell({ children, onLogout }: { children: ReactNode; onLogout: () => void }) {
   return (
     <div className="min-h-screen flex">
-      <aside className="w-64 shrink-0 bg-stone-900 text-stone-300 flex flex-col">
+      <aside className="w-64 shrink-0 bg-stone-900 text-stone-300 flex flex-col sticky top-0 h-screen">
         <div className="flex items-center gap-3 px-5 h-16 border-b border-stone-800">
           <div className="size-8 rounded-lg bg-brand grid place-items-center text-white text-sm font-black">BC</div>
           <span className="font-extrabold text-white">BuildCrew</span>
@@ -109,74 +118,17 @@ function Shell({ children, onLogout }: { children: ReactNode; onLogout: () => vo
               className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
                 isActive ? "bg-stone-800 text-white" : "hover:bg-stone-800/60"}`}>
               <span className="w-5 text-center">{n.icon}</span>{n.label}
-              {n.phase > 1 && <span className="ml-auto text-[10px] text-stone-500">P{n.phase}</span>}
             </NavLink>
           ))}
         </nav>
         <button onClick={onLogout} className="m-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold hover:bg-stone-800">⎋ Log out</button>
       </aside>
-      <main className="flex-1 p-8 overflow-auto">{children}</main>
+      <main className="flex-1 p-8 overflow-auto">
+        {DEMO && <div className="mb-4 rounded-xl bg-sky-50 text-sky-800 px-4 py-2 text-sm font-semibold">Demo mode — sample Pune data in your browser. Set VITE_API_BASE_URL to connect the real API.</div>}
+        {children}
+      </main>
+      <AskHost />
     </div>
   );
 }
 
-function Dashboard({ onAuthLost }: { onAuthLost: () => void }) {
-  const [k, setK] = useState<Kpis | null>(null);
-  const [err, setErr] = useState("");
-  useEffect(() => {
-    const load = () => api<Kpis>("/admin/kpis").then(setK).catch((e: ApiError) => {
-      if (!getToken()) onAuthLost(); else setErr(e.message);
-    });
-    load();
-    const t = setInterval(load, 15000);
-    return () => clearInterval(t);
-  }, [onAuthLost]);
-
-  const inr = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
-  const tiles = k ? [
-    { label: "Active jobs", value: k.active_jobs, tone: "text-stone-900" },
-    { label: "Workers online", value: k.workers_online, tone: "text-green-700" },
-    { label: "Bids today", value: k.bids_today, tone: "text-stone-900" },
-    { label: "GMV (in escrow + paid)", value: inr(k.gmv_inr), tone: "text-stone-900" },
-    { label: "Platform revenue", value: inr(k.platform_revenue_inr), tone: "text-brand-dark" },
-    { label: "Open disputes", value: k.open_disputes, tone: k.open_disputes ? "text-red-600" : "text-stone-900" },
-  ] : [];
-
-  return (
-    <div>
-      <div className="flex items-end justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-extrabold">Dashboard</h1>
-          <p className="text-stone-500 text-sm">Pune · refreshes every 15 s</p>
-        </div>
-      </div>
-      {err && <div className="mb-4 rounded-xl bg-red-50 text-red-700 px-4 py-3 text-sm font-medium">{err}</div>}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {(k ? tiles : Array.from({ length: 6 }, () => null)).map((t, i) => (
-          <div key={i} className="rounded-2xl bg-white border border-stone-200 p-5">
-            {t ? (<>
-              <div className="text-sm font-semibold text-stone-500">{t.label}</div>
-              <div className={`mt-2 text-3xl font-extrabold tabular-nums ${t.tone}`}>{t.value}</div>
-            </>) : <div className="h-16 animate-pulse rounded-lg bg-stone-100" />}
-          </div>
-        ))}
-      </div>
-      <div className="mt-6 rounded-2xl border border-dashed border-stone-300 p-6 text-sm text-stone-500">
-        Live job map by locality, KYC queue, dispute evidence viewer with inline audio, escrow ledger and
-        compliance exports arrive in Phase 5.
-      </div>
-    </div>
-  );
-}
-
-function Placeholder({ title, icon }: { title: string; icon: string }) {
-  return (
-    <div className="grid place-items-center h-[70vh] text-center">
-      <div>
-        <div className="text-5xl mb-4">{icon}</div>
-        <h1 className="text-2xl font-extrabold">{title}</h1>
-        <p className="text-stone-500 mt-1">Built in Phase 5.</p>
-      </div>
-    </div>
-  );
-}
