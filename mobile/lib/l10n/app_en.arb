@@ -1570,5 +1570,488 @@
   "teamYourDaily": "Your daily rate",
   "@teamYourDaily": {},
   "teamQuoteSub": "Want a different wage? Send your own rate per day.",
-  "@teamQuoteSub": {}
+  "@teamQuoteSub": {},
+  "startCodeTitle": "Start code",
+  "@startCodeTitle": {},
+  "startCodeTell": "Tell this code to {name} when they arrive",
+  "@startCodeTell": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "startCodeWhy": "Work starts only after the code is entered. Do not share it before they arrive.",
+  "@startCodeWhy": {},
+  "startCodeLockedCust": "Too many wrong tries. {name} can try again in a few minutes.",
+  "@startCodeLockedCust": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "startCodeVerified": "Start code verified. Work has started.",
+  "@startCodeVerified": {},
+  "startCodeEnterTitle": "Enter start code",
+  "@startCodeEnterTitle": {},
+  "startCodeEnterSub": "Ask the customer for the 4-digit code shown in their app.",
+  "@startCodeEnterSub": {},
+  "startCodeStart": "Start work",
+  "@startCodeStart": {},
+  "startCodeNeeded": "Ask the customer for the 4-digit start code to begin.",
+  "@startCodeNeeded": {},
+  "startCodeLockedWorker": "Too many wrong codes. Try again in {minutes} min.",
+  "@startCodeLockedWorker": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "startCodePending": "Code saved offline. It will be checked when you are online.",
+  "@startCodePending": {},
+  "startCodeFailed": "The code entered offline was wrong. Enter it again to start.",
+  "@startCodeFailed": {},
+  "startCodeEnterAgain": "Enter start code",
+  "@startCodeEnterAgain": {},
+  "startCodeOfflineSaved": "No network. Code saved, check-in will be verified later.",
+  "@startCodeOfflineSaved": {},
+  "startCodePendingPill": "Code pending",
+  "@startCodePendingPill": {},
+  "startCodeFailedPill": "Wrong code",
+  "@startCodeFailedPill": {},
+  "teamCodeToday": "Start code today: {code}",
+  "@teamCodeToday": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "teamCodeDone": "Checked in today",
+  "@teamCodeDone": {},
+  "startCodeCard": "Start code",
+  "@startCodeCard": {},
+  "errStartCodeInvalid": "Wrong code. {left} tries left.",
+  "@errStartCodeInvalid": {
+    "placeholders": {
+      "left": {
+        "type": "String"
+      }
+    }
+  },
+  "errStartCodeLocked": "Too many wrong codes. Try again in {minutes} min.",
+  "@errStartCodeLocked": {
+    "placeholders": {
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "errStartCodeRequired": "Enter the start code from the customer first.",
+  "@errStartCodeRequired": {},
+  "errTripNotActive": "Trip sharing works only while the worker is on the way.",
+  "@errTripNotActive": {},
+  "errWarrantyExpired": "The guarantee period for this work has ended.",
+  "@errWarrantyExpired": {},
+  "errRefixOpen": "A free re-fix visit is already open for this job.",
+  "@errRefixOpen": {},
+  "errRefixLimit": "The free re-fix limit for this job ({max}) is used up.",
+  "@errRefixLimit": {
+    "placeholders": {
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "errKycRequired": "Complete your UPI and selfie step first.",
+  "@errKycRequired": {},
+  "errDirectOnly": "This job was sent to another worker first.",
+  "@errDirectOnly": {},
+  "shareTrip": "Share trip",
+  "@shareTrip": {},
+  "shareTripTitle": "Share this trip",
+  "@shareTripTitle": {},
+  "shareTripSub": "Family or friends can follow the worker live. Your address is never shared.",
+  "@shareTripSub": {},
+  "shareTripText": "I booked {name} ({trade}) on BuildCrew. Phone: {phone}. Follow live: {url}",
+  "@shareTripText": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "trade": {
+        "type": "String"
+      },
+      "phone": {
+        "type": "String"
+      },
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "shareTripTextVerified": "I booked {name} ({trade}), police verified, on BuildCrew. Phone: {phone}. Follow live: {url}",
+  "@shareTripTextVerified": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "trade": {
+        "type": "String"
+      },
+      "phone": {
+        "type": "String"
+      },
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "shareTripSend": "Share",
+  "@shareTripSend": {},
+  "shareTripValid": "The link stops working when they arrive, or after 6 hours.",
+  "@shareTripValid": {},
+  "policeVerified": "Police verified",
+  "@policeVerified": {},
+  "policeTitle": "Police verification",
+  "@policeTitle": {},
+  "policeSub": "Optional. A partner checks your Aadhaar and address. The shield badge builds trust and ranks you higher.",
+  "@policeSub": {},
+  "policeGet": "Get police verification",
+  "@policeGet": {},
+  "policePending": "Verification in progress. We will tell you the result.",
+  "@policePending": {},
+  "policeDone": "You are police verified. The shield shows on your profile and quotes.",
+  "@policeDone": {},
+  "policeRejected": "Could not verify this time: {note}",
+  "@policeRejected": {
+    "placeholders": {
+      "note": {
+        "type": "String"
+      }
+    }
+  },
+  "policeRetry": "Request again",
+  "@policeRetry": {},
+  "policeRequested": "Request sent",
+  "@policeRequested": {},
+  "policeNeedKyc": "Add your UPI and selfie first to ask for verification.",
+  "@policeNeedKyc": {},
+  "sortVerified": "Verified first",
+  "@sortVerified": {},
+  "warrantyChip": "{days}-day re-fix guarantee",
+  "@warrantyChip": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "warrantyTitle": "Work guarantee",
+  "@warrantyTitle": {},
+  "warrantyUntil": "Guaranteed until {date}. If the problem comes back, the same worker returns for free.",
+  "@warrantyUntil": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "warrantyProblem": "Problem came back",
+  "@warrantyProblem": {},
+  "warrantySheetTitle": "Report the problem",
+  "@warrantySheetTitle": {},
+  "warrantySheetSub": "{name} will come back and fix it for free.",
+  "@warrantySheetSub": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "warrantyReasonHint": "What came back? For example: the tap is leaking again",
+  "@warrantyReasonHint": {},
+  "warrantyPhotosHint": "Add at least 1 photo of the problem",
+  "@warrantyPhotosHint": {},
+  "warrantySend": "Request free re-fix",
+  "@warrantySend": {},
+  "warrantyOpen": "A free re-fix visit is in progress.",
+  "@warrantyOpen": {},
+  "warrantyOpenView": "View re-fix",
+  "@warrantyOpenView": {},
+  "warrantyLimit": "Free re-fix limit reached for this job ({used} of {max}).",
+  "@warrantyLimit": {
+    "placeholders": {
+      "used": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "warrantyExpired": "The guarantee ended on {date}.",
+  "@warrantyExpired": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "warrantyRequested": "Re-fix requested. {name} is on the way.",
+  "@warrantyRequested": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "refixBadge": "Warranty re-fix",
+  "@refixBadge": {},
+  "refixFreeVisit": "Free visit. No payment for this one.",
+  "@refixFreeVisit": {},
+  "refixReasonLabel": "What the customer reported: {reason}",
+  "@refixReasonLabel": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "refixDoneTitle": "Re-fix finished",
+  "@refixDoneTitle": {},
+  "refixDoneSub": "Thank you for making it right. No payment or rating for a free visit.",
+  "@refixDoneSub": {},
+  "refixCustomerTitle": "Free re-fix visit",
+  "@refixCustomerTitle": {},
+  "refixCustomerSub": "{name} is fixing the problem at no cost.",
+  "@refixCustomerSub": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "refixConfirmQ": "Is the problem fixed?",
+  "@refixConfirmQ": {},
+  "warrantyRecord": "{refixes} re-fixes in {jobs} jobs",
+  "@warrantyRecord": {
+    "placeholders": {
+      "refixes": {
+        "type": "int"
+      },
+      "jobs": {
+        "type": "int"
+      }
+    }
+  },
+  "warrantyRecordTitle": "Work record",
+  "@warrantyRecordTitle": {},
+  "paidToday": "Paid today",
+  "@paidToday": {},
+  "paidTodayTotal": "{amount} paid to your UPI today",
+  "@paidTodayTotal": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "payoutProcessing": "Sending to {upi}",
+  "@payoutProcessing": {
+    "placeholders": {
+      "upi": {
+        "type": "String"
+      }
+    }
+  },
+  "payoutPaid": "Paid to {upi}",
+  "@payoutPaid": {
+    "placeholders": {
+      "upi": {
+        "type": "String"
+      }
+    }
+  },
+  "payoutNotice": "{amount} sent to your UPI {upi}",
+  "@payoutNotice": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "upi": {
+        "type": "String"
+      }
+    }
+  },
+  "addUpiNudge": "Add your UPI so money reaches you the same day",
+  "@addUpiNudge": {},
+  "addUpiAction": "Add UPI",
+  "@addUpiAction": {},
+  "sameDayNote": "Money goes to your UPI as soon as the customer rates.",
+  "@sameDayNote": {},
+  "levelHelper": "Helper",
+  "@levelHelper": {},
+  "levelSemi": "Semi-skilled",
+  "@levelSemi": {},
+  "levelSkilled": "Skilled",
+  "@levelSkilled": {},
+  "levelMaster": "Master",
+  "@levelMaster": {},
+  "levelCardTitle": "Your level",
+  "@levelCardTitle": {},
+  "levelNext": "Next level: {name}",
+  "@levelNext": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "levelNeedJobs": "{n} more completed jobs",
+  "@levelNeedJobs": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "levelNeedRating": "Average rating {rating} or more",
+  "@levelNeedRating": {
+    "placeholders": {
+      "rating": {
+        "type": "String"
+      }
+    }
+  },
+  "levelNeedRefix": "Re-fix rate under {pct}%",
+  "@levelNeedRefix": {
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      }
+    }
+  },
+  "levelTop": "You are at the top level. Keep the quality up.",
+  "@levelTop": {},
+  "levelFairNote": "Your suggested price range is {pct}% higher at this level.",
+  "@levelFairNote": {
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      }
+    }
+  },
+  "streakWeeks": "{n}-week streak",
+  "@streakWeeks": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "streakKeep": "Finish a job this week to keep your streak.",
+  "@streakKeep": {},
+  "levelOnCard": "Level: {name}",
+  "@levelOnCard": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hireAgain": "Hire again",
+  "@hireAgain": {},
+  "yourWorkers": "Your workers",
+  "@yourWorkers": {},
+  "sendToFirst": "Send to {name} first",
+  "@sendToFirst": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sendToFirstNote": "{name} gets 2 hours to quote first. If they decline or do not reply, your job opens to everyone.",
+  "@sendToFirstNote": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hireAgainPrefilled": "Filled from your last job with {name}. Add fresh photos.",
+  "@hireAgainPrefilled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "directWaiting": "Waiting for {name}. If they decline or do not reply, it opens to everyone.",
+  "@directWaiting": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "directDeclined": "{name} cannot take this job. It is open to everyone now.",
+  "@directDeclined": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "directExpired": "{name} did not reply in time. Your job is open to everyone now.",
+  "@directExpired": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "directBadge": "Direct request",
+  "@directBadge": {},
+  "directWantsYou": "{worker}, {customer} wants you again",
+  "@directWantsYou": {
+    "placeholders": {
+      "worker": {
+        "type": "String"
+      },
+      "customer": {
+        "type": "String"
+      }
+    }
+  },
+  "directDecline": "Decline",
+  "@directDecline": {},
+  "directDeclinedDone": "Declined. The job is open to everyone now.",
+  "@directDeclinedDone": {},
+  "directQuotedByYou": "You quoted. Waiting for the customer.",
+  "@directQuotedByYou": {},
+  "directUntil": "Reply within {time}",
+  "@directUntil": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "directLeft": "{h}h {m}m left",
+  "@directLeft": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      },
+      "m": {
+        "type": "int"
+      }
+    }
+  },
+  "hireAgainHint": "Past work",
+  "@hireAgainHint": {}
 }
