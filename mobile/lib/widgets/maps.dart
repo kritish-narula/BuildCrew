@@ -6,6 +6,7 @@ import '../core/location.dart';
 import '../core/theme.dart';
 import '../l10n/gen/app_localizations.dart';
 import 'common.dart' show BtnLabel;
+import 'media.dart' show AppImage;
 
 const _tiles = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
@@ -44,7 +45,7 @@ class JobMap extends StatelessWidget {
               interactionOptions: const InteractionOptions(flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag),
             ),
             children: [
-              TileLayer(urlTemplate: _tiles, userAgentPackageName: 'com.buildcrew.app'),
+              if (AppImage.allowNetwork) TileLayer(urlTemplate: _tiles, userAgentPackageName: 'com.buildcrew.app'),
               if (!exact)
                 CircleLayer(circles: [
                   CircleMarker(point: job, radius: 400, useRadiusInMeter: true, color: BC.brand.withValues(alpha: 0.18), borderColor: BC.brand, borderStrokeWidth: 2),
@@ -134,7 +135,7 @@ class LocationPickerState extends State<LocationPicker> {
                 }
               },
             ),
-            children: [TileLayer(urlTemplate: _tiles, userAgentPackageName: 'com.buildcrew.app')],
+            children: [if (AppImage.allowNetwork) TileLayer(urlTemplate: _tiles, userAgentPackageName: 'com.buildcrew.app')],
           ),
           // fixed centre pin (lifts while dragging)
           IgnorePointer(
@@ -183,7 +184,7 @@ class TrackingMap extends StatelessWidget {
               initialCameraFit: bounds == null ? null : CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(48), maxZoom: 16),
             ),
             children: [
-              TileLayer(urlTemplate: _tiles, userAgentPackageName: 'com.buildcrew.app'),
+              if (AppImage.allowNetwork) TileLayer(urlTemplate: _tiles, userAgentPackageName: 'com.buildcrew.app'),
               if (worker != null) PolylineLayer(polylines: [Polyline(points: [worker, house], color: BC.info, strokeWidth: 4)]),
               MarkerLayer(markers: [
                 Marker(
