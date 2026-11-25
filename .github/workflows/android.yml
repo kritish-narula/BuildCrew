@@ -112,14 +112,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
+          ls -la dist/
           # Hidden helper release: small per-CPU APKs the in-app updater downloads.
           gh release create "$TAG-cpu" dist/BuildCrew-*.apk --target "$GITHUB_SHA" \
             --title "Update files for ${TAG#v} (used by the app — not for manual download)" \
             --notes "Downloaded automatically by the app's updater. To install, use the latest release." \
-            --prerelease --latest=false
+            --prerelease --latest=false 2>&1 | tee /tmp/gh1.txt || { sed -E 's/^/::error::/' /tmp/gh1.txt; exit 1; }
           # Public release: one file to download + the update manifest.
           gh release create "$TAG" dist/BuildCrew.apk dist/update.json \
-            --target "$GITHUB_SHA" --title "BuildCrew ${TAG#v}" --notes-file dist/notes.md --latest
+            --target "$GITHUB_SHA" --title "BuildCrew ${TAG#v}" --notes-file dist/notes.md --latest 2>&1 | tee /tmp/gh2.txt || { sed -E 's/^/::error::/' /tmp/gh2.txt; exit 1; }
 
       - name: Signing key missing
         if: env.HAS_KEY != 'true'
