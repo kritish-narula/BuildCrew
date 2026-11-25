@@ -131,6 +131,8 @@ def accept_bid(db: Session, customer: User, job: Job, bid: Bid) -> Assignment:
     quote + flat fee. Amounts come from the stored bid — never from the client."""
     if job.customer_id != customer.id:
         raise AppError("err.not_your_job", 403)
+    if bid.job_id == job.id and bid.status == BidStatus.rejected and job.kind == "team":
+        raise AppError("err.team_full", 409)  # the trade line filled up and turned leftover quotes down
     if bid.job_id != job.id or bid.status != BidStatus.pending:
         raise AppError("err.job_closed", 409)
     if job.kind == "team":  # several workers per job: see domain/team.py

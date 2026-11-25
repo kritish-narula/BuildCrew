@@ -1711,6 +1711,8 @@ class DemoApi implements Api {
     final b = _row(d, 'bids', bidId);
     if (j['customer_id'] != _me) _err('err.not_your_job');
     if (b['job_id'] != jobId) _err('err.not_found');
+    // a team line that filled up turns its leftover quotes down: say why
+    if (b['status'] == 'rejected' && j['kind'] == 'team') _err('err.team_full');
     if (b['status'] != 'pending') _err('err.job_closed');
     if (j['kind'] == 'team') {
       final a = _acceptTeam(d, j, b);
