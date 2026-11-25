@@ -1,7 +1,7 @@
 {
   "minSupportedBuild": 0,
   "notes": {
-    "en": "Big redesign: new Hindi+English font, smaller buttons, cleaner screens, no cut-off text. Chat now works both ways with a Messages inbox and unread counts. Customers get Home / Bookings (Open, Ongoing, Past) / Messages tabs. Realistic Indian prices for your city, works anywhere in India. NEW Fair Wage Shield: workers see the fair price for each job and a warning if a quote is below minimum wage; customers see which quotes are fair.",
-    "hi": "नया डिज़ाइन: नया हिंदी-अंग्रेज़ी फ़ॉन्ट, छोटे बटन, साफ़ स्क्रीन, कटे हुए शब्द नहीं। चैट अब दोनों तरफ़ चलती है — संदेश इनबॉक्स और अनपढ़े संदेशों की गिनती के साथ। ग्राहक के लिए होम / बुकिंग (खुली, चालू, पुरानी) / संदेश टैब। आपके शहर के हिसाब से सही दाम, पूरे भारत में काम करता है। नया फ़ेयर वेज शील्ड: कारीगर को हर काम का सही दाम दिखेगा और न्यूनतम मज़दूरी से कम दाम पर चेतावनी; ग्राहक देख सकेंगे कौन सा दाम सही है।"
+    "en": "Fixes: buttons no longer hide behind the phone's back/home bar. Voice notes are sent as audio only (no wrong auto-text). Plus the v0.4 redesign, two-way chat, bookings tabs, realistic prices and Fair Wage Shield.",
+    "hi": "सुधार: बटन अब फ़ोन के बैक/होम बार के पीछे नहीं छिपते। आवाज़ संदेश सिर्फ़ आवाज़ के रूप में जाते हैं (कोई गलत अपने-आप लिखा टेक्स्ट नहीं)। साथ में v0.4 का नया डिज़ाइन, दोनों तरफ़ चैट, बुकिंग टैब, सही दाम और फ़ेयर वेज शील्ड।"
   }
 }
