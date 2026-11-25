@@ -814,7 +814,9 @@ class _AsyncListState<T> extends State<AsyncList<T>> {
   Future<void> reload() async {
     if (!mounted) return;
     final f = _track(widget.load());
-    setState(() => _f = f);
+    setState(() {
+      _f = f;
+    });
     try {
       await f;
     } catch (_) {}
