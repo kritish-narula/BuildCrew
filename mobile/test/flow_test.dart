@@ -325,7 +325,8 @@ void main() {
       final after = await api.earnings();
       expect(after['total_earned_inr'] as num, (before['total_earned_inr'] as num) + 15000);
       expect(after['held_inr'] as num, (before['held_inr'] as num) - 15000, reason: 'escrow leaves "held" when released');
-      expect(after['available_inr'] as num, (before['available_inr'] as num) + 15000);
+      // same-day pay: with a UPI ID on file the payout goes straight out, otherwise it waits in the balance
+      expect((after['available_inr'] as num) - (before['available_inr'] as num), anyOf(0, 15000));
       final profile = await api.workerProfile();
       expect((profile['breakdown'] as Map)['count'], 25); // seed 24 + this one
       await api.rateCustomer(aid, 5, 4, 'Clear instructions');
