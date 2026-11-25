@@ -109,6 +109,11 @@ class Job(Base):
     city: Mapped[str] = mapped_column(String(60), index=True)
     locality: Mapped[str] = mapped_column(String(80), index=True)
     start_date: Mapped[date] = mapped_column(Date)
+    # Scheduling with time: exact start (ISO datetime, UTC) and/or a slot: morning | afternoon | evening | exact
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    time_slot: Mapped[str | None] = mapped_column(String(12))
+    # single = one worker quotes for the whole job; team = contractor hires N workers per trade at a daily wage
+    kind: Mapped[str] = mapped_column(String(10), default="single", server_default="single")
     status: Mapped[JobStatus] = mapped_column(_enum(JobStatus), default=JobStatus.open, index=True)
     created_at: Mapped[datetime] = _created()
     nudged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # customer reminded nearby workers
@@ -127,6 +132,10 @@ class WorkItem(Base):
     text_description: Mapped[str | None] = mapped_column(Text)
     transcript: Mapped[str | None] = mapped_column(Text)  # customer-reviewed STT output
     description_language: Mapped[str] = mapped_column(String(5), default="hi")
+    # team jobs: `headcount` workers of this trade for `days` days at `daily_wage_paise` each
+    headcount: Mapped[int] = mapped_column(SmallInteger, default=1, server_default="1")
+    days: Mapped[int] = mapped_column(SmallInteger, default=1, server_default="1")
+    daily_wage_paise: Mapped[int | None] = mapped_column(BigInteger)
     # cache of machine translations: {"ta": "...", "bn": "..."} keyed by language
     translations: Mapped[dict] = mapped_column(JSONB, default=dict)
     audio_url: Mapped[str | None] = mapped_column(String(500))  # storage KEY (signed on read)
@@ -155,7 +164,8 @@ class Bid(Base):
     id: Mapped[uuid.UUID] = _pk()
     job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"), index=True)
     worker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
-    quoted_price_paise: Mapped[int] = mapped_column(BigInteger)
+    quoted_price_paise: Mapped[int] = mapped_column(BigInteger)  # team jobs: the DAILY wage
+    work_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("work_items.id"))  # team jobs: which trade line
     status: Mapped[BidStatus] = mapped_column(_enum(BidStatus), default=BidStatus.pending)
     client_ref: Mapped[str | None] = mapped_column(String(64), unique=True)  # addition: offline idempotency key
     created_at: Mapped[datetime] = _created()
@@ -169,9 +179,12 @@ class Assignment(Base):
     (worker withdrew / no-show / customer changed worker) stays as history so money trails
     and strikes remain auditable, and the job can be hired out again."""
     __tablename__ = "assignments"
-    __table_args__ = (Index("uq_assignment_active_job", "job_id", unique=True, postgresql_where=text("released_at IS NULL")),)
+    __table_args__ = (Index("uq_assignment_active_job", "job_id", unique=True,
+                            postgresql_where=text("released_at IS NULL AND work_item_id IS NULL")),)
     id: Mapped[uuid.UUID] = _pk()
-    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"), index=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"), index=True)  # team jobs: one per hired worker
+    work_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("work_items.id"))  # team jobs: trade line
+    days_planned: Mapped[int] = mapped_column(SmallInteger, default=1, server_default="1")
     worker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     accepted_bid_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bids.id"))
     escrow_status: Mapped[EscrowState] = mapped_column(_enum(EscrowState), default=EscrowState.created)

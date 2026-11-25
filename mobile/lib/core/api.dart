@@ -15,10 +15,15 @@ class ApiException implements Exception {
 }
 
 class SessionUser {
-  SessionUser({required this.id, required this.phone, required this.role, required this.language, this.name, this.kycLevel = 0});
+  SessionUser({required this.id, required this.phone, required this.role, required this.language, this.name, this.kycLevel = 0,
+      this.customerType, this.orgName});
   final String id, phone, role, language;
   final String? name;
   final int kycLevel;
+  /// Customers only: `homeowner` or `contractor` (a contractor hires whole teams and sees the Team tab).
+  final String? customerType;
+  final String? orgName;
+  bool get isContractor => role == 'customer' && customerType == 'contractor';
 
   factory SessionUser.fromJson(Json j) => SessionUser(
         id: j['id'] as String,
@@ -27,8 +32,11 @@ class SessionUser {
         language: j['language_code'] as String,
         name: j['name'] as String?,
         kycLevel: (j['kyc_level'] as num?)?.toInt() ?? 0,
+        customerType: j['customer_type'] as String?,
+        orgName: j['org_name'] as String?,
       );
-  Json toJson() => {'id': id, 'phone': phone, 'role': role, 'language_code': language, 'name': name, 'kyc_level': kycLevel};
+  Json toJson() => {'id': id, 'phone': phone, 'role': role, 'language_code': language, 'name': name, 'kyc_level': kycLevel,
+        'customer_type': customerType, 'org_name': orgName};
 }
 
 class AuthResult {
@@ -111,6 +119,17 @@ abstract class Api {
   Future<List<Json>> browseWorkers(String? trade);
   Future<Json> workerPublic(String workerId);
 
+  // contractor / team hiring
+  /// Suggested daily wage per trade: `{items: [{trade, low, median, high, min_wage}]}` (low <= median <= high, low >= min wage).
+  Future<Json> wageSuggestion(List<String> trades, String? city);
+  /// Roster of a team job: `{summary, workers: [{assignment_id, worker, trade, daily_wage_inr, days_planned, days_worked,
+  /// present_today, amount_due_inr, total_inr, payment, rated, settled}], payment_due_inr, payment_due_count}`.
+  Future<Json> teamRoster(String jobId);
+  /// Rate one team member (mandatory) -> pays the days worked, refunds the rest. Returns `{days_worked, payout_inr, refund_inr}`.
+  Future<Json> settleTeamWorker(String jobId, String assignmentId, Json stars);
+  /// Contractors: business name shown to workers.
+  Future<void> setBusinessName(String name);
+
   // shared
   Future<Json> upload(String kind, String filePath);
   Future<String> transcribe(String key, String lang);
@@ -168,7 +187,11 @@ class HttpApi implements Api {
   @override
   Future<AuthResult> verifyOtp(String phone, String code, {String? role, required String lang}) async {
     _lang = lang;
-    final j = _map(await _post('/auth/otp/verify', {'phone': phone, 'code': code, 'role': role, 'language_code': lang}));
+    final contractor = role == 'contractor'; // a customer account of type contractor
+    final j = _map(await _post('/auth/otp/verify', {
+      'phone': phone, 'code': code, 'role': contractor ? 'customer' : role, 'language_code': lang,
+      if (contractor) 'customer_type': 'contractor',
+    }));
     return AuthResult(j['token'] as String, SessionUser.fromJson(_map(j['user'])), j['home_route'] as String);
   }
 
@@ -272,6 +295,17 @@ class HttpApi implements Api {
   Future<List<Json>> browseWorkers(String? trade) async => _list(await _get('/customer/workers', {if (trade != null) 'trade': trade}));
   @override
   Future<Json> workerPublic(String workerId) async => _map(await _get('/customer/workers/$workerId'));
+
+  @override
+  Future<Json> wageSuggestion(List<String> trades, String? city) async =>
+      _map(await _get('/customer/wage-suggestion', {'trades': trades.join(','), if (city != null && city.isNotEmpty) 'city': city}));
+  @override
+  Future<Json> teamRoster(String jobId) async => _map(await _get('/customer/jobs/$jobId/team'));
+  @override
+  Future<Json> settleTeamWorker(String jobId, String assignmentId, Json stars) async =>
+      _map(await _post('/customer/jobs/$jobId/team/$assignmentId/settle', stars));
+  @override
+  Future<void> setBusinessName(String name) => _patch('/me', {'business_name': name});
 
   @override
   Future<Json> upload(String kind, String filePath) async => _map(await _wrap(() => _dio.post('/media/upload',

@@ -6,6 +6,8 @@ import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import '../../widgets/media.dart';
+import '../../widgets/schedule.dart';
+import 'contractor.dart';
 
 /// Caps primary/secondary buttons at 52dp for every customer screen, whatever the app theme
 /// says (merges into the theme's own style, so colours and shapes are untouched).
@@ -65,6 +67,15 @@ Json? _assignmentOf(Json j) => (j['detail'] as Json?)?['assignment'] as Json?;
 (String, Color)? bookingNextAction(L l, Json j) {
   final status = j['status'] as String? ?? '';
   final name = j['worker_name'] as String? ?? '';
+  if (j['kind'] == 'team') {
+    // a contractor's team job: pay the team, settle workers, look at applicants
+    final team = (j['team'] as Json?) ?? const <String, dynamic>{};
+    final filled = (team['filled'] as num?)?.toInt() ?? 0, bids = (j['bid_count'] as num?)?.toInt() ?? 0;
+    if (j['payment_state'] == 'created' && ((j['payment_due_inr'] as num?) ?? 0) > 0) return (l.teamPayNow(inr(j['payment_due_inr'] as num)), BC.brandDark);
+    if (((j['to_settle'] as num?) ?? 0) > 0) return (l.teamToSettle((j['to_settle'] as num).toInt()), BC.money);
+    if (bids > filled && filled < ((team['headcount'] as num?)?.toInt() ?? 0)) return (l.teamApplicants(bids - filled), BC.money);
+    return null;
+  }
   final a = _assignmentOf(j);
   final tr = a?['tracking'] as Json?;
   if (j['needs_rating'] == true) return (l.rateNow, BC.brandDark);
@@ -94,8 +105,12 @@ class BookingCard extends StatelessWidget {
     final worker = job['worker_name'] as String?;
     final price = _assignmentOf(job)?['price_inr'] as num?;
 
+    final isTeam = job['kind'] == 'team';
+    final team = (job['team'] as Json?) ?? const <String, dynamic>{};
     final String summary;
-    if (isOpen) {
+    if (isTeam) {
+      summary = l.teamFilled((team['filled'] as num?)?.toInt() ?? 0, (team['headcount'] as num?)?.toInt() ?? 0);
+    } else if (isOpen) {
       summary = l.workersQuoted(bids);
     } else if (worker != null) {
       summary = price == null ? worker : '$worker · ${inr(price)}';
@@ -126,6 +141,7 @@ class BookingCard extends StatelessWidget {
                       child: Text('${job['locality'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BC.inkSoft, fontSize: 14)),
                     ),
                   ]),
+                  ScheduleLine(iso: job['scheduled_for'] as String?, slot: job['time_slot'] as String?),
                 ]),
               ),
               const Icon(Icons.chevron_right_rounded, color: BC.inkFaint),
@@ -207,7 +223,11 @@ class CustomerHomeTab extends StatelessWidget {
     required this.onPost,
     required this.onBrowse,
     required this.onSeeBookings,
+    this.onPostTeam,
+    this.onAddBusiness,
   });
+  /// Contractors only: opens the team-job posting flow and switches the home to "sites".
+  final VoidCallback? onPostTeam, onAddBusiness;
   final AppState state;
   final List<Json>? jobs;
   final bool failed;
@@ -217,7 +237,7 @@ class CustomerHomeTab extends StatelessWidget {
 
   List<Widget> _attention(BuildContext context, L l, List<Json> all) {
     final out = <Widget>[];
-    for (final j in all) {
+    for (final j in all.where((j) => j['kind'] != 'team')) {
       final status = j['status'] as String? ?? '';
       final name = j['worker_name'] as String? ?? '';
       final a = _assignmentOf(j);
@@ -266,8 +286,11 @@ class CustomerHomeTab extends StatelessWidget {
     final name = state.user?.name?.split(' ').first ?? '';
     final all = jobs;
     final attention = all == null ? <Widget>[] : _attention(context, l, all);
+    final contractor = onPostTeam != null;
+    final org = state.user?.orgName ?? '';
+    final sites = (all ?? const <Json>[]).where((j) => isTeamJob(j) && isActiveSite(j)).toList();
     return Scaffold(
-      appBar: AppBar(title: Text(name.isEmpty ? l.appName : l.hello(name))),
+      appBar: AppBar(title: Text(contractor && org.isNotEmpty ? org : (name.isEmpty ? l.appName : l.hello(name)), maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: RefreshIndicator(
         color: BC.brand,
         onRefresh: onReload,
@@ -275,8 +298,17 @@ class CustomerHomeTab extends StatelessWidget {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
-            _PostHero(onTap: onPost),
+            if (contractor) _PostHero(onTap: onPostTeam!, team: true) else _PostHero(onTap: onPost),
             const SizedBox(height: 12),
+            if (contractor) ...[
+              OutlinedButton.icon(
+                onPressed: onPost,
+                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                icon: const Icon(Icons.add_task_rounded),
+                label: Text(l.postSingleJob, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              const SizedBox(height: 12),
+            ],
             OutlinedButton.icon(
               onPressed: onBrowse,
               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
@@ -284,6 +316,23 @@ class CustomerHomeTab extends StatelessWidget {
               label: Text(l.browseWorkers, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
             const SizedBox(height: 24),
+            if (contractor && org.isEmpty && onAddBusiness != null) ...[
+              InfoBanner(icon: Icons.business_rounded, color: BC.info, text: l.bizNameBanner, action: l.bizNameAdd, onTap: onAddBusiness),
+              const SizedBox(height: 16),
+            ],
+            if (contractor && all != null) ...[
+              SectionHeader(l.teamSitesTitle, padding: const EdgeInsets.fromLTRB(2, 0, 2, 8)),
+              if (sites.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(BC.r), border: Border.all(color: BC.line)),
+                  child: Text(l.teamNoSites, style: const TextStyle(fontSize: 15, color: BC.inkSoft)),
+                )
+              else
+                for (final j in sites) ...[TeamSiteCard(job: j, onTap: () => onOpenJob(j['id'] as String)), const SizedBox(height: 12)],
+              const SizedBox(height: 8),
+            ],
             if (all == null && failed)
               Center(child: OutlinedButton(onPressed: onReload, child: Text(l.retry)))
             else if (all == null)
@@ -320,8 +369,9 @@ class CustomerHomeTab extends StatelessWidget {
 }
 
 class _PostHero extends StatelessWidget {
-  const _PostHero({required this.onTap});
+  const _PostHero({required this.onTap, this.team = false});
   final VoidCallback onTap;
+  final bool team;
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
@@ -336,12 +386,14 @@ class _PostHero extends StatelessWidget {
           child: Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(l.postJob, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700)),
+                Text(team ? l.postTeamJob : l.postJob, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(l.postJobSub, style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 15)),
+                Text(team ? l.postTeamJobSub : l.postJobSub, style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 15)),
                 const SizedBox(height: 14),
                 Row(children: [
-                  for (final ic in [Icons.photo_camera_rounded, Icons.mic_rounded, Icons.currency_rupee_rounded])
+                  for (final ic in team
+                      ? [Icons.groups_rounded, Icons.calendar_month_rounded, Icons.currency_rupee_rounded]
+                      : [Icons.photo_camera_rounded, Icons.mic_rounded, Icons.currency_rupee_rounded])
                     Container(
                       margin: const EdgeInsets.only(right: 8),
                       padding: const EdgeInsets.all(8),

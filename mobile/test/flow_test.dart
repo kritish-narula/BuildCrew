@@ -14,6 +14,11 @@ const _sunil = '9200000002'; // mason + helper w2
 
 const _instruction = 'Compound wall 40 ft, 5 ft high, 9-inch brick';
 const _photo = 'photos/wall_site_1.jpg';
+const _photo2 = 'photos/wall_site_2.jpg';
+// The post-job rules need >= 50 characters and >= 2 photos; keep the wall keywords for pricing.
+const _longInstruction = 'Compound wall 40 ft, 5 ft high, 9-inch brick, plaster not needed';
+
+String _inDays(int n) => DateTime.now().add(Duration(days: n)).toIso8601String().substring(0, 10);
 
 late DemoApi api;
 
@@ -38,8 +43,8 @@ Json _jobBody() => {
         {
           'trade': 'mason',
           'description_language': 'en',
-          'text_description': _instruction,
-          'photo_keys': [_photo],
+          'text_description': _longInstruction,
+          'photo_keys': [_photo, _photo2],
           'transcript': null,
           'audio_key': null,
         }
@@ -134,8 +139,8 @@ void main() {
 
       final detail = await api.workerJob(jobId);
       final item = (detail['work_items'] as List).first as Map;
-      expect(item['photos'], [_photo]);
-      expect(item['text'], _instruction);
+      expect(item['photos'], [_photo, _photo2]);
+      expect(item['text'], _longInstruction);
       expect(item['trade'], 'mason');
       final fr = detail['fair_range'] as Map;
       expect(fr['median'] as int, inInclusiveRange(12000, 18000));
@@ -406,7 +411,9 @@ void main() {
     });
   });
 
-  // ====================================================================================================
+  // =============================================================================================    });
+  });
+
   // Completion disagreement flow, auto-confirm, hire release / refund rules, lifecycle edge cases.
   // Time is faked with DemoApi.demoSkipTime (it moves the stored timestamps back, like the backend tests do).
   // ====================================================================================================
@@ -778,6 +785,196 @@ void main() {
       await signInAs(_ramesh);
       final e = await api.earnings();
       expect(((e['history'] as List).cast<Map>().where((r) => r['kind'] == 'job' && r['state'] == 'released').length) >= 1, true);
+=======
+  // ================================================================ contractor team hiring, rules, scheduling
+  group('post-job rules', () {
+    test('needs two photos and a 50+ character description (server error codes)', () async {
+      await signInAs(_priya);
+      final onePhoto = _jobBody();
+      ((onePhoto['work_items'] as List).first as Map)['photo_keys'] = [_photo];
+      await expectLater(api.createJob(onePhoto), _apiError('err.photos_required'));
+      final short = _jobBody();
+      ((short['work_items'] as List).first as Map)['text_description'] = '   $_instruction   ';
+      await expectLater(api.createJob(short), _apiError('err.description_short'));
+      expect(((await api.createJob(_jobBody()))['id'] as String), isNotEmpty);
+    });
+
+    test('a start date in the past is rejected, tomorrow with a slot or exact time is stored', () async {
+      await signInAs(_priya);
+      final past = _jobBody()..['start_date'] = _inDays(-1);
+      await expectLater(api.createJob(past), _apiError('err.date_in_past'));
+
+      final t = DateTime.now().add(const Duration(days: 1));
+      final at = DateTime(t.year, t.month, t.day, 9, 30);
+      final body = _jobBody()
+        ..['start_date'] = _inDays(1)
+        ..['scheduled_for'] = at.toUtc().toIso8601String()
+        ..['time_slot'] = 'exact';
+      final id = (await api.createJob(body))['id'] as String;
+      final row = (await api.customerJobs()).firstWhere((j) => j['id'] == id);
+      expect(row['time_slot'], 'exact');
+      expect(DateTime.parse(row['scheduled_for'] as String).toLocal().hour, 9);
+      expect(DateTime.parse(row['scheduled_for'] as String).toLocal().minute, 30);
+    });
+  });
+
+  group('fair range spread', () {
+    test('low < median < high even when the inputs collapse (the "400 to 400" bug)', () {
+      for (final (lo, md, hi) in [(400, 400, 400), (100, 100, 100), (50, 60, 60), (9000, 9000, 9000), (15000, 15000, 15500)]) {
+        final (a, b, c) = DemoPricing.spread(lo, md, hi);
+        expect(a, lessThan(b), reason: '$lo/$md/$hi -> $a/$b/$c');
+        expect(b, lessThan(c), reason: '$lo/$md/$hi -> $a/$b/$c');
+        expect(c, greaterThanOrEqualTo(a * 1.3 - 1e-6));
+        expect(b, greaterThanOrEqualTo(a * 1.12 - 1e-6));
+      }
+    });
+
+    test('a tiny job gets a real range', () async {
+      final est = await api.priceEstimate(['helper'], 'Kothrud', texts: ['Carry two bags of cement upstairs'], city: 'Pune');
+      for (final it in (est['items'] as List).cast<Map>()) {
+        expect(it['low_inr'] as int, lessThan(it['median_inr'] as int));
+        expect(it['median_inr'] as int, lessThan(it['high_inr'] as int));
+      }
+      expect(est['total_low_inr'] as int, lessThan(est['total_median_inr'] as int));
+      expect(est['total_median_inr'] as int, lessThan(est['total_high_inr'] as int));
+    });
+
+    test('daily wage suggestion per trade is above the minimum wage and ordered', () async {
+      final r = await api.wageSuggestion(['mason', 'helper'], 'Pune');
+      expect((r['items'] as List).length, 2);
+      for (final w in (r['items'] as List).cast<Map>()) {
+        expect(w['low'] as int, greaterThanOrEqualTo(w['min_wage'] as int));
+        expect(w['low'] as int, lessThan(w['median'] as int));
+        expect(w['median'] as int, lessThan(w['high'] as int));
+      }
+    });
+  });
+
+  group('sample people', () {
+    test('every trade has two workers and an open job in the feed', () async {
+      await signInAs(_ramesh);
+      for (final trade in ['mason', 'plumber', 'electrician', 'carpenter', 'painter', 'helper']) {
+        final people = await api.browseWorkers(trade);
+        expect(people.length, greaterThanOrEqualTo(2), reason: trade);
+      }
+      for (final (phone, trade, _, role) in demoAccounts) {
+        if (role != 'worker') continue;
+        await signInAs(phone);
+        final feed = (await api.workerFeed()).cast<Map>();
+        expect(feed, isNotEmpty, reason: 'no open job for $trade');
+      }
+    });
+
+    test('demo accounts: one per trade plus a contractor and a customer, all sign in', () async {
+      final roles = demoAccounts.map((a) => a.$4).toList();
+      expect(roles.where((r) => r == 'worker').length, 6);
+      expect(roles, containsAll(['customer', 'contractor']));
+      expect(demoAccounts.map((a) => a.$2).toSet().length, demoAccounts.length);
+      for (final (phone, _, name, role) in demoAccounts) {
+        final u = await signInAs(phone);
+        expect(u.name, name);
+        expect(u.role, role == 'worker' ? 'worker' : 'customer');
+        expect(u.isContractor, role == 'contractor');
+      }
+    });
+  });
+
+  group('contractor team hiring', () {
+    Json teamBody({int headcount = 2, int days = 3, int wage = 950}) => {
+          ..._jobBody(),
+          'kind': 'team',
+          'address_text': 'Site 4, Hadapsar, Pune',
+          'work_items': [
+            {
+              ...((_jobBody()['work_items'] as List).first as Map).cast<String, dynamic>(),
+              'headcount': headcount,
+              'days': days,
+              'daily_wage_inr': wage,
+            }
+          ],
+        };
+
+    test('only a contractor can post a team job, and the wage cannot be below the minimum', () async {
+      await signInAs(_priya);
+      await expectLater(api.createJob(teamBody()), _apiError('err.contractor_only'));
+      await signInAs('9100000002');
+      await expectLater(api.createJob(teamBody(wage: 100)), _apiError('err.wage_below_minimum'));
+    });
+
+    test('post -> workers join -> accept several up to headcount -> one checkout -> attendance -> settle with refund', () async {
+      await signInAs('9100000002');
+      final jobId = (await api.createJob(teamBody()))['id'] as String;
+
+      // workers see "2 masons needed" and join at the offered wage or quote their own
+      await signInAs(_ramesh);
+      final card = (await api.workerFeed()).cast<Map>().firstWhere((j) => j['id'] == jobId);
+      expect(card['kind'], 'team');
+      expect((card['team'] as Map)['headcount'], 2);
+      final join = await api.placeBid(jobId, 950, 'tm-1');
+      expect(join['price_inr'], 950);
+      await signInAs(_sunil);
+      await api.placeBid(jobId, 1000, 'tm-2');
+      await signInAs('9200000011');
+      await api.placeBid(jobId, 900, 'tm-3');
+
+      await signInAs('9100000002');
+      var job = await api.customerJob(jobId);
+      final bids = (job['bids'] as List).cast<Map>();
+      expect(bids.length, 3);
+      final ramesh = bids.firstWhere((b) => b['price_inr'] == 950);
+      final sunil = bids.firstWhere((b) => b['price_inr'] == 1000);
+      final third = bids.firstWhere((b) => b['price_inr'] == 900);
+      final a1 = (await api.acceptBid(jobId, ramesh['id'] as String))['assignment_id'] as String;
+      final a2 = (await api.acceptBid(jobId, sunil['id'] as String))['assignment_id'] as String;
+      expect(a1, isNot(a2));
+      await expectLater(api.acceptBid(jobId, third['id'] as String), _apiError('err.team_full'));
+
+      // a single checkout funds the whole team: wage x days + fee for each worker
+      final pay = await api.payJob(jobId, 'upi');
+      expect(pay['count'], 2);
+      expect(pay['paid_inr'], (950 * 3 + 30) + (1000 * 3 + 30));
+      expect(pay['escrow_state'], 'held');
+
+      // attendance: Ramesh turns up, Sunil never does
+      await signInAs(_ramesh);
+      final site = await api.workerJob(jobId);
+      await api.attendance({'assignment_id': a1, 'kind': 'in', 'lat': site['lat'], 'lng': site['lng'], 'client_ref': 'tm-att-1'});
+
+      await signInAs('9100000002');
+      var roster = await api.teamRoster(jobId);
+      expect((roster['summary'] as Map)['headcount'], 2);
+      expect((roster['summary'] as Map)['filled'], 2);
+      expect((roster['summary'] as Map)['present_today'], 1);
+      final rows = (roster['workers'] as List).cast<Map>();
+      expect(rows.firstWhere((r) => r['assignment_id'] == a1)['days_worked'], 1);
+      expect(rows.firstWhere((r) => r['assignment_id'] == a2)['days_worked'], 0);
+
+      // per-worker release after rating
+      const stars = {'quality': 5, 'timeliness': 4, 'behaviour': 5, 'value_for_money': 4};
+      final s1 = await api.settleTeamWorker(jobId, a1, stars);
+      expect(s1['payout_inr'], 950);
+      expect(s1['refund_inr'], 950 * 2, reason: 'unworked days go back to the contractor');
+      expect((await api.customerJob(jobId))['status'], isNot('completed'), reason: 'one worker still unsettled');
+      await expectLater(api.settleTeamWorker(jobId, a1, stars), _apiError('err.already_rated'));
+      final s2 = await api.settleTeamWorker(jobId, a2, stars);
+      expect(s2['payout_inr'], 0);
+      expect(s2['refund_inr'], 1000 * 3 + 30, reason: 'no-show: everything incl. the fee comes back');
+      expect((await api.customerJob(jobId))['status'], 'completed');
+      roster = await api.teamRoster(jobId);
+      expect((roster['workers'] as List).cast<Map>().every((r) => r['settled'] == true), true);
+
+      // single-worker completion is not for teams
+      await expectLater(api.completeJob(jobId), _apiError('err.team_use_roster'));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('seeded contractor site shows headcount filled and today\'s attendance', () async {
+      await signInAs('9100000002');
+      final rows = (await api.customerJobs()).cast<Map>().where((j) => j['kind'] == 'team').toList();
+      expect(rows.length, greaterThanOrEqualTo(2));
+      final t1 = await api.teamRoster('t1');
+      expect((t1['summary'] as Map)['headcount'], 6);
+      expect((t1['summary'] as Map)['filled'], 3);
+      expect(((t1['summary'] as Map)['present_today'] as int), greaterThanOrEqualTo(1));
     });
   });
 }

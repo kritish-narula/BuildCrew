@@ -33,7 +33,8 @@ def test_chat_flows_both_ways_with_inbox_and_read_state():
     job = client.post("/customer/jobs", headers=ch, json={
         "location_lat": 18.5986, "location_lng": 73.7604, "address_text": "B-402 Wakad",
         "start_date": str(date.today() + timedelta(days=1)),
-        "work_items": [{"trade": "plumber", "text_description": "Sink leak", "description_language": "en"}]}).json()
+        "work_items": [{"trade": "plumber", "text_description": "Kitchen sink leaks under the basin and the water pipe joint is dripping all day.",
+                        "description_language": "en", "photo_keys": ["https://picsum.photos/seed/a/800/600", "https://picsum.photos/seed/b/800/600"]}]}).json()
     jid = job["id"]
     assert client.post("/worker/bids", headers=wh, json={"job_id": jid, "price_inr": 1500}).status_code == 200
 

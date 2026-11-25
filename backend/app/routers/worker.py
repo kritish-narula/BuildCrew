@@ -3,7 +3,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import services
@@ -11,7 +11,7 @@ from ..audit import audit
 from ..config import get_settings
 from ..crypto import mask_upi
 from ..db import get_db
-from ..domain import flows, pricing
+from ..domain import flows, pricing, team
 from ..domain.policies import can_access_job_media
 from ..enums import JobStatus, Role, Trade
 from ..errors import AppError
@@ -45,7 +45,8 @@ def feed(user: User = Depends(W), db: Session = Depends(get_db)):
     detail screen when the worker taps play: tiny feed on 2G/3G and never auto-plays."""
     wp = user.worker_profile
     origin = (wp.home_lat, wp.home_lng) if wp.home_lat else None
-    jobs = db.scalars(select(Job).where(Job.status.in_([JobStatus.open, JobStatus.bidding]))
+    jobs = db.scalars(select(Job).where(or_(Job.status.in_([JobStatus.open, JobStatus.bidding]),
+                                            and_(Job.kind == "team", Job.status.in_([JobStatus.assigned, JobStatus.in_progress]))))
                       .options(selectinload(Job.work_items).selectinload(WorkItem.photos))
                       .order_by(Job.created_at.desc())).all()
     my_bids = {b.job_id: b for b in db.scalars(select(Bid).where(Bid.worker_id == user.id))}
@@ -54,6 +55,9 @@ def feed(user: User = Depends(W), db: Session = Depends(get_db)):
         trades = [wi.trade.value for wi in job.work_items]
         if wp.trades and not set(trades) & set(wp.trades):
             continue
+        tsum = team.summary(db, job)
+        if tsum and not any(i["filled"] < i["headcount"] and (not wp.trades or i["trade"] in wp.trades) for i in tsum["items"]):
+            continue  # every line this worker could fill is already full
         dist = services.maps().distance_km(origin, (job.location_lat, job.location_lng)) if origin else None
         if dist is not None and dist > get_settings().worker_feed_radius_km:
             continue
@@ -67,6 +71,8 @@ def feed(user: User = Depends(W), db: Session = Depends(get_db)):
                       "total_kb": round(sum(wi.audio_size_bytes or 0 for wi in audio) / 1024)} if audio else None,
             "work_count": len(job.work_items), "distance_km": round(dist, 1) if dist is not None else None,
             "posted_at": job.created_at.isoformat(), "start_date": job.start_date.isoformat(),
+            "kind": job.kind, "team": tsum, "scheduled_for": job.scheduled_for.isoformat() if job.scheduled_for else None,
+            "time_slot": job.time_slot,
             "already_bid": mine is not None, "my_price_inr": mine.quoted_price_paise / 100 if mine else None,
         })
     return out
@@ -78,7 +84,7 @@ def job_detail(job_id: uuid.UUID, user: User = Depends(W), db: Session = Depends
     and a signed audio URL (only if the access policy allows)."""
     job = _job(db, job_id)
     allowed = can_access_job_media(db, user, job)
-    if not allowed and job.status not in (JobStatus.open, JobStatus.bidding):
+    if not allowed and job.status not in (JobStatus.open, JobStatus.bidding) and not (job.kind == "team" and job.status in (JobStatus.assigned, JobStatus.in_progress)):
         raise AppError("err.forbidden", 403)
     mine = db.scalar(select(Bid).where(Bid.job_id == job.id, Bid.worker_id == user.id))
     wp = user.worker_profile
@@ -90,6 +96,14 @@ def job_detail(job_id: uuid.UUID, user: User = Depends(W), db: Session = Depends
            "my_bid": {"id": str(mine.id), "price_inr": mine.quoted_price_paise / 100, "status": mine.status.value} if mine else None,
            "bid_count": len(job.bids),
            "fair_range": pricing.fair_range(job, wp.trades)}
+    if job.kind == "team":
+        # A team line is a DAILY wage: the fair range is the day-wage band of the trade this worker would fill.
+        mine_item = next((wi for wi in job.work_items if not wp.trades or wi.trade.value in wp.trades), job.work_items[0])
+        dw = pricing.day_wage_range(mine_item.trade.value, job.city)
+        out["fair_range"] = {"low": dw["low"], "median": dw["median"], "high": dw["high"], "min_wage_total": dw["min_wage"], "est_days": 1}
+        out["my_item"] = {"trade": mine_item.trade.value, "days": mine_item.days, "daily_wage_inr": (mine_item.daily_wage_paise or 0) / 100,
+                          "headcount": mine_item.headcount}
+        out["open_for_team"] = job.status in team.HIRING and team.open_slots(db, job) > 0
     db.commit()  # persist any freshly cached translations
     return out
 

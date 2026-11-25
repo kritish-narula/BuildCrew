@@ -1,6 +1,6 @@
 import statistics
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ from .. import services
 from ..audit import audit
 from ..config import get_settings
 from ..db import get_db
-from ..domain import flows, pricing
+from ..domain import flows, pricing, team
 from ..domain.state import transition
 from ..enums import AudioUploadState, BidStatus, JobStatus, Role, Trade
 from ..errors import AppError
@@ -53,13 +53,21 @@ def jobs(user: User = Depends(C), db: Session = Depends(get_db)):
     for j in rows:
         a = flows.active_assignment(db, j.id)
         p = db.scalar(select(Payment).where(Payment.assignment_id == a.id)) if a else None
-        out.append({**job_card(db, j, user.language_code), "bid_count": counts.get(j.id, 0),
-                    "needs_rating": j.status == JobStatus.completed and p is not None and p.escrow_state.value == "held",
-                    "worker_name": a.worker.name if a else None,
-                    "payment_state": p.escrow_state.value if p else None,
-                    "needs_action": bool(a and j.status == JobStatus.in_progress and a.worker_done_at and not a.rework_open),
-                    "rework_open": bool(a and a.rework_open), "auto_confirm_at": (flows.auto_confirm_at(a).isoformat() if a and flows.auto_confirm_at(a) else None),
-                    "no_quotes_24h": flows.no_quotes_hint(db, j)})
+        row = {**job_card(db, j, user.language_code), "bid_count": counts.get(j.id, 0),
+               "needs_rating": j.status == JobStatus.completed and p is not None and p.escrow_state.value == "held",
+               "worker_name": a.worker.name if a else None,
+               "payment_state": p.escrow_state.value if p else None,
+               "needs_action": bool(a and j.status == JobStatus.in_progress and a.worker_done_at and not a.rework_open),
+               "rework_open": bool(a and a.rework_open),
+               "auto_confirm_at": (flows.auto_confirm_at(a).isoformat() if a and flows.auto_confirm_at(a) else None),
+               "no_quotes_24h": flows.no_quotes_hint(db, j)}
+        if j.kind == "team":  # roster-level facts instead of a single worker
+            ros = team.roster(db, j, user.language_code)
+            row.update({"needs_rating": False, "worker_name": None, "payment_state": "created" if ros["payment_due_count"] else
+                        (p.escrow_state.value if p else None), "payment_due_inr": ros["payment_due_inr"],
+                        "to_settle": sum(1 for w in ros["workers"] if not w["settled"] and w["payment"]
+                                         and w["payment"]["escrow_state"] == "held" and w["days_worked"] >= w["days_planned"])})
+        out.append(row)
     return out
 
 
@@ -72,6 +80,10 @@ class WorkItemIn(BaseModel):
     audio_duration_sec: int | None = Field(default=None, ge=1)
     audio_size_bytes: int | None = None
     photo_keys: list[str] = []
+    # team jobs only: `headcount` workers x `days` days at `daily_wage_inr` each
+    headcount: int = Field(default=1, ge=1, le=100)
+    days: int = Field(default=1, ge=1, le=120)
+    daily_wage_inr: int | None = Field(default=None, ge=1, le=100_000)
 
 
 class JobIn(BaseModel):
@@ -81,7 +93,36 @@ class JobIn(BaseModel):
     city: str = ""
     locality: str | None = None
     start_date: date
+    scheduled_for: datetime | None = None   # exact start; naive values are read as IST
+    time_slot: str | None = Field(default=None, pattern="^(morning|afternoon|evening|exact)$")
+    kind: str = Field(default="single", pattern="^(single|team)$")
     work_items: list[WorkItemIn]
+
+
+MIN_PHOTOS, MIN_DESCRIPTION = 2, 50
+SLOT_HOURS = {"morning": (8, 11), "afternoon": (12, 15), "evening": (16, 19)}  # local (IST) start, end
+
+
+def _validate_schedule(body: "JobIn") -> datetime | None:
+    """Not in the past: a slot is still bookable until it ends; an exact time needs >= now - 2 min."""
+    now = datetime.now(timezone.utc)
+    today = now.astimezone(team.IST).date()
+    if body.start_date < today:
+        raise AppError("err.schedule_past", 422)
+    when = body.scheduled_for
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=team.IST)
+    when = when.astimezone(timezone.utc)
+    slot = body.time_slot
+    if slot in SLOT_HOURS:
+        end = datetime.combine(when.astimezone(team.IST).date(), time(SLOT_HOURS[slot][1]), tzinfo=team.IST)
+        if end <= now:
+            raise AppError("err.schedule_past", 422)
+    elif when < now - timedelta(minutes=2):
+        raise AppError("err.schedule_past", 422)
+    return when
 
 
 @router.post("/jobs")
@@ -94,28 +135,43 @@ def create_job(body: JobIn, user: User = Depends(C), db: Session = Depends(get_d
         raise AppError("err.date_in_past", 422)
     if body.start_date > flows.today_ist() + timedelta(days=365):
         raise AppError("err.date_too_far", 422)
+    is_team = body.kind == "team"
+    if is_team and not (user.customer_profile and user.customer_profile.type.value == "contractor"):
+        raise AppError("err.contractor_only", 403)
+    when = _validate_schedule(body)
     for wi in body.work_items:
         if len(wi.photo_keys) > 5:
             raise AppError("err.too_many_photos", 422)
         if wi.audio_duration_sec and wi.audio_duration_sec > s.audio_max_seconds + 2:
             raise AppError("err.audio_too_long", 422)
-        if not (wi.text_description or wi.transcript or wi.audio_key or wi.photo_keys):
-            raise AppError("err.validation", 422)
+        if len(wi.photo_keys) < MIN_PHOTOS:
+            raise AppError("err.photos_required", 422, min=MIN_PHOTOS)
+        if len((wi.text_description or "").strip()) < MIN_DESCRIPTION:
+            raise AppError("err.description_short", 422, min=MIN_DESCRIPTION)
+        if is_team:
+            if wi.daily_wage_inr is None:
+                raise AppError("err.validation", 422)
+            team.wage_floor_check(wi.trade.value, wi.daily_wage_inr, body.city)
+    if is_team and len({wi.trade for wi in body.work_items}) != len(body.work_items):
+        raise AppError("err.validation", 422)  # one line per trade
     locality = body.locality or services.maps().reverse_locality(body.location_lat, body.location_lng) or body.city
     job = Job(customer_id=user.id, location_lat=body.location_lat, location_lng=body.location_lng,
-              address_text=body.address_text, city=body.city, locality=locality, start_date=body.start_date)
+              address_text=body.address_text, city=body.city, locality=locality, start_date=body.start_date,
+              scheduled_for=when, time_slot=body.time_slot, kind=body.kind)
     db.add(job)
     db.flush()
     for i, w in enumerate(body.work_items):
         item = WorkItem(job_id=job.id, sort_order=i, trade=w.trade, text_description=w.text_description,
                         transcript=w.transcript, description_language=w.description_language,
+                        headcount=w.headcount if is_team else 1, days=w.days if is_team else 1,
+                        daily_wage_paise=w.daily_wage_inr * 100 if is_team else None,
                         audio_url=w.audio_key, audio_duration_sec=w.audio_duration_sec, audio_size_bytes=w.audio_size_bytes,
                         audio_upload_state=AudioUploadState.uploaded if w.audio_key else None)
         db.add(item)
         db.flush()
         for k, key in enumerate(w.photo_keys):
             db.add(WorkItemPhoto(work_item_id=item.id, photo_url=key, sort_order=k))
-    audit(db, actor_id=user.id, action="job.posted", entity="job", entity_id=job.id, items=len(body.work_items))
+    audit(db, actor_id=user.id, action="job.posted", entity="job", entity_id=job.id, items=len(body.work_items), kind=body.kind)
     db.commit()
     return {"id": str(job.id), "status": job.status.value, "locality": locality}
 
@@ -156,8 +212,17 @@ def price_estimate(trades: str | None = None, locality: str | None = None, city:
         low_sum, med_sum, high_sum = low_sum + item["low_inr"], med_sum + item["median_inr"], high_sum + item["high_inr"]
         out.append({**item, "samples": len(prices), "scope": scope if len(prices) >= 5 else "model", "city": city,
                     "city_multiplier": pricing.city_multiplier(city)})
+    if out:
+        low_sum, med_sum, high_sum = pricing.spread(low_sum, med_sum, high_sum)
     return {"items": out, "total_low_inr": low_sum, "total_median_inr": med_sum, "total_high_inr": high_sum,
             "city": city, "platform_fee_inr": get_settings().platform_fee_flat_inr}
+
+
+@router.get("/wage-suggestion")
+def wage_suggestion(trades: str, city: str | None = None, user: User = Depends(C)):
+    """Contractor team posting: suggested daily wage per trade (low <= median <= high) and the legal minimum."""
+    codes = [c.strip() for c in trades.split(",") if c.strip() in Trade._value2member_map_]
+    return {"city": city, "items": [pricing.day_wage_range(c, city) for c in dict.fromkeys(codes)]}
 
 
 @router.get("/jobs/{job_id}")
@@ -175,8 +240,15 @@ def job_detail(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends
            "bids": [{"id": str(b.id), "price_inr": b.quoted_price_paise / 100, "status": b.status.value,
                      "created_at": b.created_at.isoformat(), "worker": worker_summary(db, b.worker),
                      "fair": pricing.fair_check(b.quoted_price_paise / 100, job, b.worker.worker_profile.trades)} for b in bids],
-           "assignment": assignment_view(db, a, user.language_code),
+           "assignment": assignment_view(db, a, user.language_code) if job.kind != "team" else None,
            "fee_inr": get_settings().platform_fee_flat_inr}
+    if job.kind == "team":
+        out["team"] = team.roster(db, job, user.language_code)
+        for b_out, b in zip(out["bids"], bids):
+            wi = db.get(WorkItem, b.work_item_id) if b.work_item_id else None
+            b_out.update({"trade": wi.trade.value if wi else None, "work_item_id": str(wi.id) if wi else None,
+                          "daily_wage_inr": b.quoted_price_paise / 100, "days": wi.days if wi else 1,
+                          "min_wage": pricing.min_wage_per_day(wi.trade.value) if wi else None})
     db.commit()
     return out
 
@@ -186,6 +258,8 @@ def accept(job_id: uuid.UUID, bid_id: uuid.UUID, user: User = Depends(C), db: Se
     job = _own(db, user, job_id)
     bid = db.get(Bid, bid_id)
     if not bid:
+        raise AppError("err.not_found", 404)
+    if bid.job_id != job.id:
         raise AppError("err.not_found", 404)
     a = flows.accept_bid(db, user, job, bid)
     db.commit()
@@ -206,15 +280,52 @@ class PayIn(BaseModel):
 def pay(job_id: uuid.UUID, body: PayIn, user: User = Depends(C), db: Session = Depends(get_db)):
     """Payment page → money into escrow. Amount is NOT accepted from the client."""
     job = _own(db, user, job_id)
+    if job.kind == "team":
+        out = team.pay_team(db, user, job, method=body.method, razorpay_payment_id=body.razorpay_payment_id,
+                            signature=body.razorpay_signature)
+        db.commit()
+        return out
     p = flows.pay_escrow(db, user, _assignment(db, job), method=body.method,
                          razorpay_payment_id=body.razorpay_payment_id, signature=body.razorpay_signature)
     db.commit()
     return payment_view(p)
 
 
+class SettleIn(BaseModel):
+    quality: int
+    timeliness: int
+    behaviour: int
+    value_for_money: int
+    comment: str | None = None
+
+
+@router.get("/jobs/{job_id}/team")
+def team_roster(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
+    """Contractor roster: per worker today's attendance, days worked, amount due, payment state."""
+    job = _own(db, user, job_id)
+    if job.kind != "team":
+        raise AppError("err.not_found", 404)
+    return team.roster(db, job, user.language_code)
+
+
+@router.post("/jobs/{job_id}/team/{assignment_id}/settle")
+def team_settle(job_id: uuid.UUID, assignment_id: uuid.UUID, body: SettleIn, user: User = Depends(C), db: Session = Depends(get_db)):
+    """Rate one team member (mandatory) -> pay him for the days he worked; unworked days go back to the contractor."""
+    job = _own(db, user, job_id)
+    a = db.get(Assignment, assignment_id)
+    if not a or a.job_id != job.id:
+        raise AppError("err.not_found", 404)
+    out = team.settle_worker(db, user, job, a, quality=body.quality, timeliness=body.timeliness, behaviour=body.behaviour,
+                             value_for_money=body.value_for_money, comment=body.comment)
+    db.commit()
+    return out
+
+
 @router.post("/jobs/{job_id}/complete")
 def complete(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
     job = _own(db, user, job_id)
+    if job.kind == "team":  # team jobs finish when every worker is settled
+        raise AppError("err.team_use_roster", 409)
     flows.complete_work(db, user, _assignment(db, job))
     db.commit()
     return {"status": job.status.value}

@@ -915,5 +915,660 @@
   "fairBelowNote": "This quote is below the legal minimum wage — consider paying fairly.",
   "@fairBelowNote": {},
   "todaysWork": "Today's work",
-  "@todaysWork": {}
+  "@todaysWork": {},
+  "beforePhotos": "Before",
+  "@beforePhotos": {},
+  "afterPhotos": "After (proof)",
+  "@afterPhotos": {},
+  "noBeforePhotos": "No photos were added with the job.",
+  "@noBeforePhotos": {},
+  "noAfterPhotos": "No photo",
+  "@noAfterPhotos": {},
+  "addPhotoBtn": "Add photo",
+  "@addPhotoBtn": {},
+  "tlTitle": "What happened so far",
+  "@tlTitle": {},
+  "tlWorkerDone": "Worker said the work is finished",
+  "@tlWorkerDone": {},
+  "tlReworkRequested": "Customer sent the work back",
+  "@tlReworkRequested": {},
+  "tlConfirmed": "Customer confirmed the work is done",
+  "@tlConfirmed": {},
+  "tlAutoConfirmed": "No reply in 48 hours: confirmed automatically",
+  "@tlAutoConfirmed": {},
+  "tlAutoRated": "Payment released automatically (no rating in 48 hours)",
+  "@tlAutoRated": {},
+  "tlDisputed": "Problem reported. BuildCrew support is looking into it",
+  "@tlDisputed": {},
+  "tlDisputeResolved": "Support decided. Payment settled",
+  "@tlDisputeResolved": {},
+  "tlRelCustomerChanged": "Customer chose another worker",
+  "@tlRelCustomerChanged": {},
+  "tlRelCancelled": "Customer cancelled the job",
+  "@tlRelCancelled": {},
+  "tlRelWorkerWithdrew": "Worker stepped back from the job",
+  "@tlRelWorkerWithdrew": {},
+  "tlRelNoShow": "Worker did not arrive",
+  "@tlRelNoShow": {},
+  "reasonIncomplete": "Work is incomplete",
+  "@reasonIncomplete": {},
+  "reasonPoorQuality": "Poor quality",
+  "@reasonPoorQuality": {},
+  "reasonDamage": "Something was damaged",
+  "@reasonDamage": {},
+  "reasonNotCame": "Worker did not come",
+  "@reasonNotCame": {},
+  "reasonOther": "Something else",
+  "@reasonOther": {},
+  "finishTitle": "Show the finished work",
+  "@finishTitle": {},
+  "finishHint": "Add at least 1 photo of the finished work. The customer compares it with the “before” photos.",
+  "@finishHint": {},
+  "finishNoteHint": "Note for the customer (optional)",
+  "@finishNoteHint": {},
+  "finishSend": "Send: work finished",
+  "@finishSend": {},
+  "finishNeedPhoto": "Add a photo first",
+  "@finishNeedPhoto": {},
+  "finishSentWaiting": "Sent. Waiting for the customer to confirm.",
+  "@finishSentWaiting": {},
+  "doneAgain": "I fixed it: mark done again",
+  "@doneAgain": {},
+  "reworkCardTitle": "Customer sent the work back",
+  "@reworkCardTitle": {},
+  "reworkCardRound": "Send-back {n} of {total}",
+  "@reworkCardRound": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "reworkCardSub": "Fix what the customer reported, take new photos and mark it done again.",
+  "@reworkCardSub": {},
+  "reworkCustomerSays": "Customer says",
+  "@reworkCustomerSays": {},
+  "autoReleaseWorker": "If the customer does not reply, you are paid automatically in {hours} h.",
+  "@autoReleaseWorker": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "autoPaidWorker": "The customer did not reply in 48 hours, so your payment was released automatically.",
+  "@autoPaidWorker": {},
+  "workerDisputeBtn": "Customer not confirming or unfair? Report it",
+  "@workerDisputeBtn": {},
+  "withdrawHireBtn": "I cannot do this job",
+  "@withdrawHireBtn": {},
+  "withdrawHireTitle": "Step back from this job?",
+  "@withdrawHireTitle": {},
+  "withdrawHireBody": "The customer is refunded and the job goes back to other workers. If the customer already paid, this counts as a strike against you.",
+  "@withdrawHireBody": {},
+  "withdrawHireConfirm": "Yes, step back",
+  "@withdrawHireConfirm": {},
+  "hireEndedWorker": "This job is no longer yours. The customer cancelled it or chose someone else.",
+  "@hireEndedWorker": {},
+  "savedDoneOffline": "Saved on phone. “Work finished” will be sent when the network returns.",
+  "@savedDoneOffline": {},
+  "doneBannerCountdown": "Confirm or send back within {hours} h, otherwise payment releases automatically.",
+  "@doneBannerCountdown": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "compareTitle": "Before and after",
+  "@compareTitle": {},
+  "workerNoteLabel": "Worker's note",
+  "@workerNoteLabel": {},
+  "yesWorkDone": "Yes, work is done",
+  "@yesWorkDone": {},
+  "notDoneSendBack": "Not done yet — send back",
+  "@notDoneSendBack": {},
+  "sendBackTitle": "Send back to the worker",
+  "@sendBackTitle": {},
+  "sendBackPick": "What is wrong? Pick one or more",
+  "@sendBackPick": {},
+  "sendBackNote": "Tell the worker what to fix (optional)",
+  "@sendBackNote": {},
+  "sendBackPhotosHint": "Add photos of the problem (optional)",
+  "@sendBackPhotosHint": {},
+  "sendBackSubmit": "Send back",
+  "@sendBackSubmit": {},
+  "sendBackLeft": "You can send it back {n} more time(s). After that, BuildCrew support steps in.",
+  "@sendBackLeft": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "sendBackLast": "This is the last send-back. If you are still not happy, BuildCrew support will call you both and decide. Your money stays safe.",
+  "@sendBackLast": {},
+  "sendBackSupportSubmit": "Ask support to decide",
+  "@sendBackSupportSubmit": {},
+  "sentBackDone": "Sent back to {name}. They will fix it and mark it done again.",
+  "@sentBackDone": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sentBackDisputed": "BuildCrew support will call you both. Your money stays safe in escrow until they decide.",
+  "@sentBackDisputed": {},
+  "reworkWaiting": "Waiting for {name} to fix it",
+  "@reworkWaiting": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reworkWaitingSub": "Sent back (send-back {n} of {total}). You will see it here when the work is marked done again.",
+  "@reworkWaitingSub": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "autoReleasedCustomer": "There was no reply for 48 hours, so payment was released to the worker automatically.",
+  "@autoReleasedCustomer": {},
+  "noShowTitle": "Worker has not arrived",
+  "@noShowTitle": {},
+  "noShowSub": "The expected arrival time passed more than an hour ago.",
+  "@noShowSub": {},
+  "noShowBtn": "Report: worker did not come",
+  "@noShowBtn": {},
+  "noShowConfirmBody": "You get a full refund and the job goes back to other workers.",
+  "@noShowConfirmBody": {},
+  "noShowDone": "Reported. {refund} refunded. The job is open for new quotes.",
+  "@noShowDone": {
+    "placeholders": {
+      "refund": {
+        "type": "String"
+      }
+    }
+  },
+  "noShowDoneFree": "Reported. The job is open for new quotes.",
+  "@noShowDoneFree": {},
+  "changeWorker": "Choose another worker",
+  "@changeWorker": {},
+  "changeWorkerBody": "If you already paid, you get a full refund. The job goes back to other workers' quotes.",
+  "@changeWorkerBody": {},
+  "changeWorkerDone": "The job is open again. Pick another quote.",
+  "@changeWorkerDone": {},
+  "cancelHireBody": "If you already paid, you get a full refund.",
+  "@cancelHireBody": {},
+  "cancelledRefund": "Job cancelled. {refund} refunded in full.",
+  "@cancelledRefund": {
+    "placeholders": {
+      "refund": {
+        "type": "String"
+      }
+    }
+  },
+  "cancelledFree": "Job cancelled.",
+  "@cancelledFree": {},
+  "workerSuspendedBanner": "This worker's account is on hold. Please choose another worker.",
+  "@workerSuspendedBanner": {},
+  "noQuotesTitle": "No quotes in 24 hours",
+  "@noQuotesTitle": {},
+  "noQuotesBody": "Add more photos or detail, keep the date flexible, and remind nearby workers.",
+  "@noQuotesBody": {},
+  "remindWorkers": "Remind workers",
+  "@remindWorkers": {},
+  "nudgeSent": "Nearby workers were reminded.",
+  "@nudgeSent": {},
+  "demoSkip48": "Demo: skip 48 hours",
+  "@demoSkip48": {},
+  "demoSkipEta": "Demo: skip 2 hours (arrival time passes)",
+  "@demoSkipEta": {},
+  "demoSkipSupport": "Demo: let support decide",
+  "@demoSkipSupport": {},
+  "reportedSnack": "Reported. Our team will contact you.",
+  "@reportedSnack": {},
+  "chatClosedBar": "This chat is closed. The job went to another worker.",
+  "@chatClosedBar": {},
+  "errJobClosed": "This job is not open for this any more.",
+  "@errJobClosed": {},
+  "errHireCancelled": "This hire is no longer active. Please open the job again.",
+  "@errHireCancelled": {},
+  "errJobDisputed": "This job is under review by BuildCrew support. Money stays safe until it is resolved.",
+  "@errJobDisputed": {},
+  "errProofRequired": "Add at least 1 photo of the finished work.",
+  "@errProofRequired": {},
+  "errNothingToSendBack": "There is nothing to send back right now.",
+  "@errNothingToSendBack": {},
+  "errJobStarted": "Work has already started, so this cannot be cancelled here.",
+  "@errJobStarted": {},
+  "errJobStartedDispute": "Work has started. Please report a problem and BuildCrew support will help.",
+  "@errJobStartedDispute": {},
+  "errNoShowTooEarly": "You can report this in {minutes} min. Please give the worker a little more time.",
+  "@errNoShowTooEarly": {
+    "placeholders": {
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "errNudgeTooSoon": "You already reminded workers. Please try again later.",
+  "@errNudgeTooSoon": {},
+  "errDateInPast": "The start date cannot be in the past.",
+  "@errDateInPast": {},
+  "errDateTooFar": "Please choose a date within the next year.",
+  "@errDateTooFar": {},
+  "errChatClosed": "This chat is closed. The job went to another worker.",
+  "@errChatClosed": {},
+  "errTooEarlyDispute": "You can report a problem after you start the work.",
+  "@errTooEarlyDispute": {},
+  "errPaymentNotHeld": "The payment is not in escrow, so there is nothing to protect.",
+  "@errPaymentNotHeld": {},
+  "errAlreadyRated": "The rating is already done (or payment was released automatically).",
+  "@errAlreadyRated": {},
+  "errPaymentPending": "The customer has not paid yet. Work starts after payment.",
+  "@errPaymentPending": {},
+  "errValidation": "Some details are missing or wrong. Please check and try again.",
+  "@errValidation": {},
+  "errTooManyPhotos": "Maximum 5 photos.",
+  "@errTooManyPhotos": {},
+  "errAccountSuspended": "Your account is on hold. Please call support.",
+  "@errAccountSuspended": {},
+  "errJobNotCompleted": "Mark the work as done first.",
+  "@errJobNotCompleted": {},
+  "roleContractor": "I am a contractor",
+  "@roleContractor": {},
+  "roleContractorSub": "Hire a whole team for a site: masons, helpers and more",
+  "@roleContractorSub": {},
+  "slotMorning": "Morning 8–11",
+  "@slotMorning": {},
+  "slotAfternoon": "Afternoon 12–3",
+  "@slotAfternoon": {},
+  "slotEvening": "Evening 4–7",
+  "@slotEvening": {},
+  "slotExact": "Exact time",
+  "@slotExact": {},
+  "schedTimeTitle": "What time?",
+  "@schedTimeTitle": {},
+  "schedNoSlotsToday": "No time left today. Pick tomorrow or another day.",
+  "@schedNoSlotsToday": {},
+  "pjNeedTrade": "Pick at least one kind of work to continue.",
+  "@pjNeedTrade": {},
+  "pjNeedPhotos": "Work {n}: add {missing} more photo(s). At least 2 photos are needed.",
+  "@pjNeedPhotos": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "missing": {
+        "type": "int"
+      }
+    }
+  },
+  "pjNeedDesc": "Work {n}: write at least {need} characters ({have}/{need}).",
+  "@pjNeedDesc": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "need": {
+        "type": "int"
+      },
+      "have": {
+        "type": "int"
+      }
+    }
+  },
+  "pjNeedLocation": "Set the work location and address to continue.",
+  "@pjNeedLocation": {},
+  "pjNeedTime": "Pick a day and a time to continue.",
+  "@pjNeedTime": {},
+  "pjPhotosCount": "{have}/{need} photos (minimum {need})",
+  "@pjPhotosCount": {
+    "placeholders": {
+      "have": {
+        "type": "int"
+      },
+      "need": {
+        "type": "int"
+      }
+    }
+  },
+  "pjDescHint": "Describe the work: what is broken, how big, where",
+  "@pjDescHint": {},
+  "pjDescHelper": "Workers can give a fair price only if they understand the work. Minimum 50 characters. A voice note is optional.",
+  "@pjDescHelper": {},
+  "errPhotosRequired": "Add at least 2 photos of each work.",
+  "@errPhotosRequired": {},
+  "errDescriptionShort": "Describe each work in at least 50 characters.",
+  "@errDescriptionShort": {},
+  "errSchedulePast": "The day or time you picked has already passed.",
+  "@errSchedulePast": {},
+  "errTeamFull": "All places for this trade are already filled.",
+  "@errTeamFull": {},
+  "errWageBelowMin": "The daily wage is below the legal minimum wage. Please offer at least the minimum.",
+  "@errWageBelowMin": {},
+  "errContractorOnly": "Only contractor accounts can hire a team.",
+  "@errContractorOnly": {},
+  "postTeamJob": "Hire a team",
+  "@postTeamJob": {},
+  "postTeamJobNow": "Post team job",
+  "@postTeamJobNow": {},
+  "postTeamJobSub": "3 masons, 4 helpers… one job, one payment",
+  "@postTeamJobSub": {},
+  "postSingleJob": "Post a job for one worker",
+  "@postSingleJob": {},
+  "teamStepTrades": "Who do you need?",
+  "@teamStepTrades": {},
+  "teamStepWages": "Daily wage and cost",
+  "@teamStepWages": {},
+  "teamPostIntro": "Pick each trade and set how many workers and how many days. You offer a daily wage on the last step.",
+  "@teamPostIntro": {},
+  "teamWorkers": "Workers",
+  "@teamWorkers": {},
+  "teamDays": "Days",
+  "@teamDays": {},
+  "teamDaysShort": "{days} days",
+  "@teamDaysShort": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "teamDailyWage": "Daily wage per worker",
+  "@teamDailyWage": {},
+  "teamWageHint": "Fair wage {range} per day. Minimum wage {min} per day.",
+  "@teamWageHint": {
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "min": {
+        "type": "String"
+      }
+    }
+  },
+  "teamWageBelowMin": "Below the minimum wage of {min} per day. Fair Wage Shield does not allow this offer.",
+  "@teamWageBelowMin": {
+    "placeholders": {
+      "min": {
+        "type": "String"
+      }
+    }
+  },
+  "teamWageShield": "Fair Wage Shield: a daily wage offer can never be below the legal minimum wage.",
+  "@teamWageShield": {},
+  "teamLineTotal": "{n} workers × {days} days = {total}",
+  "@teamLineTotal": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "days": {
+        "type": "int"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "teamCostTitle": "Estimated cost",
+  "@teamCostTitle": {},
+  "teamCostSub": "Wages {wages} + platform fee {fees}",
+  "@teamCostSub": {
+    "placeholders": {
+      "wages": {
+        "type": "String"
+      },
+      "fees": {
+        "type": "String"
+      }
+    }
+  },
+  "teamRefundNote": "You pay only for days actually worked. Days nobody worked are refunded to you.",
+  "@teamRefundNote": {},
+  "navTeam": "Team",
+  "@navTeam": {},
+  "teamSitesTitle": "Your sites",
+  "@teamSitesTitle": {},
+  "teamNoSites": "No team jobs yet. Tap Hire a team to start.",
+  "@teamNoSites": {},
+  "teamSectionRunning": "Running sites",
+  "@teamSectionRunning": {},
+  "teamSectionHiring": "Hiring",
+  "@teamSectionHiring": {},
+  "teamSectionPast": "Finished",
+  "@teamSectionPast": {},
+  "bizNameBanner": "Add your business name so workers know who is hiring.",
+  "@bizNameBanner": {},
+  "bizNameAdd": "Add",
+  "@bizNameAdd": {},
+  "bizNameTitle": "Business name",
+  "@bizNameTitle": {},
+  "bizNameHint": "e.g. Sharma Constructions",
+  "@bizNameHint": {},
+  "teamFilled": "{f}/{t} filled",
+  "@teamFilled": {
+    "placeholders": {
+      "f": {
+        "type": "int"
+      },
+      "t": {
+        "type": "int"
+      }
+    }
+  },
+  "teamPresentCount": "{n} of {total} present today",
+  "@teamPresentCount": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "teamPayNow": "Pay for the team: {amount}",
+  "@teamPayNow": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "teamToSettle": "{n} worker(s) to rate and pay",
+  "@teamToSettle": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "teamApplicants": "{n} applicant(s) waiting",
+  "@teamApplicants": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "teamSiteTitle": "Team site",
+  "@teamSiteTitle": {},
+  "teamOfN": "your team ({n} workers)",
+  "@teamOfN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "teamPayBanner": "{n} worker(s) hired. Pay once for the whole team so they can start.",
+  "@teamPayBanner": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "teamPayAll": "Pay for the team {amount}",
+  "@teamPayAll": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "teamRoster": "Team roster",
+  "@teamRoster": {},
+  "teamLineFull": "All places are filled.",
+  "@teamLineFull": {},
+  "teamNoApplicants": "No applicants yet. Workers nearby are being told.",
+  "@teamNoApplicants": {},
+  "perDay": "{amount}/day",
+  "@perDay": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "teamJoinedAtOffer": "Joined at your wage",
+  "@teamJoinedAtOffer": {},
+  "teamOwnRate": "Own rate",
+  "@teamOwnRate": {},
+  "teamAccept": "Accept",
+  "@teamAccept": {},
+  "teamSettled": "Paid",
+  "@teamSettled": {},
+  "teamAwaitingPayment": "Payment pending",
+  "@teamAwaitingPayment": {},
+  "teamPresentToday": "Present today",
+  "@teamPresentToday": {},
+  "teamNotInYet": "Not in yet",
+  "@teamNotInYet": {},
+  "teamDaysWorked": "{w}/{p} days",
+  "@teamDaysWorked": {
+    "placeholders": {
+      "w": {
+        "type": "int"
+      },
+      "p": {
+        "type": "int"
+      }
+    }
+  },
+  "teamPaidOut": "Paid {amount}",
+  "@teamPaidOut": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "teamDue": "Due {amount}",
+  "@teamDue": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "teamRefundedToYou": "{amount} refunded to you",
+  "@teamRefundedToYou": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "teamRateAndPay": "Rate and pay",
+  "@teamRateAndPay": {},
+  "teamSettledSub": "{name} is paid {payout}. {refund} went back to you for unworked days.",
+  "@teamSettledSub": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "payout": {
+        "type": "String"
+      },
+      "refund": {
+        "type": "String"
+      }
+    }
+  },
+  "teamNoShowRefund": "Nobody checked in: the full amount is refunded to you.",
+  "@teamNoShowRefund": {},
+  "teamUnworkedRefund": "Days not worked: {amount} is refunded to you.",
+  "@teamUnworkedRefund": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "teamRatingRequired": "Rating is required. It releases the pay for the days worked.",
+  "@teamRatingRequired": {},
+  "teamBadge": "TEAM JOB · {filled}/{total} hired",
+  "@teamBadge": {
+    "placeholders": {
+      "filled": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "teamLine": "{need} needed · {wage}/day · {days} days",
+  "@teamLine": {
+    "placeholders": {
+      "need": {
+        "type": "String"
+      },
+      "wage": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "teamSeeAndJoin": "See and join team",
+  "@teamSeeAndJoin": {},
+  "teamJoinAt": "Join team at {wage}/day",
+  "@teamJoinAt": {
+    "placeholders": {
+      "wage": {
+        "type": "String"
+      }
+    }
+  },
+  "teamJoinSub": "{days} days = {total}. The contractor picks the team.",
+  "@teamJoinSub": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "teamYourDaily": "Your daily rate",
+  "@teamYourDaily": {},
+  "teamQuoteSub": "Want a different wage? Send your own rate per day.",
+  "@teamQuoteSub": {}
 }

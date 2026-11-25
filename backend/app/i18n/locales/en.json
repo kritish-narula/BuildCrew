@@ -60,5 +60,12 @@
  "err.date_in_past": "The start date cannot be in the past.",
  "err.date_too_far": "Please choose a date within the next year.",
  "err.chat_closed": "This chat is closed. The job went to another worker.",
- "err.too_early_to_dispute": "You can report a problem after you start the work."
+ "err.too_early_to_dispute": "You can report a problem after you start the work.",
+ "err.photos_required": "Add at least {min} photos of the work.",
+ "err.description_short": "Describe the work in at least {min} characters.",
+ "err.schedule_past": "The date or time you picked has already passed.",
+ "err.team_full": "All places for this trade are already filled.",
+ "err.contractor_only": "Only contractor accounts can hire a team.",
+ "err.wage_below_minimum": "The daily wage is below the minimum wage (₹{minimum}/day for {trade}). Please offer at least the minimum.",
+ "err.team_use_roster": "Pay and rate each worker from the Team roster."
 }

@@ -21,7 +21,7 @@ def can_access_job_media(db: Session, user: User, job: Job) -> bool:
     already_bid = db.scalar(select(Bid.id).where(Bid.job_id == job.id, Bid.worker_id == user.id))
     if already_bid:
         return True
-    if job.status not in (JobStatus.open, JobStatus.bidding):
+    if job.status not in (JobStatus.open, JobStatus.bidding) and not (job.kind == "team" and job.status in (JobStatus.assigned, JobStatus.in_progress)):
         return False
     trades = set(user.worker_profile.trades or [])
     return any(wi.trade.value in trades for wi in job.work_items)

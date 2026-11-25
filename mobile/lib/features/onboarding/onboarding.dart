@@ -146,6 +146,8 @@ class RoleScreen extends StatelessWidget {
           card('worker', Icons.construction_rounded, BC.brand, l.roleWorker, l.roleWorkerSub),
           const SizedBox(height: 16),
           card('customer', Icons.home_work_rounded, BC.info, l.roleCustomer, l.roleCustomerSub),
+          const SizedBox(height: 16),
+          card('contractor', Icons.engineering_rounded, BC.money, l.roleContractor, l.roleContractorSub),
           if (state.isDemo) ...[const SizedBox(height: 28), const Center(child: DemoChip())],
         ]),
       ),

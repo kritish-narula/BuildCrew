@@ -82,18 +82,23 @@ def timeline(db: Session, a: Assignment) -> list[AssignmentEvent]:
 
 # ------------------------------------------------------------------ bids
 def place_bid(db: Session, worker: User, job: Job, price_paise: int, client_ref: str | None) -> Bid:
-    """Idempotent on client_ref: an offline-queued bid replayed twice creates ONE bid."""
+    """Idempotent on client_ref: an offline-queued bid replayed twice creates ONE bid.
+    Team jobs: the price is the worker's DAILY wage and the bid is tied to one trade line."""
     if client_ref:
         existing = db.scalar(select(Bid).where(Bid.client_ref == client_ref))
         if existing:
             return existing
-    if job.status not in (JobStatus.open, JobStatus.bidding):
+    from . import team  # local import: team builds on this module
+    is_team = job.kind == "team"
+    if job.status not in (JobStatus.open, JobStatus.bidding) and not (
+            is_team and job.status in (JobStatus.assigned, JobStatus.in_progress) and team.open_slots(db, job) > 0):
         raise AppError("err.job_closed", 409)
     if price_paise < 100 * 100 or price_paise > 10_000_000 * 100:
         raise AppError("err.validation", 422)
     trades = set(worker.worker_profile.trades or [])
     if trades and not any(wi.trade.value in trades for wi in job.work_items):
         raise AppError("err.trade_mismatch", 403)
+    item = team.pick_item(db, job, worker) if is_team else None
     bid = db.scalar(select(Bid).where(Bid.job_id == job.id, Bid.worker_id == worker.id))
     if bid and bid.status == BidStatus.pending:  # re-quote: update price instead of a duplicate
         bid.quoted_price_paise = price_paise
@@ -101,7 +106,8 @@ def place_bid(db: Session, worker: User, job: Job, price_paise: int, client_ref:
         return bid
     if bid:
         raise AppError("err.bid_exists", 409)
-    bid = Bid(job_id=job.id, worker_id=worker.id, quoted_price_paise=price_paise, client_ref=client_ref)
+    bid = Bid(job_id=job.id, worker_id=worker.id, quoted_price_paise=price_paise, client_ref=client_ref,
+              work_item_id=item.id if item else None)
     db.add(bid)
     db.flush()
     audit(db, actor_id=worker.id, action="bid.placed", entity="bid", entity_id=bid.id, price=price_paise)
@@ -125,6 +131,9 @@ def accept_bid(db: Session, customer: User, job: Job, bid: Bid) -> Assignment:
         raise AppError("err.not_your_job", 403)
     if bid.job_id != job.id or bid.status != BidStatus.pending:
         raise AppError("err.job_closed", 409)
+    if job.kind == "team":  # several workers per job: see domain/team.py
+        from . import team
+        return team.accept_team_bid(db, customer, job, bid)
     transition(db, job, kind="job", field="status", new=JobStatus.assigned, actor_id=customer.id)
     transition(db, bid, kind="bid", field="status", new=BidStatus.accepted, actor_id=customer.id)
     for other in db.scalars(select(Bid).where(Bid.job_id == job.id, Bid.id != bid.id, Bid.status == BidStatus.pending)):

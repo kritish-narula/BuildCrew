@@ -1,0 +1,444 @@
+{
+  "roleContractor": {
+    "en": "I am a contractor",
+    "hi": "मैं ठेकेदार हूँ"
+  },
+  "roleContractorSub": {
+    "en": "Hire a whole team for a site: masons, helpers and more",
+    "hi": "साइट के लिए पूरी टीम रखें: राजमिस्त्री, हेल्पर और बहुत कुछ"
+  },
+  "slotMorning": {
+    "en": "Morning 8–11",
+    "hi": "सुबह 8–11"
+  },
+  "slotAfternoon": {
+    "en": "Afternoon 12–3",
+    "hi": "दोपहर 12–3"
+  },
+  "slotEvening": {
+    "en": "Evening 4–7",
+    "hi": "शाम 4–7"
+  },
+  "slotExact": {
+    "en": "Exact time",
+    "hi": "सही समय"
+  },
+  "schedTimeTitle": {
+    "en": "What time?",
+    "hi": "किस समय?"
+  },
+  "schedNoSlotsToday": {
+    "en": "No time left today. Pick tomorrow or another day.",
+    "hi": "आज का समय निकल गया। कल या कोई और दिन चुनें।"
+  },
+  "pjNeedTrade": {
+    "en": "Pick at least one kind of work to continue.",
+    "hi": "आगे बढ़ने के लिए कम से कम एक काम चुनें।"
+  },
+  "pjNeedPhotos": {
+    "en": "Work {n}: add {missing} more photo(s). At least 2 photos are needed.",
+    "hi": "काम {n}: {missing} और फ़ोटो जोड़ें। कम से कम 2 फ़ोटो ज़रूरी हैं।",
+    "placeholders": {
+      "n": "int",
+      "missing": "int"
+    }
+  },
+  "pjNeedDesc": {
+    "en": "Work {n}: write at least {need} characters ({have}/{need}).",
+    "hi": "काम {n}: कम से कम {need} अक्षर लिखें ({have}/{need})।",
+    "placeholders": {
+      "n": "int",
+      "need": "int",
+      "have": "int"
+    }
+  },
+  "pjNeedLocation": {
+    "en": "Set the work location and address to continue.",
+    "hi": "आगे बढ़ने के लिए काम की जगह और पता भरें।"
+  },
+  "pjNeedTime": {
+    "en": "Pick a day and a time to continue.",
+    "hi": "आगे बढ़ने के लिए दिन और समय चुनें।"
+  },
+  "pjPhotosCount": {
+    "en": "{have}/{need} photos (minimum {need})",
+    "hi": "{have}/{need} फ़ोटो (कम से कम {need})",
+    "placeholders": {
+      "have": "int",
+      "need": "int"
+    }
+  },
+  "pjDescHint": {
+    "en": "Describe the work: what is broken, how big, where",
+    "hi": "काम बताएँ: क्या खराब है, कितना बड़ा है, कहाँ है"
+  },
+  "pjDescHelper": {
+    "en": "Workers can give a fair price only if they understand the work. Minimum 50 characters. A voice note is optional.",
+    "hi": "काम समझ आएगा तभी मज़दूर सही दाम बताएँगे। कम से कम 50 अक्षर। वॉइस नोट चाहें तो जोड़ें।"
+  },
+  "errPhotosRequired": {
+    "en": "Add at least 2 photos of each work.",
+    "hi": "हर काम की कम से कम 2 फ़ोटो जोड़ें।"
+  },
+  "errDescriptionShort": {
+    "en": "Describe each work in at least 50 characters.",
+    "hi": "हर काम के बारे में कम से कम 50 अक्षर लिखें।"
+  },
+  "errSchedulePast": {
+    "en": "The day or time you picked has already passed.",
+    "hi": "आपका चुना हुआ दिन या समय निकल चुका है।"
+  },
+  "errTeamFull": {
+    "en": "All places for this trade are already filled.",
+    "hi": "इस काम के सभी पद भर चुके हैं।"
+  },
+  "errWageBelowMin": {
+    "en": "The daily wage is below the legal minimum wage. Please offer at least the minimum.",
+    "hi": "दैनिक मज़दूरी कानूनी न्यूनतम मज़दूरी से कम है। कृपया कम से कम न्यूनतम दें।"
+  },
+  "errContractorOnly": {
+    "en": "Only contractor accounts can hire a team.",
+    "hi": "टीम केवल ठेकेदार खाता रख सकता है।"
+  },
+  "postTeamJob": {
+    "en": "Hire a team",
+    "hi": "टीम रखें"
+  },
+  "postTeamJobNow": {
+    "en": "Post team job",
+    "hi": "टीम का काम डालें"
+  },
+  "postTeamJobSub": {
+    "en": "3 masons, 4 helpers… one job, one payment",
+    "hi": "3 राजमिस्त्री, 4 हेल्पर… एक काम, एक भुगतान"
+  },
+  "postSingleJob": {
+    "en": "Post a job for one worker",
+    "hi": "एक मज़दूर के लिए काम डालें"
+  },
+  "teamStepTrades": {
+    "en": "Who do you need?",
+    "hi": "किसको रखना है?"
+  },
+  "teamStepWages": {
+    "en": "Daily wage and cost",
+    "hi": "दैनिक मज़दूरी और खर्च"
+  },
+  "teamPostIntro": {
+    "en": "Pick each trade and set how many workers and how many days. You offer a daily wage on the last step.",
+    "hi": "हर काम चुनें, कितने मज़दूर और कितने दिन तय करें। आख़िरी कदम पर दैनिक मज़दूरी तय करें।"
+  },
+  "teamWorkers": {
+    "en": "Workers",
+    "hi": "मज़दूर"
+  },
+  "teamDays": {
+    "en": "Days",
+    "hi": "दिन"
+  },
+  "teamDaysShort": {
+    "en": "{days} days",
+    "hi": "{days} दिन",
+    "placeholders": {
+      "days": "int"
+    }
+  },
+  "teamDailyWage": {
+    "en": "Daily wage per worker",
+    "hi": "प्रति मज़दूर दैनिक मज़दूरी"
+  },
+  "teamWageHint": {
+    "en": "Fair wage {range} per day. Minimum wage {min} per day.",
+    "hi": "सही मज़दूरी {range} प्रति दिन। न्यूनतम मज़दूरी {min} प्रति दिन।",
+    "placeholders": {
+      "range": "String",
+      "min": "String"
+    }
+  },
+  "teamWageBelowMin": {
+    "en": "Below the minimum wage of {min} per day. Fair Wage Shield does not allow this offer.",
+    "hi": "न्यूनतम मज़दूरी {min} प्रति दिन से कम है। फ़ेयर वेज शील्ड इस ऑफ़र की अनुमति नहीं देती।",
+    "placeholders": {
+      "min": "String"
+    }
+  },
+  "teamWageShield": {
+    "en": "Fair Wage Shield: a daily wage offer can never be below the legal minimum wage.",
+    "hi": "फ़ेयर वेज शील्ड: दैनिक मज़दूरी का ऑफ़र कभी कानूनी न्यूनतम मज़दूरी से कम नहीं हो सकता।"
+  },
+  "teamLineTotal": {
+    "en": "{n} workers × {days} days = {total}",
+    "hi": "{n} मज़दूर × {days} दिन = {total}",
+    "placeholders": {
+      "n": "int",
+      "days": "int",
+      "total": "String"
+    }
+  },
+  "teamCostTitle": {
+    "en": "Estimated cost",
+    "hi": "अनुमानित खर्च"
+  },
+  "teamCostSub": {
+    "en": "Wages {wages} + platform fee {fees}",
+    "hi": "मज़दूरी {wages} + प्लेटफ़ॉर्म शुल्क {fees}",
+    "placeholders": {
+      "wages": "String",
+      "fees": "String"
+    }
+  },
+  "teamRefundNote": {
+    "en": "You pay only for days actually worked. Days nobody worked are refunded to you.",
+    "hi": "आप सिर्फ़ काम किए गए दिनों का पैसा देते हैं। जिन दिनों काम नहीं हुआ, उनका पैसा आपको वापस मिलता है।"
+  },
+  "navTeam": {
+    "en": "Team",
+    "hi": "टीम"
+  },
+  "teamSitesTitle": {
+    "en": "Your sites",
+    "hi": "आपकी साइटें"
+  },
+  "teamNoSites": {
+    "en": "No team jobs yet. Tap Hire a team to start.",
+    "hi": "अभी कोई टीम का काम नहीं है। शुरू करने के लिए टीम रखें दबाएँ।"
+  },
+  "teamSectionRunning": {
+    "en": "Running sites",
+    "hi": "चल रही साइटें"
+  },
+  "teamSectionHiring": {
+    "en": "Hiring",
+    "hi": "भर्ती जारी"
+  },
+  "teamSectionPast": {
+    "en": "Finished",
+    "hi": "पूरे हुए"
+  },
+  "bizNameBanner": {
+    "en": "Add your business name so workers know who is hiring.",
+    "hi": "अपने कारोबार का नाम जोड़ें ताकि मज़दूर जानें कि कौन रख रहा है।"
+  },
+  "bizNameAdd": {
+    "en": "Add",
+    "hi": "जोड़ें"
+  },
+  "bizNameTitle": {
+    "en": "Business name",
+    "hi": "कारोबार का नाम"
+  },
+  "bizNameHint": {
+    "en": "e.g. Sharma Constructions",
+    "hi": "जैसे शर्मा कंस्ट्रक्शन"
+  },
+  "teamFilled": {
+    "en": "{f}/{t} filled",
+    "hi": "{f}/{t} भरे",
+    "placeholders": {
+      "f": "int",
+      "t": "int"
+    }
+  },
+  "teamPresentCount": {
+    "en": "{n} of {total} present today",
+    "hi": "आज {total} में से {n} हाज़िर",
+    "placeholders": {
+      "n": "int",
+      "total": "int"
+    }
+  },
+  "teamPayNow": {
+    "en": "Pay for the team: {amount}",
+    "hi": "टीम का भुगतान करें: {amount}",
+    "placeholders": {
+      "amount": "String"
+    }
+  },
+  "teamToSettle": {
+    "en": "{n} worker(s) to rate and pay",
+    "hi": "{n} मज़दूर की रेटिंग और भुगतान बाकी",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "teamApplicants": {
+    "en": "{n} applicant(s) waiting",
+    "hi": "{n} आवेदक इंतज़ार में",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "teamSiteTitle": {
+    "en": "Team site",
+    "hi": "टीम साइट"
+  },
+  "teamOfN": {
+    "en": "your team ({n} workers)",
+    "hi": "आपकी टीम ({n} मज़दूर)",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "teamPayBanner": {
+    "en": "{n} worker(s) hired. Pay once for the whole team so they can start.",
+    "hi": "{n} मज़दूर रखे गए। पूरी टीम का एक बार भुगतान करें ताकि वे काम शुरू करें।",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "teamPayAll": {
+    "en": "Pay for the team {amount}",
+    "hi": "टीम का भुगतान {amount}",
+    "placeholders": {
+      "amount": "String"
+    }
+  },
+  "teamRoster": {
+    "en": "Team roster",
+    "hi": "टीम की सूची"
+  },
+  "teamLineFull": {
+    "en": "All places are filled.",
+    "hi": "सभी पद भर गए।"
+  },
+  "teamNoApplicants": {
+    "en": "No applicants yet. Workers nearby are being told.",
+    "hi": "अभी कोई आवेदक नहीं। आसपास के मज़दूरों को बताया जा रहा है।"
+  },
+  "perDay": {
+    "en": "{amount}/day",
+    "hi": "{amount}/दिन",
+    "placeholders": {
+      "amount": "String"
+    }
+  },
+  "teamJoinedAtOffer": {
+    "en": "Joined at your wage",
+    "hi": "आपकी मज़दूरी पर राज़ी"
+  },
+  "teamOwnRate": {
+    "en": "Own rate",
+    "hi": "अपना रेट"
+  },
+  "teamAccept": {
+    "en": "Accept",
+    "hi": "मंज़ूर करें"
+  },
+  "teamSettled": {
+    "en": "Paid",
+    "hi": "भुगतान हुआ"
+  },
+  "teamAwaitingPayment": {
+    "en": "Payment pending",
+    "hi": "भुगतान बाकी"
+  },
+  "teamPresentToday": {
+    "en": "Present today",
+    "hi": "आज हाज़िर"
+  },
+  "teamNotInYet": {
+    "en": "Not in yet",
+    "hi": "अभी नहीं आया"
+  },
+  "teamDaysWorked": {
+    "en": "{w}/{p} days",
+    "hi": "{w}/{p} दिन",
+    "placeholders": {
+      "w": "int",
+      "p": "int"
+    }
+  },
+  "teamPaidOut": {
+    "en": "Paid {amount}",
+    "hi": "{amount} मिले",
+    "placeholders": {
+      "amount": "String"
+    }
+  },
+  "teamDue": {
+    "en": "Due {amount}",
+    "hi": "देय {amount}",
+    "placeholders": {
+      "amount": "String"
+    }
+  },
+  "teamRefundedToYou": {
+    "en": "{amount} refunded to you",
+    "hi": "{amount} आपको वापस मिले",
+    "placeholders": {
+      "amount": "String"
+    }
+  },
+  "teamRateAndPay": {
+    "en": "Rate and pay",
+    "hi": "रेटिंग दें और भुगतान करें"
+  },
+  "teamSettledSub": {
+    "en": "{name} is paid {payout}. {refund} went back to you for unworked days.",
+    "hi": "{name} को {payout} मिले। काम न हुए दिनों के {refund} आपको वापस मिले।",
+    "placeholders": {
+      "name": "String",
+      "payout": "String",
+      "refund": "String"
+    }
+  },
+  "teamNoShowRefund": {
+    "en": "Nobody checked in: the full amount is refunded to you.",
+    "hi": "कोई हाज़िर नहीं हुआ: पूरी रकम आपको वापस मिलेगी।"
+  },
+  "teamUnworkedRefund": {
+    "en": "Days not worked: {amount} is refunded to you.",
+    "hi": "जिन दिनों काम नहीं हुआ: {amount} आपको वापस मिलेंगे।",
+    "placeholders": {
+      "amount": "String"
+    }
+  },
+  "teamRatingRequired": {
+    "en": "Rating is required. It releases the pay for the days worked.",
+    "hi": "रेटिंग ज़रूरी है। इससे काम किए गए दिनों का पैसा मिलता है।"
+  },
+  "teamBadge": {
+    "en": "TEAM JOB · {filled}/{total} hired",
+    "hi": "टीम का काम · {filled}/{total} रखे गए",
+    "placeholders": {
+      "filled": "int",
+      "total": "int"
+    }
+  },
+  "teamLine": {
+    "en": "{need} needed · {wage}/day · {days} days",
+    "hi": "{need} चाहिए · {wage}/दिन · {days} दिन",
+    "placeholders": {
+      "need": "String",
+      "wage": "String",
+      "days": "int"
+    }
+  },
+  "teamSeeAndJoin": {
+    "en": "See and join team",
+    "hi": "देखें और टीम में जुड़ें"
+  },
+  "teamJoinAt": {
+    "en": "Join team at {wage}/day",
+    "hi": "{wage}/दिन पर टीम में जुड़ें",
+    "placeholders": {
+      "wage": "String"
+    }
+  },
+  "teamJoinSub": {
+    "en": "{days} days = {total}. The contractor picks the team.",
+    "hi": "{days} दिन = {total}। टीम ठेकेदार चुनेगा।",
+    "placeholders": {
+      "days": "int",
+      "total": "String"
+    }
+  },
+  "teamYourDaily": {
+    "en": "Your daily rate",
+    "hi": "आपका दैनिक रेट"
+  },
+  "teamQuoteSub": {
+    "en": "Want a different wage? Send your own rate per day.",
+    "hi": "अलग मज़दूरी चाहिए? अपना प्रति दिन का रेट भेजें।"
+  }
+}

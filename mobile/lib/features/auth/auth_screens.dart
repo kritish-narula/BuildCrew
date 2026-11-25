@@ -100,9 +100,9 @@ class _PhoneScreenState extends State<PhoneScreen> {
                   Wrap(spacing: 8, runSpacing: 8, children: [
                     for (final (phone, trade, name, role) in demoAccounts)
                       ActionChip(
-                        avatar: Icon(role == 'customer' ? Icons.home_work_rounded : TradeStyle.of(trade).icon,
-                            color: role == 'customer' ? BC.info : TradeStyle.of(trade).color, size: 18),
-                        label: Text('${name.split(' ').first} · ${role == 'customer' ? l.role_customer : tradeLabel(l, trade)}',
+                        avatar: Icon(role == 'contractor' ? Icons.engineering_rounded : (role == 'customer' ? Icons.home_work_rounded : TradeStyle.of(trade).icon),
+                            color: isDemoCustomerRole(role) ? BC.info : TradeStyle.of(trade).color, size: 18),
+                        label: Text('${name.split(' ').first} · ${role == 'contractor' ? l.roleContractor : (role == 'customer' ? l.role_customer : tradeLabel(l, trade))}',
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         onPressed: () => setState(() => _c.text = '${phone.substring(0, 5)} ${phone.substring(5)}'),
                       ),

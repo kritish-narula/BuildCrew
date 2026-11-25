@@ -106,6 +106,12 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
     from ..domain import flows
     tracking = flows.tracking
     events = flows.timeline(db, a)
+    team_part = {}
+    if a.work_item_id:  # team member: price = wage x planned days; attendance gives days worked
+        from ..domain import team
+        wi = db.get(WorkItem, a.work_item_id)
+        team_part = {"team_member": True, "trade": wi.trade.value, "daily_wage_inr": bid.quoted_price_paise / 100,
+                     "days_planned": a.days_planned, "days_worked": team.days_worked(db, a)}
     rework = next((e for e in reversed(events) if e.kind == "rework_requested"), None) if a.rework_open else None
     due = flows.auto_confirm_at(a)
     no_show = flows.no_show_after(db, a)
@@ -122,7 +128,8 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
             "worker_suspended": bool(a.worker.worker_profile and a.worker.worker_profile.is_suspended),
             "timeline": [{"kind": e.kind, "by": e.actor_role, "at": e.created_at.isoformat(), "reasons": list(e.reasons or []),
                           "note": e.note, "photos": [signed(k) for k in (e.photos or [])]} for e in events],
-            "id": str(a.id), "worker": worker_summary(db, a.worker), "price_inr": bid.quoted_price_paise / 100,
+            **team_part, "id": str(a.id), "worker": worker_summary(db, a.worker),
+            "price_inr": bid.quoted_price_paise * (a.days_planned if a.work_item_id else 1) / 100,
             "tracking": tracking(a), "worker_done_at": a.worker_done_at.isoformat() if a.worker_done_at else None,
             "started_at": a.started_at.isoformat() if a.started_at else None,
             "completed_at": a.completed_at.isoformat() if a.completed_at else None,
@@ -133,7 +140,10 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
 
 
 def job_card(db: Session, job: Job, lang: str) -> dict:
-    return {"id": str(job.id), "customer_id": str(job.customer_id), "status": job.status.value, "locality": job.locality, "city": job.city,
+    from ..domain import team
+    return {"kind": job.kind, "scheduled_for": job.scheduled_for.isoformat() if job.scheduled_for else None,
+            "time_slot": job.time_slot, "team": team.summary(db, job),
+            "id": str(job.id), "customer_id": str(job.customer_id), "status": job.status.value, "locality": job.locality, "city": job.city,
             "address": job.address_text, "lat": job.location_lat, "lng": job.location_lng,
             "start_date": job.start_date.isoformat(), "created_at": job.created_at.isoformat(),
             "trades": [wi.trade.value for wi in job.work_items],

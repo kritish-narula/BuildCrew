@@ -86,6 +86,33 @@ def _r50(x: float) -> int:
     return int(math.floor(x / 50.0 + 0.5)) * 50
 
 
+def _step(x: float) -> int:
+    """Rounding grain: Rs 50 normally, Rs 10 for tiny jobs (so a Rs 320 job is not squashed to Rs 300/350)."""
+    return 50 if x >= 500 else 10
+
+
+def _round(x: float, step: int) -> int:
+    return int(math.floor(x / step + 0.5)) * step
+
+
+def _ceil(x: float, step: int) -> int:
+    return int(math.ceil(x / step - 1e-9)) * step
+
+
+def spread(low: float, med: float, high: float) -> tuple[int, int, int]:
+    """Guarantee low < median < high with a sensible spread (the "Rs 400 to Rs 400" bug):
+    median >= low x 1.12, high >= low x 1.3 and high > median, rounded to Rs 50 (Rs 10 under Rs 500)."""
+    step = _step(low)
+    lo = max(_round(low, step), step)
+    md = max(_round(med, step), _ceil(lo * 1.12, step))
+    if md <= lo:
+        md = lo + step
+    hi = max(_round(high, step), _ceil(lo * 1.3, step), _ceil(md * 1.1, step))
+    if hi <= md:
+        hi = md + step
+    return lo, md, hi
+
+
 def _has(text: str, *words: str) -> bool:
     t = text.lower()
     return any(w in t for w in words)
@@ -150,9 +177,9 @@ def estimate_item(trade: str, text: str | None, city: str | None) -> dict:
     (lo, med, hi), days, basis = _base(trade, text or "")
     m = city_multiplier(city)
     mw = min_wage_per_day(trade) * days
-    floor = math.ceil(mw / 50.0) * 50
-    lo, med, hi = max(_r50(lo * m), floor), _r50(med * m), _r50(hi * m)
-    med, hi = max(med, lo), max(hi, lo)
+    step = _step(max(lo * m, mw))
+    lo = max(_round(lo * m, step), _ceil(mw, step))  # never below the legal wage for the estimated days
+    lo, med, hi = spread(lo, med * m, hi * m)
     return {"trade": trade, "low_inr": lo, "median_inr": med, "high_inr": hi, "est_days": round(days, 1),
             "min_wage_total": int(round(mw)), "basis": basis}
 
@@ -163,17 +190,30 @@ def estimate_items(items: Iterable[tuple[str, str | None]], city: str | None) ->
             "total_high_inr": sum(i["high_inr"] for i in out)}
 
 
+def day_wage_range(trade: str, city: str | None) -> dict:
+    """Daily wage suggestion for contractors hiring a team: (low, median, high) per worker per day.
+    `low` is never under the minimum wage, so offering `low` or more always passes the Fair Wage Shield."""
+    trade = getattr(trade, "value", trade)
+    lo, med, hi = DAY_RATE.get(trade, DAY_RATE["helper"])
+    m = city_multiplier(city)
+    mw = min_wage_per_day(trade)
+    low = max(_r50(lo * m), math.ceil(mw / 50.0) * 50)
+    low, med, hi = spread(low, med * m, hi * m)
+    return {"trade": trade, "low": low, "median": med, "high": hi, "min_wage": mw}
+
+
 def blend_with_history(item: dict, prices_inr: list[float], weight: float = 0.3) -> dict:
     """Blend the model with PriceHistory quartiles when there are >= 5 samples."""
     if len(prices_inr) < 5:
         return item
     import statistics
     qs = statistics.quantiles(sorted(prices_inr), n=4)
-    lo, med, hi = (_r50((1 - weight) * item[k] + weight * q) for k, q in
+    lo, med, hi = ((1 - weight) * item[k] + weight * q for k, q in
                    (("low_inr", qs[0]), ("median_inr", qs[1]), ("high_inr", qs[2])))
-    floor = math.ceil(item["min_wage_total"] / 50.0) * 50
-    lo = max(lo, floor)
-    return {**item, "low_inr": lo, "median_inr": max(med, lo), "high_inr": max(hi, lo, med)}
+    step = _step(max(lo, item["min_wage_total"]))
+    lo = max(_round(lo, step), _ceil(item["min_wage_total"], step))
+    lo, med, hi = spread(lo, med, hi)
+    return {**item, "low_inr": lo, "median_inr": med, "high_inr": hi}
 
 
 # ------------------------------------------------------------------ job level + Fair Wage Shield
@@ -193,9 +233,7 @@ def fair_range(job, trades: Iterable[str] | None = None) -> dict:
     days = round(sum(i["est_days"] for i in est["items"]), 1)
     mw = sum(i["min_wage_total"] for i in est["items"])
     # Where the market rate sits near the wage floor, keep a real spread above it.
-    low = int(est["total_low_inr"])
-    median = max(int(est["total_median_inr"]), int(round(low * 1.15 / 50) * 50))
-    high = max(int(est["total_high_inr"]), int(round(low * 1.35 / 50) * 50))
+    low, median, high = spread(int(est["total_low_inr"]), int(est["total_median_inr"]), int(est["total_high_inr"]))
     return {"low": low, "median": median, "high": high, "min_wage_total": int(mw), "est_days": days}
 
 

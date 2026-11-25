@@ -32,7 +32,7 @@ final demoPhotos = <String, List<String>>{
 class DemoApi implements Api {
   DemoApi();
 
-  static const _key = 'demo_db_v3';
+  static const _key = 'demo_db_v4';
   static const fee = 30;
   final _rnd = Random(7);
   Json? _db;
@@ -84,6 +84,7 @@ class DemoApi implements Api {
     final tr = (it['transcript'] as Map?)?.cast<String, dynamic>();
     return {
       'id': it['id'], 'index': i + 1, 'trade': it['trade'], 'photos': it['photos'],
+      'headcount': it['headcount'] ?? 1, 'days': it['days'] ?? 1, 'daily_wage_inr': it['wage'],
       'text': _text(it, lang), 'translated': translated, 'original_language': it['lang'],
       'transcript': tr == null ? null : (tr[lang] ?? tr[it['lang']] ?? tr.values.first),
       'audio': audio && it['audio'] != null && it['muted'] != true ? it['audio'] : null,
@@ -99,6 +100,8 @@ class DemoApi implements Api {
   }
 
   Json _jobCard(Json j) => {
+        'kind': j['kind'] ?? 'single', 'scheduled_for': j['scheduled_for'], 'time_slot': j['time_slot'],
+        'team': _db == null ? null : _teamSummary(_db!, j),
         'id': j['id'], 'customer_id': j['customer_id'], 'status': j['status'], 'locality': j['locality'], 'city': (j['city'] as String?) ?? '', 'address': j['address'],
         'lat': j['lat'], 'lng': j['lng'], 'start_date': j['start_date'], 'created_at': j['created_at'],
         'trades': [for (final it in j['items'] as List) (it as Map)['trade']],
@@ -126,7 +129,12 @@ class DemoApi implements Api {
     final rework = a['rework_open'] == true ? events.lastWhere((e) => e['kind'] == 'rework_requested', orElse: () => <String, dynamic>{}) : null;
     final due = _autoConfirmAt(a);
     final noShow = _noShowAfter(d, a);
+    final teamDays = a['item_id'] == null ? null : ((a['days'] as int?) ?? 1);
     return {
+      if (teamDays != null) ...{
+        'team_member': true, 'trade': (_row(d, 'jobs', a['job_id'] as String)['items'] as List).cast<Map>().firstWhere((x) => x['id'] == a['item_id'])['trade'],
+        'daily_wage_inr': bid['price'], 'days_planned': teamDays, 'days_worked': _daysWorked(d, a),
+      },
       'proof_photos': a['proof'] ?? <String>[], 'worker_done_note': a['done_note'],
       'before_photos': [for (final it in job['items'] as List) ...((it as Map)['photos'] as List)],
       'rework_count': a['rework_count'] ?? 0, 'rework_left': max(0, _maxRework - ((a['rework_count'] as int?) ?? 0)), 'rework_open': a['rework_open'] == true,
@@ -136,7 +144,7 @@ class DemoApi implements Api {
       'worker_suspended': _user(d, a['worker_id'] as String)['suspended'] == true,
       'timeline': [for (final e in events) {'kind': e['kind'], 'by': e['by'], 'at': e['at'], 'reasons': e['reasons'] ?? <String>[], 'note': e['note'], 'photos': e['photos'] ?? <String>[]}],
       'tracking': _tracking(d, a), 'worker_done_at': a['worker_done_at'],
-      'id': a['id'], 'worker': _workerSummary(d, a['worker_id'] as String), 'price_inr': bid['price'],
+      'id': a['id'], 'worker': _workerSummary(d, a['worker_id'] as String), 'price_inr': teamDays == null ? bid['price'] : (bid['price'] as num) * teamDays,
       'started_at': a['started_at'], 'completed_at': a['completed_at'], 'payment': p == null ? null : _paymentView(p),
       'ratings': ratings,
       'attendance': [
@@ -144,6 +152,98 @@ class DemoApi implements Api {
           {'in': x['in'], 'out': x['out'], 'offline': x['offline'], 'geofence_ok': x['geofence_ok'], 'selfie': x['selfie']}
       ],
     };
+  }
+
+  // ---------------------------------------------------------------- team hiring helpers (mirror backend/app/domain/team.py)
+  List<Json> _asgOf(Json d, String jobId) => _all(d, 'assignments').where((a) => a['job_id'] == jobId).toList();
+  int _filled(Json d, String itemId) => _all(d, 'assignments').where((a) => a['item_id'] == itemId).length;
+  int _openSlots(Json d, Json j) =>
+      (j['items'] as List).cast<Map>().fold<int>(0, (s, it) => s + max(0, ((it['headcount'] as int?) ?? 1) - _filled(d, it['id'] as String)));
+
+  Iterable<DateTime> _checkins(Json d, Json a) =>
+      (d['attendance'] as List).cast<Map>().where((x) => x['assignment_id'] == a['id']).map((x) => DateTime.parse(x['in'] as String).toLocal());
+
+  /// Distinct calendar days with a check-in, capped at the planned days.
+  int _daysWorked(Json d, Json a) {
+    final days = {for (final t in _checkins(d, a)) '${t.year}-${t.month}-${t.day}'};
+    return min(days.length, (a['days'] as int?) ?? 1);
+  }
+
+  bool _presentToday(Json d, Json a) {
+    final n = DateTime.now();
+    return _checkins(d, a).any((t) => t.year == n.year && t.month == n.month && t.day == n.day);
+  }
+
+  Json? _teamSummary(Json d, Json j) {
+    if (j['kind'] != 'team') return null;
+    final asg = _asgOf(d, j['id'] as String);
+    final lines = <Json>[
+      for (final it in (j['items'] as List).cast<Map>())
+        {'item_id': it['id'], 'trade': it['trade'], 'headcount': it['headcount'] ?? 1,
+          'filled': asg.where((a) => a['item_id'] == it['id']).length, 'days': it['days'] ?? 1, 'daily_wage_inr': it['wage']}
+    ];
+    return {'headcount': lines.fold<int>(0, (s, i) => s + (i['headcount'] as int)), 'filled': lines.fold<int>(0, (s, i) => s + (i['filled'] as int)),
+      'present_today': asg.where((a) => _presentToday(d, a)).length, 'items': lines};
+  }
+
+  Json _roster(Json d, Json j) {
+    final rows = <Json>[];
+    num due = 0;
+    var dueN = 0;
+    for (final a in _asgOf(d, j['id'] as String)) {
+      final p = _paymentFor(d, a['id'] as String);
+      final wage = _row(d, 'bids', a['bid_id'] as String)['price'] as num;
+      final it = (j['items'] as List).cast<Map>().firstWhere((x) => x['id'] == a['item_id']);
+      final days = (a['days'] as int?) ?? 1, worked = _daysWorked(d, a);
+      if (p != null && p['state'] == 'created') {
+        due += p['amount'] as num;
+        dueN++;
+      }
+      rows.add({
+        'assignment_id': a['id'], 'worker': _workerSummary(d, a['worker_id'] as String), 'trade': it['trade'], 'daily_wage_inr': wage,
+        'days_planned': days, 'days_worked': worked, 'present_today': _presentToday(d, a), 'amount_due_inr': wage * worked,
+        'total_inr': wage * days, 'payment': p == null ? null : _paymentView(p),
+        'rated': (d['ratings'] as List).cast<Map>().any((r) => r['assignment_id'] == a['id'] && r['direction'] == 'customer_to_worker'),
+        'settled': p != null && const ['released', 'refunded', 'split'].contains(p['state']),
+      });
+    }
+    return {'summary': _teamSummary(d, j), 'workers': rows, 'payment_due_inr': due, 'payment_due_count': dueN};
+  }
+
+  /// Accept one applicant of a team job: his own assignment + escrow (wage x days + fee). Several per trade, up to headcount.
+  Json _acceptTeam(Json d, Json job, Json bid) {
+    final it = (job['items'] as List).cast<Map>().where((x) => x['id'] == bid['item_id']).firstOrNull ?? _err('err.not_found');
+    if (!const ['open', 'bidding', 'assigned', 'in_progress'].contains(job['status'])) _err('err.job_closed');
+    if (_filled(d, it['id'] as String) >= ((it['headcount'] as int?) ?? 1)) _err('err.team_full');
+    if (job['status'] == 'open' || job['status'] == 'bidding') job['status'] = 'assigned';
+    bid['status'] = 'accepted';
+    final aid = _id('a'), days = (it['days'] as int?) ?? 1;
+    _t(d, 'assignments')[aid] = {'id': aid, 'job_id': job['id'], 'worker_id': bid['worker_id'], 'bid_id': bid['id'], 'item_id': it['id'], 'days': days};
+    final pid = _id('p'), total = (bid['price'] as num) * days;
+    _t(d, 'payments')[pid] = {'id': pid, 'assignment_id': aid, 'amount': total + fee, 'fee': fee, 'payout': total, 'state': 'created'};
+    if (_openSlots(d, job) == 0) {
+      for (final o in _all(d, 'bids').where((x) => x['job_id'] == job['id'] && x['status'] == 'pending')) {
+        o['status'] = 'rejected';
+      }
+    }
+    return _row(d, 'assignments', aid);
+  }
+
+  /// Not in the past: a slot stays bookable until it ends, an exact time needs >= now - 2 min.
+  void _validateSchedule(Json body) {
+    final now = DateTime.now();
+    final sd = DateTime.parse(body['start_date'] as String);
+    if (DateTime(sd.year, sd.month, sd.day).isBefore(DateTime(now.year, now.month, now.day))) _err('err.date_in_past');
+    final raw = body['scheduled_for'] as String?;
+    if (raw == null) return;
+    final at = DateTime.parse(raw).toLocal();
+    const ends = {'morning': 11, 'afternoon': 15, 'evening': 19};
+    final slot = body['time_slot'];
+    if (ends.containsKey(slot)) {
+      if (!DateTime(at.year, at.month, at.day, ends[slot]!).isAfter(now)) _err('err.schedule_past');
+    } else if (at.isBefore(now.subtract(const Duration(minutes: 2)))) {
+      _err('err.schedule_past');
+    }
   }
 
   // ---------------------------------------------------------------- live tracking (demo)
@@ -210,7 +310,7 @@ class DemoApi implements Api {
     _sweepAuto(d); // 48 h auto-confirm is evaluated on every read, like the backend does on list/detail
     final now = DateTime.now();
     for (final j in _all(d, 'jobs').toList()) {
-      if (!(j['status'] == 'open' || j['status'] == 'bidding') || j['sim'] != true) continue;
+      if (!(j['status'] == 'open' || j['status'] == 'bidding') || j['sim'] != true || j['kind'] == 'team') continue;
       if (now.difference(DateTime.parse(j['created_at'] as String)).inSeconds < 15) continue;
       final trades = {for (final it in j['items'] as List) (it as Map)['trade']};
       final have = _all(d, 'bids').where((b) => b['job_id'] == j['id']).length;
@@ -225,6 +325,35 @@ class DemoApi implements Api {
         _t(d, 'bids')[id] = {'id': id, 'job_id': j['id'], 'worker_id': w['id'], 'price': price, 'status': 'pending', 'created_at': _now()};
       }
       if (pool.isNotEmpty) j['status'] = 'bidding';
+    }
+    // team jobs posted from this phone: workers apply ~15 s later (headcount join at the offered wage, one counter-offer)
+    for (final j in _all(d, 'jobs').where((j) => j['kind'] == 'team' && j['sim'] == true && j['status'] == 'open').toList()) {
+      if (now.difference(DateTime.parse(j['created_at'] as String)).inSeconds < 15) continue;
+      if (_all(d, 'bids').any((b) => b['job_id'] == j['id'])) continue;
+      final used = <String>{};
+      for (final it in (j['items'] as List).cast<Map>()) {
+        final pool = _all(d, 'users').where((u) => u['role'] == 'worker' && (u['kyc'] as int) >= 1 && (u['trades'] as List).contains(it['trade']) && !used.contains(u['id'])).toList()
+          ..sort((a, b) => (b['rating'] as num).compareTo(a['rating'] as num));
+        final head = (it['headcount'] as int?) ?? 1;
+        for (final (k, w) in pool.take(head + 1).indexed) {
+          used.add(w['id'] as String);
+          final id = _id('b');
+          _t(d, 'bids')[id] = {'id': id, 'job_id': j['id'], 'worker_id': w['id'], 'item_id': it['id'],
+            'price': (it['wage'] as num) + (k >= head ? 100 : 0), 'status': 'pending', 'created_at': _now()};
+        }
+      }
+      j['status'] = 'bidding';
+    }
+    // demo only: workers hired for a team site posted from this phone check in ~20 s after the team is paid
+    for (final a in _all(d, 'assignments').where((a) => a['item_id'] != null && a['worker_id'] != _me).toList()) {
+      final p = _paymentFor(d, a['id'] as String);
+      final job = _row(d, 'jobs', a['job_id'] as String);
+      if (p == null || p['state'] != 'held' || p['paid_at'] == null || job['sim'] != true) continue;
+      if (now.difference(DateTime.parse(p['paid_at'] as String)).inSeconds < 20 || _presentToday(d, a)) continue;
+      (d['attendance'] as List).add({'assignment_id': a['id'], 'in': _now(), 'out': null, 'offline': false, 'geofence_ok': true,
+        'client_ref': 'sim-${a['id']}-${now.day}', 'selfie': null});
+      if (job['status'] == 'assigned') job['status'] = 'in_progress';
+      a['started_at'] ??= _now();
     }
     // customer side: accept a worker's quote placed from this phone
     for (final b in _all(d, 'bids').where((b) => b['status'] == 'pending' && b['sim_accept'] == true).toList()) {
@@ -452,15 +581,16 @@ class DemoApi implements Api {
     final d = await _d;
     var u = _all(d, 'users').where((u) => u['phone'] == phone).firstOrNull;
     if (u == null) {
-      final r = role == 'customer' ? 'customer' : 'worker';
+      final r = (role == 'customer' || role == 'contractor') ? 'customer' : 'worker';
       final id = _id(r[0]);
-      u = {'id': id, 'phone': phone, 'role': r, 'name': null, 'lang': lang, 'kyc': 0, 'trades': <String>[], 'rating': 0.0,
+      u = {'id': id, 'phone': phone, 'role': r, if (r == 'customer') 'ctype': role == 'contractor' ? 'contractor' : 'homeowner', 'name': null, 'lang': lang, 'kyc': 0, 'trades': <String>[], 'rating': 0.0,
         'rating_count': 0, 'completed': 0, 'badges': <String>[], 'lat': (d['anchor'] as Map?)?['lat'] ?? 18.52, 'lng': (d['anchor'] as Map?)?['lng'] ?? 73.85, 'online': true, 'earned': 0};
       _t(d, 'users')[id] = u;
       await _save();
     }
     _me = u['id'] as String;
-    final user = SessionUser(id: _me!, phone: phone, role: u['role'] as String, language: lang, name: u['name'] as String?, kycLevel: u['kyc'] as int);
+    final user = SessionUser(id: _me!, phone: phone, role: u['role'] as String, language: lang, name: u['name'] as String?, kycLevel: u['kyc'] as int,
+        customerType: u['ctype'] as String?, orgName: u['org'] as String?);
     return AuthResult('demo:$_me', user, '/${user.role}');
   }
 
@@ -470,7 +600,8 @@ class DemoApi implements Api {
     final u = _user(d)..['lang'] = lang;
     await _save();
     return SessionUser(id: u['id'] as String, phone: u['phone'] as String, role: u['role'] as String, language: lang,
-        name: u['name'] as String?, kycLevel: u['kyc'] as int);
+        name: u['name'] as String?, kycLevel: u['kyc'] as int,
+        customerType: u['ctype'] as String?, orgName: u['org'] as String?);
   }
 
   // ---------------------------------------------------------------- worker
@@ -482,11 +613,18 @@ class DemoApi implements Api {
     final me = _user(d);
     final my = {for (final b in _all(d, 'bids').where((b) => b['worker_id'] == _me)) b['job_id']: b};
     final out = <Json>[];
-    final jobs = _all(d, 'jobs').where((j) => j['status'] == 'open' || j['status'] == 'bidding').toList()
+    final jobs = _all(d, 'jobs')
+        .where((j) => j['status'] == 'open' || j['status'] == 'bidding' || (j['kind'] == 'team' && (j['status'] == 'assigned' || j['status'] == 'in_progress')))
+        .toList()
       ..sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
     for (final j in jobs) {
       final trades = [for (final it in j['items'] as List) (it as Map)['trade'] as String];
       if ((me['trades'] as List).isNotEmpty && !trades.any((t) => (me['trades'] as List).contains(t))) continue;
+      final tsum = _teamSummary(d, j);
+      if (tsum != null &&
+          !(tsum['items'] as List).cast<Map>().any((i) => (i['filled'] as int) < (i['headcount'] as int) && ((me['trades'] as List).isEmpty || (me['trades'] as List).contains(i['trade'])))) {
+        continue; // every line this worker could fill is already full
+      }
       final audio = [for (final it in j['items'] as List) if ((it as Map)['audio'] != null && it['muted'] != true) it['audio'] as Map];
       final mine = my[j['id']];
       out.add({
@@ -496,6 +634,7 @@ class DemoApi implements Api {
           'total_kb': audio.fold<int>(0, (s, a) => s + (a['size_kb'] as int))},
         'work_count': (j['items'] as List).length, 'distance_km': double.parse(_dist(me, j).toStringAsFixed(1)),
         'posted_at': j['created_at'], 'start_date': j['start_date'], 'already_bid': mine != null, 'my_price_inr': mine?['price'],
+        'kind': j['kind'] ?? 'single', 'team': tsum, 'scheduled_for': j['scheduled_for'], 'time_slot': j['time_slot'],
       });
     }
     await _save();
@@ -510,13 +649,23 @@ class DemoApi implements Api {
     final me = _user(d);
     final mine = _all(d, 'bids').where((b) => b['job_id'] == id && b['worker_id'] == _me).firstOrNull;
     final items = j['items'] as List;
+    final isTeam = j['kind'] == 'team';
+    final myTrades = me['trades'] as List;
+    final myItem = !isTeam ? null : (items.cast<Map>().where((it) => myTrades.isEmpty || myTrades.contains(it['trade'])).firstOrNull ?? items.first as Map);
+    final dw = myItem == null ? null : DemoPricing.dayWageRange(myItem['trade'] as String, _cityOf(d, j));
     return {
       ..._jobCard(j), 'address': mine?['status'] == 'accepted' ? j['address'] : j['locality'],
       'distance_km': double.parse(_dist(me, j).toStringAsFixed(1)),
       'work_items': [for (var i = 0; i < items.length; i++) _item((items[i] as Map).cast<String, dynamic>(), i, _lang)],
       'my_bid': mine == null ? null : {'id': mine['id'], 'price_inr': mine['price'], 'status': mine['status']},
       'bid_count': _all(d, 'bids').where((b) => b['job_id'] == id).length,
-      'fair_range': DemoPricing.fairRange(_pricingItems(j), _cityOf(d, j), me['trades'] as List),
+      'fair_range': dw != null
+          ? {'low': dw['low'], 'median': dw['median'], 'high': dw['high'], 'min_wage_total': dw['min_wage'], 'est_days': 1}
+          : DemoPricing.fairRange(_pricingItems(j), _cityOf(d, j), myTrades),
+      if (myItem != null) ...{
+        'my_item': {'trade': myItem['trade'], 'days': myItem['days'] ?? 1, 'daily_wage_inr': myItem['wage'], 'headcount': myItem['headcount'] ?? 1},
+        'open_for_team': const ['open', 'bidding', 'assigned', 'in_progress'].contains(j['status']) && _openSlots(d, j) > 0,
+      },
     };
   }
 
@@ -527,8 +676,18 @@ class DemoApi implements Api {
     final dup = _all(d, 'bids').where((b) => b['client_ref'] == clientRef).firstOrNull;
     if (dup != null) return {'id': dup['id'], 'status': dup['status'], 'price_inr': dup['price']};
     final j = _row(d, 'jobs', jobId);
-    if (!(j['status'] == 'open' || j['status'] == 'bidding')) _err('err.job_closed');
+    final isTeam = j['kind'] == 'team';
+    if (!(j['status'] == 'open' || j['status'] == 'bidding') && !(isTeam && (j['status'] == 'assigned' || j['status'] == 'in_progress') && _openSlots(d, j) > 0)) {
+      _err('err.job_closed');
+    }
     if (priceInr < 100 || priceInr > 10000000) _err('err.validation'); // zero / negative / absurd prices
+    Map? teamItem;
+    if (isTeam) {
+      final mine = (_user(d)['trades'] as List);
+      final cands = (j['items'] as List).cast<Map>().where((it) => mine.isEmpty || mine.contains(it['trade'])).toList();
+      if (cands.isEmpty) _err('err.trade_mismatch');
+      teamItem = cands.where((it) => _filled(d, it['id'] as String) < ((it['headcount'] as int?) ?? 1)).firstOrNull ?? _err('err.team_full');
+    }
     var b = _all(d, 'bids').where((b) => b['job_id'] == jobId && b['worker_id'] == _me).firstOrNull;
     if (b != null && b['status'] == 'pending') {
       b['price'] = priceInr;
@@ -537,9 +696,9 @@ class DemoApi implements Api {
     } else {
       final id = _id('b');
       b = {'id': id, 'job_id': jobId, 'worker_id': _me, 'price': priceInr, 'status': 'pending', 'created_at': _now(),
-        'client_ref': clientRef, 'sim_accept': j['sim_customer'] == true};
+        'client_ref': clientRef, 'sim_accept': !isTeam && j['sim_customer'] == true, if (teamItem != null) 'item_id': teamItem['id']};
       _t(d, 'bids')[id] = b;
-      j['status'] = 'bidding';
+      if (j['status'] == 'open') j['status'] = 'bidding';
     }
     await _save();
     return {'id': b['id'], 'status': b['status'], 'price_inr': b['price']};
@@ -902,12 +1061,20 @@ class DemoApi implements Api {
     for (final j in jobs) {
       final a = _assignmentFor(d, j['id'] as String);
       final p = a == null ? null : _paymentFor(d, a['id'] as String);
-      out.add({..._jobCard(j), 'bid_count': _all(d, 'bids').where((b) => b['job_id'] == j['id'] && b['status'] != 'withdrawn').length,
+      final row = <String, dynamic>{..._jobCard(j), 'bid_count': _all(d, 'bids').where((b) => b['job_id'] == j['id'] && b['status'] != 'withdrawn').length,
         'needs_rating': j['status'] == 'completed' && p?['state'] == 'held', 'worker_name': a == null ? null : _user(d, a['worker_id'] as String)['name'],
         'payment_state': p?['state'],
         'needs_action': a != null && j['status'] == 'in_progress' && a['worker_done_at'] != null && a['rework_open'] != true,
         'rework_open': a != null && a['rework_open'] == true, 'auto_confirm_at': a == null ? null : _autoConfirmAt(a)?.toIso8601String(),
-        'no_quotes_24h': _noQuotes24h(d, j)});
+        'no_quotes_24h': _noQuotes24h(d, j)};
+      if (j['kind'] == 'team') {
+        final ros = _roster(d, j);
+        row.addAll({'needs_rating': false, 'worker_name': null, 'payment_due_inr': ros['payment_due_inr'],
+          'payment_state': (ros['payment_due_count'] as int) > 0 ? 'created' : p?['state'],
+          'to_settle': (ros['workers'] as List).cast<Map>().where((w) => w['settled'] != true && (w['payment'] as Map?)?['escrow_state'] == 'held' &&
+              (w['days_worked'] as int) >= (w['days_planned'] as int)).length});
+      }
+      out.add(row);
     }
     await _save();
     return out;
@@ -951,6 +1118,15 @@ class DemoApi implements Api {
       if (day.isAfter(today.add(const Duration(days: 365)))) _err('err.date_too_far');
     }
     final d = await _d;
+    final isTeam = body['kind'] == 'team';
+    if (isTeam && _user(d)['ctype'] != 'contractor') _err('err.contractor_only');
+    _validateSchedule(body);
+    for (final w in items.cast<Map>()) {
+      if ((w['photo_keys'] as List).length < 2) _err('err.photos_required');
+      if (((w['text_description'] as String?) ?? '').trim().length < 50) _err('err.description_short');
+      if (isTeam && ((w['daily_wage_inr'] as num?) ?? 0) < DemoPricing.minWagePerDay(w['trade'] as String)) _err('err.wage_below_minimum');
+    }
+    if (isTeam && items.cast<Map>().map((w) => w['trade']).toSet().length != items.length) _err('err.validation');
     final id = _id('j');
     final bodyCity = (body['city'] as String?)?.trim() ?? '';
     final jobCity = bodyCity.isNotEmpty
@@ -959,10 +1135,12 @@ class DemoApi implements Api {
     _t(d, 'jobs')[id] = {
       'id': id, 'customer_id': _me, 'lat': body['location_lat'], 'lng': body['location_lng'], 'address': body['address_text'],
       'city': jobCity, 'locality': body['locality'] ?? jobCity, 'start_date': body['start_date'], 'status': 'open', 'created_at': _now(), 'sim': true,
+      'kind': isTeam ? 'team' : 'single', 'scheduled_for': body['scheduled_for'], 'time_slot': body['time_slot'],
       'items': [
         for (final w in items.cast<Map>())
           {
             'id': _id('w'), 'trade': w['trade'], 'lang': w['description_language'],
+            if (isTeam) ...{'headcount': w['headcount'] ?? 1, 'days': w['days'] ?? 1, 'wage': w['daily_wage_inr']},
             'text': {if (w['text_description'] != null) w['description_language']: w['text_description']},
             'transcript': w['transcript'] == null ? null : {w['description_language']: w['transcript']},
             'photos': w['photo_keys'],
@@ -983,18 +1161,26 @@ class DemoApi implements Api {
     final items = j['items'] as List;
     final bids = _all(d, 'bids').where((b) => b['job_id'] == id && b['status'] != 'withdrawn').toList()
       ..sort((a, b) => (a['price'] as num).compareTo(b['price'] as num));
-    final a = _assignmentFor(d, id);
+    final isTeam = j['kind'] == 'team';
+    final a = isTeam ? null : _assignmentFor(d, id);
     await _save();
+    Json teamBid(Json b) {
+      final it = (items.cast<Map>()).where((x) => x['id'] == b['item_id']).firstOrNull;
+      return {'trade': it?['trade'], 'work_item_id': it?['id'], 'daily_wage_inr': b['price'], 'days': it?['days'] ?? 1,
+        'min_wage': it == null ? null : DemoPricing.minWagePerDay(it['trade'] as String)};
+    }
     return {
       ..._jobCard(j),
       'work_items': [for (var i = 0; i < items.length; i++) _item((items[i] as Map).cast<String, dynamic>(), i, _lang)],
       'bids': [
         for (final b in bids)
           {'id': b['id'], 'price_inr': b['price'], 'status': b['status'], 'created_at': b['created_at'], 'worker': _workerSummary(d, b['worker_id'] as String),
+            if (isTeam) ...teamBid(b),
             'fair': DemoPricing.fairCheck(b['price'] as num, _pricingItems(j), _cityOf(d, j), _user(d, b['worker_id'] as String)['trades'] as List)}
       ],
       'assignment': a == null ? null : _assignmentView(d, a), 'fee_inr': fee,
       'no_quotes_24h': _noQuotes24h(d, j), 'nudged_at': j['nudged_at'],
+      if (isTeam) 'team': _roster(d, j),
     };
   }
 
@@ -1007,6 +1193,11 @@ class DemoApi implements Api {
     if (j['customer_id'] != _me) _err('err.not_your_job');
     if (b['job_id'] != jobId) _err('err.not_found');
     if (b['status'] != 'pending') _err('err.job_closed');
+    if (j['kind'] == 'team') {
+      final a = _acceptTeam(d, j, b);
+      await _save();
+      return {'assignment_id': a['id']};
+    }
     _doAccept(d, j, b);
     await _save();
     return {'assignment_id': _assignmentFor(d, jobId)!['id']};
@@ -1018,6 +1209,24 @@ class DemoApi implements Api {
     final d = await _d;
     final j = _row(d, 'jobs', jobId);
     if (j['customer_id'] != _me) _err('err.not_your_job');
+    if (j['kind'] == 'team') {
+      // ONE checkout for the whole team: every unpaid worker's escrow is funded.
+      num paid = 0;
+      var n = 0;
+      for (final ta in _asgOf(d, jobId)) {
+        final tp = _paymentFor(d, ta['id'] as String);
+        if (tp != null && tp['state'] == 'created') {
+          tp['state'] = 'held';
+          tp['method'] = method;
+          tp['paid_at'] = _now();
+          paid += tp['amount'] as num;
+          n++;
+        }
+      }
+      await _save();
+      return {'paid_inr': paid, 'count': n, 'method': method, 'amount_inr': paid, 'platform_fee_inr': fee * n, 'worker_payout_inr': paid - fee * n,
+        'refund_inr': 0, 'escrow_state': 'held', 'released_at': null, 'ref': 'BC-TEAM-${jobId.toUpperCase()}', 'paid_at': _now()};
+    }
     final a = _assignmentFor(d, jobId) ?? _err('err.hire_cancelled'); // a stale payment page after a cancel / change of worker
     final p = _paymentFor(d, a['id'] as String) ?? _err('err.hire_cancelled');
     if (p['state'] == 'created' && j['status'] != 'assigned') _err('err.job_closed');
@@ -1037,6 +1246,7 @@ class DemoApi implements Api {
   Future<void> completeJob(String jobId) async {
     final d = await _d;
     final j = _own(d, jobId);
+    if (j['kind'] == 'team') _err('err.team_use_roster');
     final a = _assignmentFor(d, jobId) ?? _err('err.hire_cancelled');
     _sweepAuto(d); // the 48 h rule applies before the customer's action is evaluated
     if (j['status'] == 'completed') return; // idempotent
@@ -1191,11 +1401,11 @@ class DemoApi implements Api {
     final d = await _d;
     final out = <Json>[];
     for (final j in _all(d, 'jobs').where((j) => j['customer_id'] == _me)) {
-      for (final a in _all(d, 'assignments').where((a) => a['job_id'] == j['id'])) {
-      final p = _paymentFor(d, a['id'] as String);
-      if (p == null) continue;
-      out.add({..._paymentView(p), 'job_id': j['id'], 'locality': j['locality'], 'worker_name': _user(d, a['worker_id'] as String)['name'],
-        'trades': [for (final it in j['items'] as List) (it as Map)['trade']].toSet().toList(), 'created_at': j['created_at']});
+      for (final a in _asgOf(d, j['id'] as String)) {
+        final p = _paymentFor(d, a['id'] as String);
+        if (p == null) continue;
+        out.add({..._paymentView(p), 'job_id': j['id'], 'locality': j['locality'], 'worker_name': _user(d, a['worker_id'] as String)['name'],
+          'trades': [for (final it in j['items'] as List) (it as Map)['trade']].toSet().toList(), 'created_at': j['created_at']});
       }
     }
     out.sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
@@ -1216,6 +1426,85 @@ class DemoApi implements Api {
     await _lag();
     final d = await _d;
     return {..._workerSummary(d, workerId), 'breakdown': _breakdown(d, workerId), 'history': _history(d, workerId)};
+  }
+
+  // ---------------------------------------------------------------- contractor / team hiring
+  @override
+  Future<Json> wageSuggestion(List<String> trades, String? city) async {
+    await _lag();
+    final d = await _d;
+    final c = (city != null && city.isNotEmpty) ? city : (d['city'] as String?) ?? '';
+    return {'city': c, 'items': [for (final t in trades.toSet()) if (DemoPricing.tradeSkill.containsKey(t)) DemoPricing.dayWageRange(t, c)]};
+  }
+
+  @override
+  Future<Json> teamRoster(String jobId) async {
+    await _lag();
+    final d = await _d;
+    _simulate(d);
+    final j = _row(d, 'jobs', jobId);
+    if (j['customer_id'] != _me || j['kind'] != 'team') _err('err.not_found');
+    await _save();
+    return _roster(d, j);
+  }
+
+  @override
+  Future<Json> settleTeamWorker(String jobId, String assignmentId, Json stars) async {
+    await _lag();
+    final d = await _d;
+    final j = _row(d, 'jobs', jobId);
+    if (j['customer_id'] != _me) _err('err.not_your_job');
+    final a = _row(d, 'assignments', assignmentId);
+    if (a['job_id'] != jobId) _err('err.not_found');
+    final p = _paymentFor(d, assignmentId) ?? _err('err.not_found');
+    if (p['state'] != 'held') _err('err.payment_not_held');
+    final rs = d['ratings'] as List;
+    if (rs.cast<Map>().any((r) => r['assignment_id'] == assignmentId && r['direction'] == 'customer_to_worker')) _err('err.already_rated');
+    final v = [stars['quality'], stars['timeliness'], stars['behaviour'], stars['value_for_money']].cast<int>();
+    if (v.any((x) => x < 1 || x > 5)) _err('err.validation');
+    final wage = _row(d, 'bids', a['bid_id'] as String)['price'] as num;
+    final days = (a['days'] as int?) ?? 1, worked = _daysWorked(d, a);
+    final overall = v.reduce((x, y) => x + y) / 4;
+    rs.add({'assignment_id': assignmentId, 'direction': 'customer_to_worker', 'ratee': a['worker_id'], 'quality': v[0], 'timeliness': v[1],
+      'behaviour': v[2], 'value_for_money': v[3], 'overall': overall, 'comment': stars['comment'], 'created_at': _now()});
+    final w = _user(d, a['worker_id'] as String);
+    if (worked > 0) {
+      w['rating'] = double.parse((((w['rating'] as num) * (w['rating_count'] as int) + overall) / ((w['rating_count'] as int) + 1)).toStringAsFixed(2));
+      w['rating_count'] = (w['rating_count'] as int) + 1;
+      w['completed'] = (w['completed'] as int) + 1;
+    }
+    if (worked == 0) {
+      // nobody turned up: everything goes back to the contractor
+      p['refund'] = p['amount'];
+      p['payout'] = 0;
+      p['fee'] = 0;
+      p['state'] = 'refunded';
+    } else {
+      p['refund'] = wage * (days - worked);
+      p['payout'] = wage * worked;
+      p['state'] = 'released';
+      w['earned'] = ((w['earned'] as num?) ?? 0) + wage * worked;
+    }
+    p['released_at'] = _now();
+    a['completed_at'] = _now();
+    final asg = _asgOf(d, jobId);
+    if (asg.every((x) => const ['released', 'refunded', 'split'].contains(_paymentFor(d, x['id'] as String)?['state']))) {
+      j['status'] = 'completed';
+      for (final o in _all(d, 'bids').where((b) => b['job_id'] == jobId && b['status'] == 'pending')) {
+        o['status'] = 'rejected';
+      }
+    } else if (j['status'] == 'assigned') {
+      j['status'] = 'in_progress';
+    }
+    await _save();
+    return {'days_worked': worked, 'days_planned': days, 'payout_inr': p['payout'], 'refund_inr': p['refund'], 'overall': overall};
+  }
+
+  @override
+  Future<void> setBusinessName(String name) async {
+    final d = await _d;
+    _user(d)['org'] = name.trim();
+    await _save();
   }
 
   // ---------------------------------------------------------------- shared
@@ -1337,19 +1626,20 @@ class DemoApi implements Api {
     const audio = 'asset:assets/audio/sample.ogg';
     final users = <String, dynamic>{};
     void user(String id, String phone, String role, String name, String lang,
-        {List<String> trades = const [], double rating = 0, int count = 0, int kyc = 1, String loc = 'Kothrud', List<String> badges = const [], bool eshram = false}) {
+        {List<String> trades = const [], double rating = 0, int count = 0, int kyc = 1, String loc = 'Kothrud', List<String> badges = const [], bool eshram = false,
+        String? ctype, String? org}) {
       const ll = {'Kothrud': [18.5074, 73.8077], 'Baner': [18.559, 73.7868], 'Hadapsar': [18.5089, 73.926], 'Wakad': [18.5986, 73.7604],
         'Viman Nagar': [18.5679, 73.9143], 'Aundh': [18.558, 73.8075], 'Kharadi': [18.5515, 73.9348], 'Shivajinagar': [18.5308, 73.8475]};
       users[id] = {'id': id, 'phone': phone, 'role': role, 'name': name, 'lang': lang, 'kyc': kyc, 'trades': trades, 'rating': rating,
         'rating_count': count, 'completed': count, 'badges': badges, 'lat': ll[loc]![0], 'lng': ll[loc]![1], 'online': true,
         'earned': count * 2500, 'upi': kyc >= 1 ? '${name.split(' ').first.toLowerCase()}@okaxis' : null, 'eshram': eshram,
-        'selfie': null};
+        'selfie': null, if (ctype != null) 'ctype': ctype, if (org != null) 'org': org};
     }
 
     user('a1', '9000000001', 'admin', 'Ops Admin', 'en', kyc: 2);
-    user('c1', '9100000001', 'customer', 'Priya Sharma', 'hi');
-    user('c2', '9100000002', 'customer', 'Anil Deshmukh', 'mr');
-    user('c3', '9100000003', 'customer', 'Neha Kulkarni', 'en');
+    user('c1', '9100000001', 'customer', 'Priya Sharma', 'hi', ctype: 'homeowner');
+    user('c2', '9100000002', 'customer', 'Anil Deshmukh', 'mr', ctype: 'contractor', org: 'Deshmukh Constructions');
+    user('c3', '9100000003', 'customer', 'Neha Kulkarni', 'en', ctype: 'homeowner');
     user('w1', '9200000001', 'worker', 'Ramesh Pawar', 'mr', trades: ['mason'], rating: 4.6, count: 24, kyc: 2, badges: ['trusted_mason'], eshram: true);
     user('w2', '9200000002', 'worker', 'Sunil Yadav', 'hi', trades: ['mason', 'helper'], rating: 4.1, count: 9, loc: 'Hadapsar');
     user('w3', '9200000003', 'worker', 'Imran Shaikh', 'hi', trades: ['plumber'], rating: 4.7, count: 31, kyc: 2, loc: 'Wakad', badges: ['trusted_plumber'], eshram: true);
@@ -1360,33 +1650,52 @@ class DemoApi implements Api {
     user('w8', '9200000008', 'worker', 'Mohan Jadhav', 'mr', trades: ['carpenter', 'helper'], kyc: 0, loc: 'Shivajinagar');
     user('w9', '9200000009', 'worker', 'Selvam K', 'ta', trades: ['painter'], rating: 4.4, count: 15);
     user('w10', '9200000010', 'worker', 'Deepak Gupta', 'hi', trades: ['painter', 'helper'], rating: 4.0, count: 8, loc: 'Hadapsar');
+    // More people from different states: every trade has at least two workers (21-24 are dedicated helpers / mazdoor).
+    user('w11', '9200000011', 'worker', 'Ramkumar Verma', 'hi', trades: ['mason'], rating: 4.3, count: 14);
+    user('w12', '9200000012', 'worker', 'Basavaraj Hiremath', 'kn', trades: ['mason', 'helper'], rating: 4.0, count: 7, loc: 'Hadapsar');
+    user('w13', '9200000013', 'worker', 'Murugan S', 'ta', trades: ['plumber'], rating: 4.5, count: 22, loc: 'Aundh');
+    user('w14', '9200000014', 'worker', 'Shamshad Alam', 'hi', trades: ['plumber'], rating: 4.2, count: 11, loc: 'Baner');
+    user('w15', '9200000015', 'worker', 'Jignesh Patel', 'gu', trades: ['electrician'], rating: 4.4, count: 17);
+    user('w16', '9200000016', 'worker', 'Shaji Thomas', 'ml', trades: ['electrician', 'helper'], rating: 4.6, count: 26, kyc: 2, loc: 'Wakad', badges: ['trusted_electrician'], eshram: true);
+    user('w17', '9200000017', 'worker', 'Rajesh Suthar', 'hi', trades: ['carpenter'], rating: 4.3, count: 16, loc: 'Hadapsar');
+    user('w18', '9200000018', 'worker', 'Bikash Nayak', 'or', trades: ['carpenter'], rating: 4.1, count: 10, loc: 'Baner');
+    user('w19', '9200000019', 'worker', 'Dipak Das', 'as', trades: ['painter'], rating: 4.2, count: 12, loc: 'Wakad');
+    user('w20', '9200000020', 'worker', 'Subhash Mondal', 'bn', trades: ['painter'], rating: 3.8, count: 6, loc: 'Viman Nagar');
+    user('w21', '9200000021', 'worker', 'Manoj Mahto', 'hi', trades: ['helper'], rating: 4.0, count: 9);
+    user('w22', '9200000022', 'worker', 'Raju Munda', 'hi', trades: ['helper'], rating: 4.2, count: 13, loc: 'Hadapsar');
+    user('w23', '9200000023', 'worker', 'Santosh Kamble', 'mr', trades: ['helper'], rating: 4.1, count: 8, loc: 'Aundh');
+    user('w24', '9200000024', 'worker', 'Sunita Devi', 'hi', trades: ['helper'], rating: 4.4, count: 18, loc: 'Kharadi');
 
     Json item(String id, String trade, Map<String, String> text, String lang,
-            {bool withAudio = false, int photos = 2, String? transcript, int secs = 24, String? scene}) =>
+            {bool withAudio = false, int photos = 2, String? transcript, int secs = 24, String? scene, int? wage, int headcount = 1, int days = 1}) =>
         {
+          if (wage != null) ...{'headcount': headcount, 'days': days, 'wage': wage},
           'id': id, 'trade': trade, 'lang': lang, 'text': text, 'photos': (demoPhotos[scene ?? trade] ?? demoPhotos['helper']!).take(photos).toList(),
           'transcript': withAudio ? {'hi': transcript ?? text['hi'] ?? text.values.first, 'en': text['en'] ?? text.values.first} : null,
           'audio': withAudio ? {'url': audio, 'duration_sec': secs, 'size_kb': 18} : null,
         };
     final jobs = <String, dynamic>{};
-    void job(String id, String cust, String loc, String status, Duration age, List<Json> items, {String? address}) {
+    void job(String id, String cust, String loc, String status, Duration age, List<Json> items,
+        {String? address, String kind = 'single', int? schedDay, int schedHour = 9, int schedMin = 0, String slot = 'exact'}) {
       final u = users['c1'] as Json;
       const ll = {'Kothrud': [18.5074, 73.8077], 'Baner': [18.559, 73.7868], 'Hadapsar': [18.5089, 73.926], 'Wakad': [18.5986, 73.7604], 'Aundh': [18.558, 73.8075]};
       jobs[id] = {'id': id, 'city': 'Pune', 'customer_id': cust, 'lat': ll[loc]![0] + 0.002, 'lng': ll[loc]![1] - 0.001, 'address': address ?? 'Flat 302, Sai Residency, $loc, Pune',
         'locality': loc, 'start_date': now.add(const Duration(days: 2)).toIso8601String().substring(0, 10), 'status': status, 'created_at': ago(age),
-        'sim_customer': true, 'owner_lang': u['lang']};
+        'sim_customer': true, 'owner_lang': u['lang'], 'kind': kind,
+        'scheduled_for': schedDay == null ? null : DateTime(now.year, now.month, now.day + schedDay, schedHour, schedMin).toUtc().toIso8601String(),
+        'time_slot': schedDay == null ? null : slot};
       jobs[id]['items'] = items;
     }
 
     job('j1', 'c1', 'Kothrud', 'open', const Duration(minutes: 40), [
       item('j1w1', 'plumber', {'hi': 'बाथरूम का नल टपक रहा है, पाइप बदलना है।', 'en': 'Bathroom tap is leaking, the pipe needs replacing.'}, 'hi', withAudio: true, scene: 'tap_leak'),
       item('j1w2', 'mason', {'hi': 'दीवार में सीलन, प्लास्टर ठीक करना है।', 'en': 'Damp wall, plaster needs repair.'}, 'hi', scene: 'damp_wall', photos: 3),
-    ]);
+    ], schedDay: 1, schedHour: 9, schedMin: 30);
     job('j2', 'c3', 'Baner', 'bidding', const Duration(hours: 5), [
       item('j2w1', 'electrician', {'en': 'Rewire the kitchen, add 4 new 16A sockets and a chimney point.', 'hi': 'किचन की वायरिंग बदलनी है, 4 नए 16A सॉकेट और चिमनी पॉइंट।'}, 'en', withAudio: true, secs: 37, photos: 3),
       item('j2w2', 'painter', {'en': 'Paint the kitchen after wiring — primer + 2 coats.', 'hi': 'वायरिंग के बाद किचन की पुताई — प्राइमर + 2 कोट।'}, 'en'),
       item('j2w3', 'helper', {'en': 'Move appliances out and clean up debris.', 'hi': 'सामान बाहर निकालना और मलबा साफ़ करना।'}, 'en', photos: 1),
-    ]);
+    ], schedDay: 2, schedHour: 8, slot: 'morning');
     job('j3', 'c1', 'Aundh', 'assigned', const Duration(days: 3), [
       item('j3w1', 'carpenter', {'hi': 'बेडरूम की अलमारी का दरवाज़ा टूट गया है, नया कब्ज़ा और हैंडल।', 'en': 'Bedroom wardrobe door broken — new hinge and handle.'}, 'hi', withAudio: true),
     ]);
@@ -1400,7 +1709,29 @@ class DemoApi implements Api {
     job('j6', 'c1', 'Wakad', 'bidding', const Duration(hours: 20), [
       item('j6w1', 'plumber', {'hi': 'पूरे फ्लैट की पाइपलाइन बदलनी है, लीकेज टेस्ट के साथ।', 'en': 'Replace the full flat pipeline with leak test.'}, 'hi', withAudio: true, secs: 18),
       item('j6w2', 'mason', {'en': 'Bathroom floor tiling after plumbing, 60 sq ft.', 'hi': 'प्लंबिंग के बाद बाथरूम फ़र्श टाइलिंग, 60 वर्ग फ़ुट।'}, 'en', scene: 'tiles'),
-    ]);
+    ], schedDay: 3, schedHour: 16, slot: 'evening');
+    // Open jobs so the carpenter and helper feeds are never empty.
+    job('j7', 'c3', 'Wakad', 'open', const Duration(hours: 30), [
+      item('j7w1', 'carpenter', {'en': 'Need a new sliding wardrobe door fitted in the bedroom and the two kitchen drawer channels replaced.',
+        'hi': 'बेडरूम में नया स्लाइडिंग अलमारी दरवाज़ा लगाना है और किचन की दो दराज़ों के चैनल बदलने हैं।'}, 'en'),
+    ], schedDay: 1, schedHour: 12, slot: 'afternoon');
+    job('j8', 'c1', 'Baner', 'open', const Duration(hours: 52), [
+      item('j8w1', 'helper', {'en': 'Two helpers needed for one day to shift furniture and clear old tiles and debris from the flat.',
+        'hi': 'एक दिन के लिए दो हेल्पर चाहिए — फ़र्नीचर शिफ़्ट करना और पुरानी टाइलें व मलबा हटाना है।'}, 'en', photos: 2),
+    ], schedDay: 2, schedHour: 16, slot: 'evening');
+    // Contractor team sites (Anil Deshmukh): one running, one collecting applications.
+    job('t1', 'c2', 'Hadapsar', 'in_progress', const Duration(days: 4), [
+      item('t1w1', 'mason', {'en': 'Boundary wall and plaster for a new plot, 3 masons for 5 days. Bring your own tools; lunch provided.',
+        'hi': 'नए प्लॉट पर बाउंड्री वॉल और प्लास्टर, 3 राजमिस्त्री 5 दिन के लिए। अपने औज़ार लाएँ; खाना मिलेगा।'}, 'en', wage: 950, headcount: 3, days: 5),
+      item('t1w2', 'helper', {'en': 'Three helpers to carry bricks, mix cement and clean the site for 5 days at the same plot.',
+        'hi': 'उसी प्लॉट पर 5 दिन ईंट ढोने, सीमेंट मिलाने और सफ़ाई के लिए 3 हेल्पर।'}, 'en', wage: 800, headcount: 3, days: 5),
+    ], kind: 'team', schedDay: -2, schedHour: 8, slot: 'morning', address: 'Plot 14, Hadapsar, Pune');
+    job('t2', 'c2', 'Baner', 'bidding', const Duration(days: 1), [
+      item('t2w1', 'painter', {'en': 'Two painters for putty, primer and two coats on a 3 BHK flat, 4 days. Material is on site.',
+        'hi': '3 BHK फ़्लैट पर पुट्टी, प्राइमर और दो कोट के लिए 2 पेंटर, 4 दिन। सामान साइट पर है।'}, 'en', wage: 900, headcount: 2, days: 4),
+      item('t2w2', 'carpenter', {'en': 'Two carpenters for modular wardrobes and door frames in a new flat, 3 days.',
+        'hi': 'नए फ़्लैट में मॉड्यूलर अलमारी और दरवाज़े के फ़्रेम के लिए 2 बढ़ई, 3 दिन।'}, 'en', wage: 1300, headcount: 2, days: 3),
+    ], kind: 'team', schedDay: 2, schedHour: 8, slot: 'morning', address: 'Flat 8, Baner, Pune');
 
     final bids = <String, dynamic>{};
     // Seed quotes come from the pricing model (what that worker's trades would fairly charge), x factor.
@@ -1426,6 +1757,17 @@ class DemoApi implements Api {
     bid('b8', 'j6', 'w3', 1.05, 'pending', const Duration(hours: 18));
     bid('b9', 'j6', 'w4', 0.92, 'pending', const Duration(hours: 10));
     int pr(String id) => (bids[id] as Map)['price'] as int;
+    // team applications / hires (price = DAILY wage)
+    void tbid(String id, String jobId, String itemId, String w, int wage, String status) =>
+        bids[id] = {'id': id, 'job_id': jobId, 'worker_id': w, 'item_id': itemId, 'price': wage, 'status': status, 'created_at': ago(const Duration(days: 3))};
+    tbid('tb1', 't1', 't1w1', 'w1', 950, 'accepted');
+    tbid('tb2', 't1', 't1w1', 'w11', 950, 'accepted');
+    tbid('tb3', 't1', 't1w2', 'w21', 800, 'accepted');
+    tbid('tb4', 't1', 't1w1', 'w2', 1000, 'pending');
+    tbid('tb5', 't1', 't1w2', 'w22', 800, 'pending');
+    tbid('tb6', 't2', 't2w1', 'w9', 900, 'pending');
+    tbid('tb7', 't2', 't2w1', 'w19', 950, 'pending');
+    tbid('tb8', 't2', 't2w2', 'w7', 1300, 'pending');
 
     final assignments = <String, dynamic>{
       'a3': {'id': 'a3', 'job_id': 'j3', 'worker_id': 'w7', 'bid_id': 'b4'},
@@ -1439,6 +1781,21 @@ class DemoApi implements Api {
       'p4': {'id': 'p4', 'assignment_id': 'a4', 'amount': pr('b6') + fee, 'fee': fee, 'payout': pr('b6'), 'state': 'held', 'method': 'upi', 'paid_at': ago(const Duration(days: 6))},
       'p5': {'id': 'p5', 'assignment_id': 'a5', 'amount': pr('b7') + fee, 'fee': fee, 'payout': pr('b7'), 'state': 'held', 'method': 'card', 'paid_at': ago(const Duration(days: 8))}, // awaiting rating
     };
+    // Hired team members: own assignment + escrow (wage x 5 days + fee), checked in on site.
+    final teamAtt = <Json>[];
+    for (final (i, row) in [('ta1', 'w1', 'tb1', 't1w1', 950), ('ta2', 'w11', 'tb2', 't1w1', 950), ('ta3', 'w21', 'tb3', 't1w2', 800)].indexed) {
+      final (aid, w, b, itemId, wage) = row;
+      assignments[aid] = {'id': aid, 'job_id': 't1', 'worker_id': w, 'bid_id': b, 'item_id': itemId, 'days': 5, 'started_at': ago(const Duration(days: 2)),
+        'journey_started_at': ago(const Duration(days: 2, minutes: 30))};
+      payments['tp${i + 1}'] = {'id': 'tp${i + 1}', 'assignment_id': aid, 'amount': wage * 5 + fee, 'fee': fee, 'payout': wage * 5, 'state': 'held',
+        'method': 'upi', 'paid_at': ago(const Duration(days: 3))};
+      for (final back in i == 2 ? [2, 1] : [2, 1, 0]) {
+        var t = DateTime(now.year, now.month, now.day - back, 9, 5 + i * 6);
+        if (t.isAfter(now)) t = now.subtract(Duration(minutes: 8 + i));
+        teamAtt.add({'assignment_id': aid, 'in': t.toIso8601String(), 'out': back == 0 ? null : t.add(const Duration(hours: 8, minutes: 15)).toIso8601String(),
+          'offline': i == 1 && back == 1, 'geofence_ok': true});
+      }
+    }
     final ratings = <Json>[];
     // History: past rated + paid jobs for experienced workers (profile, breakdown, earnings).
     const comments = ['Very neat work', 'Came on time', 'Good behaviour, fair price', 'Bahut accha kaam', null];
@@ -1475,6 +1832,7 @@ class DemoApi implements Api {
         {'worker_id': 'w1', 'amount': 2400, 'upi': 'ra****@okaxis', 'at': ago(const Duration(days: 12))},
       ],
       'attendance': [
+        ...teamAtt,
         // realistic site hours: 09:10 → 17:40 local time
         for (final (i, off) in [(2, false), (1, true)].indexed)
           {
@@ -1572,6 +1930,30 @@ class DemoPricing {
 
   static double _num(Match m) => double.parse(m.group(1)!.replaceAll(',', ''));
   static int _r50(num x) => (x / 50).round() * 50;
+  static int _step(num x) => x >= 500 ? 50 : 10;
+  static int _round(num x, int step) => (x / step + 0.5).floor() * step;
+  static int _ceil(num x, int step) => (x / step - 1e-9).ceil() * step;
+
+  /// Guarantees low < median < high with a sensible spread (the "₹400 to ₹400" bug): median >= low x 1.12,
+  /// high >= low x 1.3 and high > median; rounded to ₹50 (₹10 under ₹500). Mirrors `pricing.spread` in the backend.
+  static (int, int, int) spread(num low, num med, num high) {
+    final step = _step(low);
+    final lo = max(_round(low, step), step);
+    var md = max(_round(med, step), _ceil(lo * 1.12, step));
+    if (md <= lo) md = lo + step;
+    var hi = max(max(_round(high, step), _ceil(lo * 1.3, step)), _ceil(md * 1.1, step));
+    if (hi <= md) hi = md + step;
+    return (lo, md, hi);
+  }
+
+  /// Daily wage suggestion for a contractor's team line. `low` is never below the minimum wage.
+  static Map<String, dynamic> dayWageRange(String trade, String? city) {
+    final r = _dayRate[trade] ?? _dayRate['helper']!;
+    final m = cityMultiplier(city);
+    final mw = minWagePerDay(trade);
+    final (lo, md, hi) = spread(max(_r50(r[0] * m), (mw / 50).ceil() * 50), r[1] * m, r[2] * m);
+    return {'trade': trade, 'low': lo, 'median': md, 'high': hi, 'min_wage': mw};
+  }
   static bool _has(String t, List<String> words) {
     final s = t.toLowerCase();
     return words.any(s.contains);
@@ -1634,10 +2016,9 @@ class DemoPricing {
     final (rates, days, basis) = _base(trade, text ?? '');
     final m = cityMultiplier(city);
     final mw = minWagePerDay(trade) * days;
-    final floor = (mw / 50).ceil() * 50;
-    final lo = max(_r50(rates[0] * m), floor);
-    final med = max(_r50(rates[1] * m), lo);
-    final hi = max(_r50(rates[2] * m), lo);
+    final step = _step(max(rates[0] * m, mw));
+    final lo0 = max(_round(rates[0] * m, step), _ceil(mw, step)); // never below the legal wage for the estimated days
+    final (lo, med, hi) = spread(lo0, rates[1] * m, rates[2] * m);
     return {'trade': trade, 'low_inr': lo, 'median_inr': med, 'high_inr': hi, 'est_days': double.parse(days.toStringAsFixed(1)),
       'min_wage_total': mw.round(), 'basis': basis};
   }
@@ -1661,10 +2042,7 @@ class DemoPricing {
     final days = its.fold<double>(0, (s, i) => s + ((i as Map)['est_days'] as num).toDouble());
     final mw = its.fold<int>(0, (s, i) => s + ((i as Map)['min_wage_total'] as int));
     // Where the market rate sits near the wage floor, keep a real spread above it.
-    final low = (est['total_low_inr'] as num).toInt();
-    int r50(num v) => ((v / 50).round() * 50).toInt();
-    final median = max((est['total_median_inr'] as num).toInt(), r50(low * 1.15));
-    final high = max((est['total_high_inr'] as num).toInt(), r50(low * 1.35));
+    final (low, median, high) = spread(est['total_low_inr'] as num, est['total_median_inr'] as num, est['total_high_inr'] as num);
     return {'low': low, 'median': median, 'high': high,
       'min_wage_total': mw, 'est_days': double.parse(days.toStringAsFixed(1))};
   }

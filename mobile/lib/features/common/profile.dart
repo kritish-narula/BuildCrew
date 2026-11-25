@@ -59,9 +59,9 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
               if (p != state.user?.phone)
                 ActionChip(
                   backgroundColor: Colors.white,
-                  avatar: Icon(role == 'customer' ? Icons.home_work_rounded : TradeStyle.of(trade).icon,
-                      color: role == 'customer' ? BC.info : TradeStyle.of(trade).color, size: 18),
-                  label: Text('${name.split(' ').first} · ${role == 'customer' ? l.role_customer : tradeLabel(l, trade)}',
+                  avatar: Icon(role == 'contractor' ? Icons.engineering_rounded : (role == 'customer' ? Icons.home_work_rounded : TradeStyle.of(trade).icon),
+                      color: isDemoCustomerRole(role) ? BC.info : TradeStyle.of(trade).color, size: 18),
+                  label: Text('${name.split(' ').first} · ${role == 'contractor' ? l.roleContractor : (role == 'customer' ? l.role_customer : tradeLabel(l, trade))}',
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   onPressed: () async {
                     Navigator.of(context).popUntil((r) => r.isFirst);

@@ -56,6 +56,9 @@ def tok(phone: str) -> dict:
         return {"Authorization": f"Bearer {issue_token(user)}"}
 
 
+LONG = "Kitchen sink is leaking under the counter, please fix the pipe and the tap."
+
+
 def photo(h, name="x.jpg"):
     r = client.post("/media/upload", headers=h, data={"kind": "photo"}, files={"file": (name, b"\xff\xd8fake" + uuid.uuid4().bytes)})
     assert r.status_code == 200, r.text
@@ -68,8 +71,8 @@ class Hire:
         r = client.post("/customer/jobs", headers=self.c, json={
             "location_lat": 18.5986, "location_lng": 73.7604, "address_text": "B-402 Wakad",
             "start_date": str(date.today() + timedelta(days=1)),
-            "work_items": [{"trade": "plumber", "text_description": "Kitchen sink leak", "description_language": "en",
-                            "photo_keys": [photo(self.c, "before.jpg")]}]})
+            "work_items": [{"trade": "plumber", "text_description": LONG, "description_language": "en",
+                            "photo_keys": [photo(self.c, "before.jpg"), photo(self.c, "before2.jpg")]}]})
         assert r.status_code == 200, r.text
         self.jid = r.json()["id"]
         self.other = None
@@ -122,7 +125,7 @@ def test_proof_photo_is_required_and_customer_sees_before_and_after():
     h.done("Tap replaced")
     a = h.a()
     assert a["worker_done_at"] and len(a["proof_photos"]) == 1 and a["worker_done_note"] == "Tap replaced"
-    assert len(a["before_photos"]) == 1 and a["auto_confirm_at"]
+    assert len(a["before_photos"]) == 2 and a["auto_confirm_at"]
     h.done()  # double tap / offline replay: still ONE "finished" event
     assert [e["kind"] for e in h.a()["timeline"]] == ["worker_done"]
 
@@ -372,7 +375,8 @@ def test_third_strike_suspends_the_worker():
 # ------------------------------------------------------------------ misc edge cases
 def test_job_date_in_the_past_or_absurdly_far_is_rejected():
     c = tok(CUST)
-    body = {"location_lat": 18.5, "location_lng": 73.8, "address_text": "Somewhere 12", "work_items": [{"trade": "plumber", "text_description": "leak"}]}
+    body = {"location_lat": 18.5, "location_lng": 73.8, "address_text": "Somewhere 12",
+            "work_items": [{"trade": "plumber", "text_description": LONG, "photo_keys": [photo(c), photo(c)]}]}
     r = client.post("/customer/jobs", headers=c, json={**body, "start_date": str(date.today() - timedelta(days=2))})
     assert r.status_code == 422 and error(r) == "err.date_in_past"
     r = client.post("/customer/jobs", headers=c, json={**body, "start_date": str(date.today() + timedelta(days=800))})
@@ -390,7 +394,7 @@ def test_prices_zero_negative_and_huge_are_rejected():
 def test_no_quotes_for_24h_hint_and_nudge_cooldown():
     c = tok(CUST)
     jid = client.post("/customer/jobs", headers=c, json={"location_lat": 18.5, "location_lng": 73.8, "address_text": "Nowhere 12",
-                      "start_date": str(date.today() + timedelta(days=1)), "work_items": [{"trade": "painter", "text_description": "paint"}]}).json()["id"]
+                      "start_date": str(date.today() + timedelta(days=1)), "work_items": [{"trade": "painter", "text_description": LONG, "photo_keys": [photo(c), photo(c)]}]}).json()["id"]
     assert client.get(f"/customer/jobs/{jid}", headers=c).json()["no_quotes_24h"] is False
     with SessionLocal() as db:
         db.get(Job, uuid.UUID(jid)).created_at = datetime.now(timezone.utc) - timedelta(hours=30)

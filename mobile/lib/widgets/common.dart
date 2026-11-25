@@ -348,6 +348,13 @@ void showError(BuildContext context, Object e) {
     ApiException(code: 'network') => l.errorNetwork,
     ApiException(code: 'err.otp_invalid', message: '') => l.errorGeneric,
     ApiException(:final message) when message.isNotEmpty => message,
+    // Demo mode raises codes without text: map the ones that tell the user what to fix.
+    ApiException(code: 'err.photos_required') => l.errPhotosRequired,
+    ApiException(code: 'err.description_short') => l.errDescriptionShort,
+    ApiException(code: 'err.schedule_past') => l.errSchedulePast,
+    ApiException(code: 'err.team_full') => l.errTeamFull,
+    ApiException(code: 'err.wage_below_minimum') => l.errWageBelowMin,
+    ApiException(code: 'err.contractor_only') => l.errContractorOnly,
     _ => l.errorGeneric,
   };
   ScaffoldMessenger.of(context)

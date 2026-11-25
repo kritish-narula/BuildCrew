@@ -11,6 +11,9 @@ import 'media.dart';
 /// Same threshold as backend `pricing.HIGH_FACTOR`.
 const double _highFactor = 1.2;
 
+/// "₹400 – ₹600"; a single value ("₹400") when low and high are the same (never "₹400 to ₹400").
+String inrRange(num low, num high) => low >= high ? inr(low) : '${inr(low)} – ${inr(high)}';
+
 String _daysText(num d) => d == d.roundToDouble() ? d.toInt().toString() : d.toStringAsFixed(1);
 
 /// Worker quote screen: fair range for THIS job + a gentle warning when [priceInr] is below the
@@ -85,7 +88,7 @@ class FairPriceBanner extends StatelessWidget {
                 Text(l.fairRangeTitle, style: theme.textTheme.titleSmall?.copyWith(color: fg, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(
-                  l.fairRangeText('${inr(low)} – ${inr(high)}', _daysText(days)),
+                  l.fairRangeText(inrRange(low, high), _daysText(days)),
                   style: theme.textTheme.bodyMedium?.copyWith(color: fg),
                 ),
                 if (message != null) ...[
