@@ -239,7 +239,8 @@ class ReceiptScreen extends StatelessWidget {
                 child: const Icon(Icons.construction_rounded, color: Colors.white),
               ),
               const SizedBox(width: 10),
-              const Text('BuildCrew', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+              const Flexible(child: Text('BuildCrew', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18))),
+              const SizedBox(width: 8),
               const Spacer(),
               StatusPill(
                 label: statusText,
@@ -248,13 +249,15 @@ class ReceiptScreen extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 18),
-            Text(inr(payment['amount_inr'] as num), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
+            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+                child: Text(inr(payment['amount_inr'] as num), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w700, fontFeatures: BC.tabular))),
             const Divider(height: 28),
             for (final (a, b) in rows)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  SizedBox(width: 130, child: Text(a, style: const TextStyle(color: BC.inkSoft))),
+                  Expanded(child: Text(a, style: const TextStyle(color: BC.inkSoft))),
+                  const SizedBox(width: 12),
                   Expanded(child: Text(b, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w700, fontFeatures: BC.tabular))),
                 ]),
               ),
