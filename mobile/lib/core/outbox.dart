@@ -54,6 +54,13 @@ class Outbox extends ChangeNotifier {
   Future<bool> attendance(Json body) => _run({'type': 'attendance', 'ref_id': body['assignment_id'], ...body, 'client_ref': newRef(),
         'at': DateTime.now().toUtc().toIso8601String()}); // original time is preserved when replayed
 
+  /// "Work finished" + proof photos. Safe to replay: the server treats a repeat as a no-op, and local photo
+  /// paths are uploaded at send time (so it also works when the worker is offline at the site).
+  Future<bool> done(String assignmentId, List<String> photos, String? note) {
+    if (hasPendingFor('done', assignmentId)) return Future.value(false);
+    return _run({'type': 'done', 'ref_id': assignmentId, 'assignment_id': assignmentId, 'photos': photos, 'note': note, 'client_ref': newRef()});
+  }
+
   Future<bool> _run(Json op) async {
     try {
       await _send(op);
@@ -72,6 +79,13 @@ class Outbox extends ChangeNotifier {
     switch (op['type']) {
       case 'bid':
         await _api.placeBid(op['job_id'] as String, op['price_inr'] as int, op['client_ref'] as String);
+      case 'done':
+        final keys = <String>[];
+        for (final p in (op['photos'] as List).cast<String>()) {
+          // a local file (starts with "/") still has to be uploaded; a server key is sent as is
+          keys.add(p.startsWith('/') ? (await _api.upload('photo', p))['key'] as String : p);
+        }
+        await _api.markDone(op['assignment_id'] as String, photos: keys, note: op['note'] as String?);
       case 'attendance':
         await _api.attendance({...op, 'offline': op['queued'] == true}..remove('type')..remove('ref_id')..remove('queued'));
     }

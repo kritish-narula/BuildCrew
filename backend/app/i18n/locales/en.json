@@ -48,5 +48,17 @@
  "err.already_resolved": "Already resolved.",
  "voice.balance": "Your balance is {amount} rupees.",
  "kyc.l1_prompt": "A customer chose you! Add your name, photo and UPI ID to get paid.",
- "err.payment_pending": "The customer has not paid yet. Work starts after payment."
+ "err.payment_pending": "The customer has not paid yet. Work starts after payment.",
+ "err.hire_cancelled": "This hire is no longer active. Please open the job again.",
+ "err.job_disputed": "This job is under review by BuildCrew support. Money stays safe until it is resolved.",
+ "err.proof_required": "Add at least 1 photo of the finished work.",
+ "err.nothing_to_send_back": "There is nothing to send back right now.",
+ "err.job_started": "Work has already started, so this cannot be cancelled here.",
+ "err.job_started_dispute": "Work has started. Please report a problem and BuildCrew support will help.",
+ "err.no_show_too_early": "You can report this in {minutes} min. Please give the worker a little more time.",
+ "err.nudge_too_soon": "You already reminded workers. Please try again after {hours} hours.",
+ "err.date_in_past": "The start date cannot be in the past.",
+ "err.date_too_far": "Please choose a date within the next year.",
+ "err.chat_closed": "This chat is closed. The job went to another worker.",
+ "err.too_early_to_dispute": "You can report a problem after you start the work."
 }

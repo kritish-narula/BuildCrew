@@ -61,7 +61,8 @@ def worker_summary(db: Session, user: User) -> dict:
 def rating_breakdown(db: Session, worker_id) -> dict:
     row = db.execute(select(func.avg(Rating.quality), func.avg(Rating.timeliness), func.avg(Rating.behaviour),
                             func.avg(Rating.value_for_money), func.avg(Rating.overall), func.count())
-                     .where(Rating.ratee_id == worker_id, Rating.direction == RatingDirection.customer_to_worker)).one()
+                     .where(Rating.ratee_id == worker_id, Rating.direction == RatingDirection.customer_to_worker,
+                            Rating.is_auto.is_(False))).one()
     wp = db.get(WorkerProfile, worker_id)
     fallback = round(wp.overall_rating, 1) if wp else 0
     r = lambda v: round(float(v), 1) if v is not None else fallback  # noqa: E731
@@ -72,7 +73,8 @@ def rating_breakdown(db: Session, worker_id) -> dict:
 def worker_history(db: Session, worker_id, limit: int = 10) -> list[dict]:
     rows = db.execute(select(Assignment, Rating).join(Rating, (Rating.assignment_id == Assignment.id) &
                                                       (Rating.direction == RatingDirection.customer_to_worker))
-                      .where(Assignment.worker_id == worker_id).order_by(Rating.created_at.desc()).limit(limit)).all()
+                      .where(Assignment.worker_id == worker_id, Rating.is_auto.is_(False))
+                      .order_by(Rating.created_at.desc()).limit(limit)).all()
     out = []
     for a, r in rows:
         job = a.job
@@ -95,14 +97,32 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
     if not a:
         return None
     p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
-    ratings = {r.direction.value: {"overall": r.overall, "quality": r.quality, "timeliness": r.timeliness,
+    ratings = {r.direction.value: {"is_auto": r.is_auto, "overall": r.overall, "quality": r.quality, "timeliness": r.timeliness,
                                    "behaviour": r.behaviour, "value_for_money": r.value_for_money,
                                    "clarity": r.clarity, "timely_payment": r.timely_payment, "comment": r.comment}
                for r in db.scalars(select(Rating).where(Rating.assignment_id == a.id))}
     att = db.scalars(select(Attendance).where(Attendance.assignment_id == a.id).order_by(Attendance.checkin_at)).all()
     bid = db.get(Bid, a.accepted_bid_id)
-    from ..domain.flows import tracking
-    return {"id": str(a.id), "worker": worker_summary(db, a.worker), "price_inr": bid.quoted_price_paise / 100,
+    from ..domain import flows
+    tracking = flows.tracking
+    events = flows.timeline(db, a)
+    rework = next((e for e in reversed(events) if e.kind == "rework_requested"), None) if a.rework_open else None
+    due = flows.auto_confirm_at(a)
+    no_show = flows.no_show_after(db, a)
+    return {"proof_photos": [signed(k) for k in (a.proof_photos or [])], "worker_done_note": a.worker_done_note,
+            "before_photos": [signed(p.photo_url) for wi in a.job.work_items for p in wi.photos],
+            "rework_count": a.rework_count, "rework_left": max(0, flows.MAX_REWORK_ROUNDS - a.rework_count),
+            "rework_open": a.rework_open,
+            "rework": {"reasons": list(rework.reasons or []), "note": rework.note, "at": rework.created_at.isoformat(),
+                       "photos": [signed(k) for k in (rework.photos or [])]} if rework else None,
+            "auto_confirm_at": due.isoformat() if due else None, "auto_confirm_hours": flows.AUTO_CONFIRM_HOURS,
+            "auto_confirmed": a.auto_confirmed,
+            "no_show_after": no_show.isoformat() if no_show else None,
+            "can_report_no_show": bool(no_show and flows.now() >= no_show),
+            "worker_suspended": bool(a.worker.worker_profile and a.worker.worker_profile.is_suspended),
+            "timeline": [{"kind": e.kind, "by": e.actor_role, "at": e.created_at.isoformat(), "reasons": list(e.reasons or []),
+                          "note": e.note, "photos": [signed(k) for k in (e.photos or [])]} for e in events],
+            "id": str(a.id), "worker": worker_summary(db, a.worker), "price_inr": bid.quoted_price_paise / 100,
             "tracking": tracking(a), "worker_done_at": a.worker_done_at.isoformat() if a.worker_done_at else None,
             "started_at": a.started_at.isoformat() if a.started_at else None,
             "completed_at": a.completed_at.isoformat() if a.completed_at else None,

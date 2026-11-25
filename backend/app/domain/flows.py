@@ -3,8 +3,9 @@
 Lifecycle:  open ─bid─▶ bidding ─accept─▶ assigned ─start/check-in─▶ in_progress ─customer "done"─▶
             completed ─MANDATORY customer rating─▶ payment released ─▶ worker balance ─withdraw─▶ UPI
 """
+import math
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -16,12 +17,67 @@ from ..crypto import mask_upi
 from ..enums import BidStatus, DisputeStatus, EscrowState, JobStatus, RatingDirection, Role
 from ..errors import AppError
 from ..models import (
-    Assignment, Attendance, Bid, Dispute, Job, Payment, Payout, Rating, User, WorkerProfile,
+    Assignment, AssignmentEvent, Attendance, Bid, Dispute, Job, Payment, Payout, Rating, User, WorkerProfile,
 )
 from .fees import compute_fees
 from .state import transition
 
 now = lambda: datetime.now(timezone.utc)  # noqa: E731
+IST = timezone(timedelta(hours=5, minutes=30))
+
+# ---- completion / dispute policy (the single source of truth for the rules; tests pin them)
+AUTO_CONFIRM_HOURS = 48      # customer silent this long after "work finished" -> auto-confirmed + paid
+MAX_REWORK_ROUNDS = 2        # "send back" rounds; the 3rd disagreement opens a dispute automatically
+REWORK_REASONS = ("incomplete", "poor_quality", "damage", "not_came", "other")
+MAX_PHOTOS = 5
+NO_SHOW_GRACE_MIN = 60       # ETA passed by this much -> customer may report a no-show
+NO_SHOW_NO_JOURNEY_GRACE_MIN = 180  # worker never even started the journey: after start-date 09:00 IST + this
+NO_QUOTES_HOURS = 24         # open job without any live quote -> suggest a nudge
+NUDGE_COOLDOWN_HOURS = 6
+MAX_NOTE = 1000
+
+
+def today_ist() -> date:
+    return datetime.now(IST).date()
+
+
+def active_assignment(db: Session, job_id) -> Assignment | None:
+    """The job's current hire (a released hire is history and never returned)."""
+    return db.scalar(select(Assignment).where(Assignment.job_id == job_id, Assignment.released_at.is_(None)))
+
+
+def _ensure_active(a: Assignment) -> None:
+    if a.released_at is not None:
+        raise AppError("err.hire_cancelled", 409)
+
+
+def _note(note: str | None) -> str | None:
+    n = (note or "").strip()
+    if len(n) > MAX_NOTE:
+        raise AppError("err.validation", 422)
+    return n or None
+
+
+def _photos(photos: list[str] | None, *, required: bool = False) -> list[str]:
+    out = [p.strip() for p in (photos or []) if isinstance(p, str) and p.strip()]
+    if len(out) > MAX_PHOTOS or any(len(p) > 500 for p in out):
+        raise AppError("err.too_many_photos", 422)
+    if required and not out:
+        raise AppError("err.proof_required", 422)
+    return out
+
+
+def add_event(db: Session, a: Assignment, kind: str, role: str, *, reasons=None, note=None, photos=None) -> AssignmentEvent:
+    e = AssignmentEvent(assignment_id=a.id, kind=kind, actor_role=role, reasons=list(reasons or []), note=note,
+                        photos=list(photos or []), created_at=now())
+    db.add(e)
+    db.flush()
+    return e
+
+
+def timeline(db: Session, a: Assignment) -> list[AssignmentEvent]:
+    return list(db.scalars(select(AssignmentEvent).where(AssignmentEvent.assignment_id == a.id)
+                           .order_by(AssignmentEvent.created_at, AssignmentEvent.id)))
 
 
 # ------------------------------------------------------------------ bids
@@ -99,9 +155,12 @@ def pay_escrow(db: Session, customer: User, a: Assignment, *, method: str, razor
     `payment.captured` webhook is the second, independent confirmation."""
     if a.job.customer_id != customer.id:
         raise AppError("err.not_your_job", 403)
+    _ensure_active(a)
     p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
-    if p.escrow_state == EscrowState.held:
-        return p  # idempotent: double-tap on "Pay" never charges twice
+    if not p or a.job.status != JobStatus.assigned and p.escrow_state == EscrowState.created:
+        raise AppError("err.job_closed", 409)
+    if p.escrow_state != EscrowState.created:
+        return p  # idempotent: double-tap / replay on "Pay" never charges twice (held, or already settled)
     if get_settings().payment_provider != "mock":
         if not (razorpay_payment_id and signature and
                 services.payment().verify_checkout_signature(p.razorpay_ref or "", razorpay_payment_id, signature)):
@@ -126,6 +185,9 @@ def mark_held(db: Session, p: Payment, a: Assignment, actor_id) -> None:
 # ------------------------------------------------------------------ work
 def start_work(db: Session, actor: User, a: Assignment) -> None:
     job = a.job
+    _ensure_active(a)
+    if job.status in (JobStatus.disputed, JobStatus.cancelled):
+        raise AppError("err.job_closed", 409)
     _require_paid(db, a)  # nobody starts work before the money is safely in escrow
     if job.status == JobStatus.assigned:
         transition(db, job, kind="job", field="status", new=JobStatus.in_progress, actor_id=actor.id)
@@ -139,10 +201,15 @@ CITY_SPEED_KMH = 20  # two-wheeler in city traffic; used for the customer's ETA
 def start_journey(db: Session, worker: User, a: Assignment, lat: float | None, lng: float | None) -> None:
     if a.worker_id != worker.id:
         raise AppError("err.forbidden", 403)
+    _ensure_active(a)
     _require_paid(db, a)
+    first = a.journey_started_at is None
     a.journey_started_at = a.journey_started_at or now()
     if lat is not None and lng is not None:
         update_location(db, worker, a, lat, lng)
+    if first:  # the no-show clock: ETA at departure (30 min if we do not know where the worker is)
+        eta = (tracking(a) or {}).get("eta_min") or 30
+        a.expected_arrival_at = now() + timedelta(minutes=eta)
     audit(db, actor_id=worker.id, action="journey.started", entity="assignment", entity_id=a.id)
 
 
@@ -168,23 +235,258 @@ def tracking(a: Assignment) -> dict | None:
     return out
 
 
-def worker_done(db: Session, worker: User, a: Assignment) -> None:
-    """Worker says the work is finished; the customer still confirms (complete_work) and rates."""
+def worker_done(db: Session, worker: User, a: Assignment, photos: list[str] | None = None, note: str | None = None) -> None:
+    """Worker says the work is finished. At least one "after" proof photo is REQUIRED; the customer then
+    confirms (complete_work), sends it back (request_rework) or reports a problem. Idempotent: a double
+    tap or an offline replay never creates a second "finished" event."""
     if a.worker_id != worker.id:
         raise AppError("err.forbidden", 403)
+    _ensure_active(a)
+    job = a.job
+    if job.status == JobStatus.completed or (a.worker_done_at and not a.rework_open and job.status == JobStatus.in_progress):
+        return
+    if job.status == JobStatus.disputed:
+        raise AppError("err.job_disputed", 409)
+    if job.status not in (JobStatus.assigned, JobStatus.in_progress):
+        raise AppError("err.job_closed", 409)
+    proof = _photos(photos, required=True)
+    note = _note(note)
     start_work(db, worker, a)
-    a.worker_done_at = a.worker_done_at or now()
-    audit(db, actor_id=worker.id, action="work.worker_done", entity="assignment", entity_id=a.id)
+    a.worker_done_at, a.proof_photos, a.worker_done_note, a.rework_open = now(), proof, note, False
+    add_event(db, a, "worker_done", "worker", note=note, photos=proof)
+    audit(db, actor_id=worker.id, action="work.worker_done", entity="assignment", entity_id=a.id, photos=len(proof),
+          round=a.rework_count + 1)
     services.realtime().publish(f"job:{a.job_id}", "worker_done", {})
 
 
 def complete_work(db: Session, customer: User, a: Assignment) -> None:
+    """"Yes, the work is done." Idempotent; refused while a dispute is open (only an admin resolves that)."""
     job = a.job
     if job.customer_id != customer.id:
         raise AppError("err.not_your_job", 403)
+    _ensure_active(a)
+    if job.status == JobStatus.completed:
+        return
+    if job.status == JobStatus.disputed:
+        raise AppError("err.job_disputed", 409)
+    if job.status not in (JobStatus.assigned, JobStatus.in_progress):
+        raise AppError("err.job_closed", 409)
     start_work(db, customer, a)  # assigned → in_progress if the worker never tapped "start"
     transition(db, job, kind="job", field="status", new=JobStatus.completed, actor_id=customer.id)
-    a.completed_at = now()
+    a.completed_at = a.completed_at or now()
+    a.rework_open = False
+    add_event(db, a, "confirmed", "customer")
+
+
+def request_rework(db: Session, customer: User, a: Assignment, reasons: list[str], note: str | None,
+                   photos: list[str] | None) -> dict:
+    """"Not done yet - send back". Rounds 1 and 2 return the job to the worker with the customer's reason and
+    photos. A THIRD disagreement is not sent back again: a dispute opens automatically (money stays frozen
+    in escrow; support calls both sides and an admin decides the split via resolve_dispute)."""
+    job = a.job
+    if job.customer_id != customer.id:
+        raise AppError("err.not_your_job", 403)
+    _ensure_active(a)
+    if job.status == JobStatus.disputed:
+        raise AppError("err.job_disputed", 409)
+    if job.status != JobStatus.in_progress or not a.worker_done_at or a.rework_open:
+        raise AppError("err.nothing_to_send_back", 409)
+    reasons = [r for r in dict.fromkeys(reasons or [])]
+    if not reasons or any(r not in REWORK_REASONS for r in reasons):
+        raise AppError("err.validation", 422)
+    note, photos = _note(note), _photos(photos)
+    add_event(db, a, "rework_requested", "customer", reasons=reasons, note=note, photos=photos)
+    if a.rework_count >= MAX_REWORK_ROUNDS:
+        text = f"Auto-opened after {MAX_REWORK_ROUNDS + 1} disagreements. Customer says: {', '.join(reasons)}. {note or ''}".strip()
+        d = raise_dispute(db, customer, a, text, auto=True)
+        return {"outcome": "disputed", "dispute_id": str(d.id), "rework_count": a.rework_count}
+    a.rework_count += 1
+    a.rework_open = True
+    a.worker_done_at = None  # the worker must finish again (and attach new proof)
+    audit(db, actor_id=customer.id, action="work.rework_requested", entity="assignment", entity_id=a.id,
+          reasons=reasons, round=a.rework_count)
+    services.realtime().publish(f"job:{a.job_id}", "rework", {})
+    return {"outcome": "rework", "rework_count": a.rework_count, "rework_left": MAX_REWORK_ROUNDS - a.rework_count}
+
+
+# ------------------------------------------------------------------ auto-confirm (protects the worker)
+def auto_confirm_at(a: Assignment) -> datetime | None:
+    if a.worker_done_at and not a.rework_open and a.released_at is None and not a.auto_confirmed:
+        return a.worker_done_at + timedelta(hours=AUTO_CONFIRM_HOURS)
+    return None
+
+
+def _auto_rate(db: Session, a: Assignment) -> None:
+    """Neutral rating: lets the escrow release (the mandatory-rating gate stays intact) but is flagged
+    `is_auto`, scores nothing and is excluded from the worker's average and history."""
+    if db.scalar(select(Rating.id).where(Rating.assignment_id == a.id, Rating.direction == RatingDirection.customer_to_worker)):
+        return
+    db.add(Rating(assignment_id=a.id, direction=RatingDirection.customer_to_worker, rater_id=a.job.customer_id,
+                  ratee_id=a.worker_id, overall=0.0, is_auto=True, comment=None))
+    db.flush()
+    db.get(WorkerProfile, a.worker_id).completed_jobs += 1
+    release_payment(db, a, actor_id=None)
+    audit(db, actor_id=None, action="payment.auto_released", entity="assignment", entity_id=a.id)
+
+
+def maybe_auto_confirm(db: Session, a: Assignment, at: datetime | None = None) -> bool:
+    """Lazy 48 h rule, evaluated whenever either side loads the job (and by `sweep_auto_confirm`).
+    (1) worker said finished and the customer stayed silent 48 h -> confirmed + paid, neutral rating.
+    (2) customer confirmed but never rated for 48 h -> the same neutral rating releases the money.
+    Only ever applies to money that is HELD, never in a dispute and never on a released hire."""
+    at = at or now()
+    job = a.job
+    if a.released_at is not None or a.escrow_status != EscrowState.held:
+        return False
+    due = auto_confirm_at(a)
+    if job.status == JobStatus.in_progress and due and at >= due:
+        transition(db, job, kind="job", field="status", new=JobStatus.completed, actor_id=None, reason="auto_confirm")
+        a.completed_at, a.auto_confirmed = at, True
+        add_event(db, a, "auto_confirmed", "system")
+        _auto_rate(db, a)
+        services.realtime().publish(f"job:{a.job_id}", "auto_confirmed", {})
+        return True
+    if job.status == JobStatus.completed and a.completed_at and at >= a.completed_at + timedelta(hours=AUTO_CONFIRM_HOURS):
+        if not db.scalar(select(Rating.id).where(Rating.assignment_id == a.id,
+                                                 Rating.direction == RatingDirection.customer_to_worker)):
+            a.auto_confirmed = True
+            add_event(db, a, "auto_rated", "system")
+            _auto_rate(db, a)
+            return True
+    return False
+
+
+def sweep_auto_confirm(db: Session, at: datetime | None = None) -> int:
+    """Auto-confirm every due assignment (called when jobs/assignments are listed; also usable from a cron)."""
+    at = at or now()
+    cutoff = at - timedelta(hours=AUTO_CONFIRM_HOURS)
+    rows = db.scalars(select(Assignment).where(
+        Assignment.released_at.is_(None), Assignment.escrow_status == EscrowState.held,
+        ((Assignment.worker_done_at <= cutoff) & Assignment.rework_open.is_(False)) | (Assignment.completed_at <= cutoff))).all()
+    n = sum(1 for a in rows if maybe_auto_confirm(db, a, at))
+    if n:
+        db.flush()
+    return n
+
+
+# ------------------------------------------------------------------ releasing a hire (cancel / no-show / withdraw)
+def _void_or_refund(db: Session, a: Assignment, actor_id) -> int:
+    """Money side of ending a hire: unpaid order -> voided (nothing ever moved); held -> refunded IN FULL
+    (quote + fee). Settled money (released/split/refunded) can never be touched here."""
+    p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
+    if p is None:
+        return 0
+    if p.escrow_state == EscrowState.created:
+        audit(db, actor_id=actor_id, action="payment.voided", entity="payment", entity_id=p.id, amount=p.amount_paise)
+        db.delete(p)
+        db.flush()
+        return 0
+    if p.escrow_state != EscrowState.held:
+        raise AppError("err.payment_not_held", 409)
+    services.payment().refund(p.razorpay_ref or "", p.amount_paise, p.transfer_ref, p.worker_payout_paise)
+    transition(db, p, kind="escrow", field="escrow_state", new=EscrowState.refunded, actor_id=actor_id, reason="hire_released")
+    refunded = p.amount_paise
+    p.refund_paise, p.worker_payout_paise, p.platform_fee_paise, p.released_at = refunded, 0, 0, now()
+    a.escrow_status = EscrowState.refunded
+    return refunded
+
+
+def release_hire(db: Session, actor: User, a: Assignment, *, reason: str, reopen: bool) -> dict:
+    """End a hire BEFORE work started. reopen=True puts the job back on the market (earlier quotes return);
+    reopen=False cancels the job. Paid money is refunded in full; a paid-for hire the worker abandons
+    (withdrew / no-show) costs the worker a strike. Idempotent."""
+    if a.released_at is not None:
+        return {"status": a.job.status.value, "refunded_inr": 0}
+    job = a.job
+    if job.status in (JobStatus.in_progress, JobStatus.disputed, JobStatus.completed) or a.started_at or a.worker_done_at:
+        raise AppError("err.job_started", 409)
+    if job.status != JobStatus.assigned:
+        raise AppError("err.job_closed", 409)
+    paid = db.scalar(select(Payment.escrow_state).where(Payment.assignment_id == a.id)) == EscrowState.held
+    refunded = _void_or_refund(db, a, actor.id)
+    a.released_at, a.release_reason = now(), reason
+    bid = db.get(Bid, a.accepted_bid_id)
+    transition(db, bid, kind="bid", field="status", new=BidStatus.withdrawn, actor_id=actor.id, reason=reason)
+    add_event(db, a, "released", "worker" if reason == "worker_withdrew" else "customer", reasons=[reason])
+    if reopen:
+        revived = 0
+        for other in db.scalars(select(Bid).where(Bid.job_id == job.id, Bid.status == BidStatus.rejected)):
+            transition(db, other, kind="bid", field="status", new=BidStatus.pending, actor_id=actor.id, reason="hire_released")
+            revived += 1
+        transition(db, job, kind="job", field="status", new=JobStatus.bidding if revived else JobStatus.open,
+                   actor_id=actor.id, reason=reason)
+    else:
+        transition(db, job, kind="job", field="status", new=JobStatus.cancelled, actor_id=actor.id, reason=reason)
+    if paid and reason in ("worker_withdrew", "no_show"):
+        wp = db.get(WorkerProfile, a.worker_id)
+        wp.strikes += 1
+        if wp.strikes >= 3:
+            wp.is_suspended = True
+            audit(db, actor_id=actor.id, action="worker.auto_suspended", entity="user", entity_id=a.worker_id)
+    audit(db, actor_id=actor.id, action="hire.released", entity="assignment", entity_id=a.id, reason=reason,
+          refunded=refunded, reopened=reopen)
+    services.realtime().publish(f"job:{a.job_id}", "hire_released", {"reason": reason})
+    return {"status": job.status.value, "refunded_inr": refunded / 100}
+
+
+def no_show_after(db: Session, a: Assignment) -> datetime | None:
+    """When the customer may report "worker never came": ETA given at departure + 60 min; if the worker never
+    even set off, start date 09:00 IST + 3 h (and never before the payment). None = not reportable."""
+    if a.started_at or a.worker_done_at or a.released_at:
+        return None
+    if a.expected_arrival_at:
+        return a.expected_arrival_at + timedelta(minutes=NO_SHOW_GRACE_MIN)
+    if a.journey_started_at:
+        return a.journey_started_at + timedelta(minutes=90)
+    p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
+    if not p or p.escrow_state != EscrowState.held or not p.paid_at:
+        return None
+    base = datetime.combine(a.job.start_date, time(9, 0), tzinfo=IST)
+    return max(p.paid_at, base) + timedelta(minutes=NO_SHOW_NO_JOURNEY_GRACE_MIN)
+
+
+def report_no_show(db: Session, customer: User, a: Assignment) -> dict:
+    if a.job.customer_id != customer.id:
+        raise AppError("err.not_your_job", 403)
+    _ensure_active(a)
+    if a.started_at or a.worker_done_at:
+        raise AppError("err.job_started", 409)
+    due = no_show_after(db, a)
+    if due is None or now() < due:
+        mins = 60 if due is None else max(1, math.ceil((due - now()).total_seconds() / 60))
+        raise AppError("err.no_show_too_early", 409, minutes=mins)
+    return release_hire(db, customer, a, reason="no_show", reopen=True)
+
+
+def customer_cancel_hire(db: Session, customer: User, a: Assignment, *, reopen: bool) -> dict:
+    if a.job.customer_id != customer.id:
+        raise AppError("err.not_your_job", 403)
+    return release_hire(db, customer, a, reason="customer_changed" if reopen else "cancelled", reopen=reopen)
+
+
+def worker_withdraw_hire(db: Session, worker: User, a: Assignment) -> dict:
+    if a.worker_id != worker.id:
+        raise AppError("err.forbidden", 403)
+    return release_hire(db, worker, a, reason="worker_withdrew", reopen=True)
+
+
+def nudge_workers(db: Session, customer: User, job: Job) -> None:
+    if job.customer_id != customer.id:
+        raise AppError("err.not_your_job", 403)
+    if job.status not in (JobStatus.open, JobStatus.bidding):
+        raise AppError("err.job_closed", 409)
+    if job.nudged_at and now() - job.nudged_at < timedelta(hours=NUDGE_COOLDOWN_HOURS):
+        raise AppError("err.nudge_too_soon", 409, hours=NUDGE_COOLDOWN_HOURS)
+    job.nudged_at = now()
+    audit(db, actor_id=customer.id, action="job.nudged", entity="job", entity_id=job.id)
+    services.realtime().publish("feed", "nudge", {"job_id": str(job.id)})
+
+
+def no_quotes_hint(db: Session, job: Job) -> bool:
+    """Open for 24 h+ and nobody has a live quote: the app suggests nudging / adding detail."""
+    if job.status not in (JobStatus.open, JobStatus.bidding) or now() - job.created_at < timedelta(hours=NO_QUOTES_HOURS):
+        return False
+    return not db.scalar(select(Bid.id).where(Bid.job_id == job.id, Bid.status == BidStatus.pending))
 
 
 # ------------------------------------------------------------------ ratings
@@ -385,18 +687,38 @@ def attendance(db: Session, worker: User, a: Assignment, *, kind: str, lat: floa
 
 
 # ------------------------------------------------------------------ disputes
-def raise_dispute(db: Session, user: User, a: Assignment, reason: str) -> Dispute:
+def raise_dispute(db: Session, user: User, a: Assignment, reason: str, *, auto: bool = False) -> Dispute:
+    """Either side may report a problem; the money stays frozen in escrow until an admin decides
+    (resolve_dispute). Needs money in escrow (otherwise there is nothing to protect: cancel instead).
+    Idempotent: a second tap returns the open dispute."""
     job = a.job
     if user.id not in (job.customer_id, a.worker_id):
         raise AppError("err.forbidden", 403)
+    _ensure_active(a)
+    if job.status == JobStatus.disputed:
+        d = db.scalar(select(Dispute).where(Dispute.assignment_id == a.id, Dispute.status != DisputeStatus.resolved)
+                      .order_by(Dispute.created_at.desc()))
+        if d:
+            return d
+    if job.status not in (JobStatus.assigned, JobStatus.in_progress, JobStatus.completed):
+        raise AppError("err.job_closed", 409)
     if len(reason.strip()) < 5:
         raise AppError("err.validation", 422)
+    if a.escrow_status != EscrowState.held:
+        raise AppError("err.payment_not_held", 409)
+    if user.id == a.worker_id and not (a.started_at or a.worker_done_at):
+        raise AppError("err.too_early_to_dispute", 409)
     transition(db, job, kind="job", field="status", new=JobStatus.disputed, actor_id=user.id)
-    evidence = [wi.audio_url for wi in job.work_items if wi.audio_url]
-    d = Dispute(assignment_id=a.id, raised_by=user.id, reason=reason.strip()[:2000], evidence_refs=evidence)
+    evidence = [wi.audio_url for wi in job.work_items if wi.audio_url] + list(a.proof_photos or [])
+    for e in timeline(db, a):
+        evidence += list(e.photos or [])
+    d = Dispute(assignment_id=a.id, raised_by=user.id, reason=reason.strip()[:2000],
+                evidence_refs=list(dict.fromkeys(evidence)))
     db.add(d)
     db.flush()
-    audit(db, actor_id=user.id, action="dispute.raised", entity="dispute", entity_id=d.id)
+    add_event(db, a, "disputed", "system" if auto else ("customer" if user.id == job.customer_id else "worker"),
+              note=reason.strip()[:500])
+    audit(db, actor_id=user.id, action="dispute.raised", entity="dispute", entity_id=d.id, auto=auto)
     return d
 
 
@@ -415,6 +737,8 @@ def resolve_dispute(db: Session, admin: User, d: Dispute, *, worker_share_pct: i
             audit(db, actor_id=admin.id, action="worker.auto_suspended", entity="user", entity_id=a.worker_id)
     final = JobStatus.completed if worker_share_pct > 0 else JobStatus.cancelled
     transition(db, a.job, kind="job", field="status", new=final, actor_id=admin.id, reason="dispute_resolved")
+    a.rework_open = False
+    add_event(db, a, "dispute_resolved", "admin", note=f"worker_share={worker_share_pct}%")
     d.status, d.resolution, d.resolved_by, d.resolved_at = DisputeStatus.resolved, \
         f"worker_share={worker_share_pct}%; penalise={penalise}; {note}".strip(), admin.id, now()
     audit(db, actor_id=admin.id, action="dispute.resolved", entity="dispute", entity_id=d.id,

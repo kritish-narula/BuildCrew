@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../core/api.dart';
+import '../core/error_text.dart';
 import '../core/speech.dart';
 import '../core/theme.dart';
 import '../l10n/gen/app_localizations.dart';
@@ -340,8 +341,10 @@ class ComingSoon extends StatelessWidget {
 
 void showError(BuildContext context, Object e) {
   final l = L.of(context);
-  // Server errors arrive already translated into the user's language; we only fill gaps.
-  final msg = switch (e) {
+  // Server errors arrive already translated into the user's language; we only fill gaps
+  // (the demo backend throws bare codes: map those to friendly text).
+  final coded = e is ApiException && needsLocalText(e.message) ? errorMessageFor(l, e.code, e.message) : null;
+  final msg = coded ?? switch (e) {
     ApiException(code: 'network') => l.errorNetwork,
     ApiException(code: 'err.otp_invalid', message: '') => l.errorGeneric,
     ApiException(:final message) when message.isNotEmpty => message,

@@ -4,6 +4,7 @@ import '../../core/api.dart';
 import '../../core/app_state.dart';
 import '../../core/location.dart';
 import '../../core/outbox.dart';
+import '../../core/poller.dart';
 import '../../core/speech.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
@@ -25,18 +26,29 @@ class WorkerShell extends StatefulWidget {
   State<WorkerShell> createState() => _WorkerShellState();
 }
 
+/// Fired by the shell's poll / app resume: every visible tab reloads quietly (old data stays on screen).
+class _RefreshTick extends ChangeNotifier {
+  void fire() => notifyListeners();
+}
+
 class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver {
   int _tab = 0;
+  final _tick = _RefreshTick();
+  late final Poller _poller;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     Outbox.instance.init(widget.state.api);
+    // 4 s while the app is in the foreground (paused in the background, immediate refresh on resume).
+    _poller = Poller(const Duration(seconds: 4), () async => _tick.fire())..start();
   }
 
   @override
   void dispose() {
+    _poller.dispose();
+    _tick.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -55,9 +67,9 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver {
       child: Scaffold(
         body: SafeArea(
           child: IndexedStack(index: _tab, children: [
-            JobsTab(state: widget.state),
-            BidsTab(state: widget.state, active: _tab == 1),
-            EarningsTab(state: widget.state, active: _tab == 2),
+            JobsTab(state: widget.state, refresh: _tick),
+            BidsTab(state: widget.state, active: _tab == 1, refresh: _tick),
+            EarningsTab(state: widget.state, active: _tab == 2, refresh: _tick),
             WorkerProfileTab(state: widget.state, active: _tab == 3),
           ]),
         ),
@@ -99,18 +111,24 @@ class PendingChip extends StatelessWidget {
 }
 
 // ================================================================== S4 Jobs
+DateTime? _lastLocationPush; // the 4 s refresh must not re-send the phone's position every time
+
 class JobsTab extends StatelessWidget {
-  const JobsTab({super.key, required this.state});
+  const JobsTab({super.key, required this.state, this.refresh});
   final AppState state;
+  final Listenable? refresh;
 
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
     return AsyncList<(List<Json>, List<Json>)>(
+      refresh: refresh,
       load: () async {
         // "Near you" must mean near the worker's real position, not a saved home address.
-        final p = await LocationService.quiet();
+        final stale = _lastLocationPush == null || DateTime.now().difference(_lastLocationPush!) > const Duration(minutes: 1);
+        final p = stale ? await LocationService.quiet() : null;
         if (p != null) {
+          _lastLocationPush = DateTime.now();
           try {
             await state.api.updateMyLocation(p.latitude, p.longitude);
           } catch (_) {}
@@ -119,7 +137,7 @@ class JobsTab extends StatelessWidget {
       },
       builder: (ctx, data, reload) {
         final (jobs, work) = data;
-        final active = work.where((a) => const ['assigned', 'in_progress'].contains((a['job'] as Json)['status'])).toList();
+        final active = work.where((a) => const ['assigned', 'in_progress', 'disputed'].contains((a['job'] as Json)['status'])).toList();
         final toRate = work.where((a) => (a['job'] as Json)['status'] == 'completed' && (a['ratings'] as Map)['worker_to_customer'] == null).toList();
         final today = [...active, ...toRate];
         return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 24), children: [
@@ -200,7 +218,10 @@ class ActiveWorkCard extends StatelessWidget {
     final (label, icon) = switch (status) {
       'assigned' when unpaid => (l.waitingForPayment, Icons.hourglass_top_rounded),
       'assigned' => (l.workAssigned, Icons.event_available_rounded),
+      'in_progress' when a['rework_open'] == true => (l.reworkCardTitle, Icons.replay_rounded),
+      'in_progress' when a['worker_done_at'] != null => (l.waitingCustomerConfirm, Icons.hourglass_bottom_rounded),
       'in_progress' => (l.workInProgress, Icons.construction_rounded),
+      'disputed' => (l.statusDisputed, Icons.gavel_rounded),
       _ => (l.rateCustomerCta, Icons.star_rounded),
     };
     return AppCard(
@@ -314,7 +335,8 @@ class JobCard extends StatelessWidget {
 
 // ================================================================== S6 My Bids
 class BidsTab extends StatelessWidget {
-  const BidsTab({super.key, required this.state, required this.active});
+  const BidsTab({super.key, required this.state, required this.active, this.refresh});
+  final Listenable? refresh;
   final AppState state;
   final bool active;
 
@@ -323,6 +345,7 @@ class BidsTab extends StatelessWidget {
     final l = L.of(context);
     if (!active) return const SizedBox.shrink(); // load when opened (saves data)
     return AsyncList<List<Json>>(
+      refresh: refresh,
       load: state.api.myBids,
       builder: (ctx, bids, reload) => ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 24), children: [
         Padding(
@@ -428,7 +451,8 @@ class _BidRowState extends State<_BidRow> {
 
 // ================================================================== S7 Earnings
 class EarningsTab extends StatelessWidget {
-  const EarningsTab({super.key, required this.state, required this.active});
+  const EarningsTab({super.key, required this.state, required this.active, this.refresh});
+  final Listenable? refresh;
   final AppState state;
   final bool active;
 
@@ -438,6 +462,7 @@ class EarningsTab extends StatelessWidget {
     final lang = state.language ?? 'hi';
     if (!active) return const SizedBox.shrink();
     return AsyncList<Json>(
+      refresh: refresh,
       load: state.api.earnings,
       builder: (ctx, e, reload) {
         final kyc = e['kyc'] as Json;

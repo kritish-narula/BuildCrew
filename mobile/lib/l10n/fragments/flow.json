@@ -1,0 +1,442 @@
+{
+  "beforePhotos": {
+    "en": "Before",
+    "hi": "पहले"
+  },
+  "afterPhotos": {
+    "en": "After (proof)",
+    "hi": "बाद में (सबूत)"
+  },
+  "noBeforePhotos": {
+    "en": "No photos were added with the job.",
+    "hi": "काम के साथ कोई फ़ोटो नहीं जोड़ी गई थी।"
+  },
+  "noAfterPhotos": {
+    "en": "No photo",
+    "hi": "कोई फ़ोटो नहीं"
+  },
+  "addPhotoBtn": {
+    "en": "Add photo",
+    "hi": "फ़ोटो जोड़ें"
+  },
+  "tlTitle": {
+    "en": "What happened so far",
+    "hi": "अब तक क्या हुआ"
+  },
+  "tlWorkerDone": {
+    "en": "Worker said the work is finished",
+    "hi": "कारीगर ने काम पूरा बताया"
+  },
+  "tlReworkRequested": {
+    "en": "Customer sent the work back",
+    "hi": "ग्राहक ने काम वापस भेजा"
+  },
+  "tlConfirmed": {
+    "en": "Customer confirmed the work is done",
+    "hi": "ग्राहक ने काम पूरा माना"
+  },
+  "tlAutoConfirmed": {
+    "en": "No reply in 48 hours: confirmed automatically",
+    "hi": "48 घंटे में जवाब नहीं आया: अपने आप पूरा माना गया"
+  },
+  "tlAutoRated": {
+    "en": "Payment released automatically (no rating in 48 hours)",
+    "hi": "भुगतान अपने आप जारी हुआ (48 घंटे में रेटिंग नहीं मिली)"
+  },
+  "tlDisputed": {
+    "en": "Problem reported. BuildCrew support is looking into it",
+    "hi": "समस्या बताई गई। BuildCrew सहायता देख रही है"
+  },
+  "tlDisputeResolved": {
+    "en": "Support decided. Payment settled",
+    "hi": "सहायता ने फ़ैसला किया। भुगतान हो गया"
+  },
+  "tlRelCustomerChanged": {
+    "en": "Customer chose another worker",
+    "hi": "ग्राहक ने दूसरा कारीगर चुना"
+  },
+  "tlRelCancelled": {
+    "en": "Customer cancelled the job",
+    "hi": "ग्राहक ने काम रद्द किया"
+  },
+  "tlRelWorkerWithdrew": {
+    "en": "Worker stepped back from the job",
+    "hi": "कारीगर ने काम छोड़ दिया"
+  },
+  "tlRelNoShow": {
+    "en": "Worker did not arrive",
+    "hi": "कारीगर नहीं पहुँचा"
+  },
+  "reasonIncomplete": {
+    "en": "Work is incomplete",
+    "hi": "काम अधूरा है"
+  },
+  "reasonPoorQuality": {
+    "en": "Poor quality",
+    "hi": "काम अच्छा नहीं है"
+  },
+  "reasonDamage": {
+    "en": "Something was damaged",
+    "hi": "कुछ टूट-फूट हुई"
+  },
+  "reasonNotCame": {
+    "en": "Worker did not come",
+    "hi": "कारीगर आया ही नहीं"
+  },
+  "reasonOther": {
+    "en": "Something else",
+    "hi": "कुछ और"
+  },
+  "finishTitle": {
+    "en": "Show the finished work",
+    "hi": "पूरा किया हुआ काम दिखाएँ"
+  },
+  "finishHint": {
+    "en": "Add at least 1 photo of the finished work. The customer compares it with the “before” photos.",
+    "hi": "पूरे काम की कम से कम 1 फ़ोटो जोड़ें। ग्राहक इसे 'पहले' की फ़ोटो से मिलाएगा।"
+  },
+  "finishNoteHint": {
+    "en": "Note for the customer (optional)",
+    "hi": "ग्राहक के लिए नोट (ज़रूरी नहीं)"
+  },
+  "finishSend": {
+    "en": "Send: work finished",
+    "hi": "भेजें: काम पूरा हुआ"
+  },
+  "finishNeedPhoto": {
+    "en": "Add a photo first",
+    "hi": "पहले फ़ोटो जोड़ें"
+  },
+  "finishSentWaiting": {
+    "en": "Sent. Waiting for the customer to confirm.",
+    "hi": "भेज दिया। ग्राहक की पुष्टि का इंतज़ार है।"
+  },
+  "doneAgain": {
+    "en": "I fixed it: mark done again",
+    "hi": "मैंने ठीक कर दिया: फिर से पूरा बताएँ"
+  },
+  "reworkCardTitle": {
+    "en": "Customer sent the work back",
+    "hi": "ग्राहक ने काम वापस भेजा"
+  },
+  "reworkCardRound": {
+    "en": "Send-back {n} of {total}",
+    "hi": "वापस भेजना {n} / {total}",
+    "placeholders": {
+      "n": "int",
+      "total": "int"
+    }
+  },
+  "reworkCardSub": {
+    "en": "Fix what the customer reported, take new photos and mark it done again.",
+    "hi": "ग्राहक ने जो बताया उसे ठीक करें, नई फ़ोटो लें और फिर से पूरा बताएँ।"
+  },
+  "reworkCustomerSays": {
+    "en": "Customer says",
+    "hi": "ग्राहक ने बताया"
+  },
+  "autoReleaseWorker": {
+    "en": "If the customer does not reply, you are paid automatically in {hours} h.",
+    "hi": "अगर ग्राहक जवाब नहीं देता, तो {hours} घंटे में आपको अपने आप पैसा मिल जाएगा।",
+    "placeholders": {
+      "hours": "int"
+    }
+  },
+  "autoPaidWorker": {
+    "en": "The customer did not reply in 48 hours, so your payment was released automatically.",
+    "hi": "ग्राहक ने 48 घंटे में जवाब नहीं दिया, इसलिए आपका पैसा अपने आप जारी हो गया।"
+  },
+  "workerDisputeBtn": {
+    "en": "Customer not confirming or unfair? Report it",
+    "hi": "ग्राहक पुष्टि नहीं कर रहा या गलत है? बताएँ"
+  },
+  "withdrawHireBtn": {
+    "en": "I cannot do this job",
+    "hi": "मैं यह काम नहीं कर सकता"
+  },
+  "withdrawHireTitle": {
+    "en": "Step back from this job?",
+    "hi": "यह काम छोड़ें?"
+  },
+  "withdrawHireBody": {
+    "en": "The customer is refunded and the job goes back to other workers. If the customer already paid, this counts as a strike against you.",
+    "hi": "ग्राहक को पैसे वापस मिलेंगे और काम दूसरे कारीगरों के पास जाएगा। अगर ग्राहक पैसा दे चुका है, तो यह आपके खिलाफ़ एक स्ट्राइक गिना जाएगा।"
+  },
+  "withdrawHireConfirm": {
+    "en": "Yes, step back",
+    "hi": "हाँ, छोड़ता हूँ"
+  },
+  "hireEndedWorker": {
+    "en": "This job is no longer yours. The customer cancelled it or chose someone else.",
+    "hi": "यह काम अब आपका नहीं है। ग्राहक ने रद्द किया या किसी और को चुना।"
+  },
+  "savedDoneOffline": {
+    "en": "Saved on phone. “Work finished” will be sent when the network returns.",
+    "hi": "फ़ोन में सहेजा गया। नेटवर्क आते ही 'काम पूरा' भेज दिया जाएगा।"
+  },
+  "doneBannerCountdown": {
+    "en": "Confirm or send back within {hours} h, otherwise payment releases automatically.",
+    "hi": "{hours} घंटे के अंदर पुष्टि करें या वापस भेजें, वरना भुगतान अपने आप जारी हो जाएगा।",
+    "placeholders": {
+      "hours": "int"
+    }
+  },
+  "compareTitle": {
+    "en": "Before and after",
+    "hi": "पहले और बाद में"
+  },
+  "workerNoteLabel": {
+    "en": "Worker's note",
+    "hi": "कारीगर का नोट"
+  },
+  "yesWorkDone": {
+    "en": "Yes, work is done",
+    "hi": "हाँ, काम पूरा हुआ"
+  },
+  "notDoneSendBack": {
+    "en": "Not done yet — send back",
+    "hi": "अभी पूरा नहीं — वापस भेजें"
+  },
+  "sendBackTitle": {
+    "en": "Send back to the worker",
+    "hi": "कारीगर को वापस भेजें"
+  },
+  "sendBackPick": {
+    "en": "What is wrong? Pick one or more",
+    "hi": "क्या गलत है? एक या ज़्यादा चुनें"
+  },
+  "sendBackNote": {
+    "en": "Tell the worker what to fix (optional)",
+    "hi": "कारीगर को बताएँ क्या ठीक करना है (ज़रूरी नहीं)"
+  },
+  "sendBackPhotosHint": {
+    "en": "Add photos of the problem (optional)",
+    "hi": "समस्या की फ़ोटो जोड़ें (ज़रूरी नहीं)"
+  },
+  "sendBackSubmit": {
+    "en": "Send back",
+    "hi": "वापस भेजें"
+  },
+  "sendBackLeft": {
+    "en": "You can send it back {n} more time(s). After that, BuildCrew support steps in.",
+    "hi": "आप {n} बार और वापस भेज सकते हैं। उसके बाद BuildCrew सहायता देखेगी।",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "sendBackLast": {
+    "en": "This is the last send-back. If you are still not happy, BuildCrew support will call you both and decide. Your money stays safe.",
+    "hi": "यह आख़िरी बार वापस भेजना है। फिर भी ठीक न हुआ तो BuildCrew सहायता दोनों को फ़ोन करके फ़ैसला करेगी। आपका पैसा सुरक्षित रहेगा।"
+  },
+  "sendBackSupportSubmit": {
+    "en": "Ask support to decide",
+    "hi": "सहायता से फ़ैसला करवाएँ"
+  },
+  "sentBackDone": {
+    "en": "Sent back to {name}. They will fix it and mark it done again.",
+    "hi": "{name} को वापस भेज दिया। वे ठीक करके फिर से पूरा बताएँगे।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "sentBackDisputed": {
+    "en": "BuildCrew support will call you both. Your money stays safe in escrow until they decide.",
+    "hi": "BuildCrew सहायता आप दोनों को फ़ोन करेगी। फ़ैसले तक आपका पैसा एस्क्रो में सुरक्षित है।"
+  },
+  "reworkWaiting": {
+    "en": "Waiting for {name} to fix it",
+    "hi": "{name} के ठीक करने का इंतज़ार है",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "reworkWaitingSub": {
+    "en": "Sent back (send-back {n} of {total}). You will see it here when the work is marked done again.",
+    "hi": "वापस भेजा (वापस भेजना {n} / {total})। काम फिर से पूरा होते ही यहाँ दिखेगा।",
+    "placeholders": {
+      "n": "int",
+      "total": "int"
+    }
+  },
+  "autoReleasedCustomer": {
+    "en": "There was no reply for 48 hours, so payment was released to the worker automatically.",
+    "hi": "48 घंटे तक जवाब नहीं आया, इसलिए भुगतान अपने आप कारीगर को दे दिया गया।"
+  },
+  "noShowTitle": {
+    "en": "Worker has not arrived",
+    "hi": "कारीगर अभी तक नहीं पहुँचा"
+  },
+  "noShowSub": {
+    "en": "The expected arrival time passed more than an hour ago.",
+    "hi": "पहुँचने का अनुमानित समय एक घंटे से ज़्यादा पहले बीत चुका है।"
+  },
+  "noShowBtn": {
+    "en": "Report: worker did not come",
+    "hi": "बताएँ: कारीगर नहीं आया"
+  },
+  "noShowConfirmBody": {
+    "en": "You get a full refund and the job goes back to other workers.",
+    "hi": "आपको पूरा पैसा वापस मिलेगा और काम दूसरे कारीगरों के पास जाएगा।"
+  },
+  "noShowDone": {
+    "en": "Reported. {refund} refunded. The job is open for new quotes.",
+    "hi": "बता दिया गया। {refund} वापस किए गए। काम नए दामों के लिए खुला है।",
+    "placeholders": {
+      "refund": "String"
+    }
+  },
+  "noShowDoneFree": {
+    "en": "Reported. The job is open for new quotes.",
+    "hi": "बता दिया गया। काम नए दामों के लिए खुला है।"
+  },
+  "changeWorker": {
+    "en": "Choose another worker",
+    "hi": "दूसरा कारीगर चुनें"
+  },
+  "changeWorkerBody": {
+    "en": "If you already paid, you get a full refund. The job goes back to other workers' quotes.",
+    "hi": "अगर आप पैसा दे चुके हैं, तो पूरा वापस मिलेगा। काम दूसरे कारीगरों के दामों पर वापस जाएगा।"
+  },
+  "changeWorkerDone": {
+    "en": "The job is open again. Pick another quote.",
+    "hi": "काम फिर से खुल गया। दूसरा दाम चुनें।"
+  },
+  "cancelHireBody": {
+    "en": "If you already paid, you get a full refund.",
+    "hi": "अगर आप पैसा दे चुके हैं, तो पूरा वापस मिलेगा।"
+  },
+  "cancelledRefund": {
+    "en": "Job cancelled. {refund} refunded in full.",
+    "hi": "काम रद्द हुआ। {refund} पूरे वापस किए गए।",
+    "placeholders": {
+      "refund": "String"
+    }
+  },
+  "cancelledFree": {
+    "en": "Job cancelled.",
+    "hi": "काम रद्द हुआ।"
+  },
+  "workerSuspendedBanner": {
+    "en": "This worker's account is on hold. Please choose another worker.",
+    "hi": "इस कारीगर का खाता रोका गया है। कृपया दूसरा कारीगर चुनें।"
+  },
+  "noQuotesTitle": {
+    "en": "No quotes in 24 hours",
+    "hi": "24 घंटे में कोई दाम नहीं आया"
+  },
+  "noQuotesBody": {
+    "en": "Add more photos or detail, keep the date flexible, and remind nearby workers.",
+    "hi": "और फ़ोटो या जानकारी जोड़ें, तारीख़ लचीली रखें, और आस-पास के कारीगरों को याद दिलाएँ।"
+  },
+  "remindWorkers": {
+    "en": "Remind workers",
+    "hi": "कारीगरों को याद दिलाएँ"
+  },
+  "nudgeSent": {
+    "en": "Nearby workers were reminded.",
+    "hi": "आस-पास के कारीगरों को याद दिला दिया गया।"
+  },
+  "demoSkip48": {
+    "en": "Demo: skip 48 hours",
+    "hi": "डेमो: 48 घंटे आगे बढ़ाएँ"
+  },
+  "demoSkipEta": {
+    "en": "Demo: skip 2 hours (arrival time passes)",
+    "hi": "डेमो: 2 घंटे आगे बढ़ाएँ (पहुँचने का समय निकल जाए)"
+  },
+  "demoSkipSupport": {
+    "en": "Demo: let support decide",
+    "hi": "डेमो: सहायता को फ़ैसला करने दें"
+  },
+  "reportedSnack": {
+    "en": "Reported. Our team will contact you.",
+    "hi": "बता दिया गया। हमारी टीम आपसे संपर्क करेगी।"
+  },
+  "chatClosedBar": {
+    "en": "This chat is closed. The job went to another worker.",
+    "hi": "यह चैट बंद है। यह काम दूसरे कारीगर को मिल गया है।"
+  },
+  "errJobClosed": {
+    "en": "This job is not open for this any more.",
+    "hi": "यह काम अब इसके लिए खुला नहीं है।"
+  },
+  "errHireCancelled": {
+    "en": "This hire is no longer active. Please open the job again.",
+    "hi": "यह काम अब इस कारीगर के साथ नहीं है। कृपया काम फिर से खोलें।"
+  },
+  "errJobDisputed": {
+    "en": "This job is under review by BuildCrew support. Money stays safe until it is resolved.",
+    "hi": "यह काम BuildCrew सहायता की जाँच में है। फ़ैसले तक पैसा सुरक्षित रहेगा।"
+  },
+  "errProofRequired": {
+    "en": "Add at least 1 photo of the finished work.",
+    "hi": "पूरे हुए काम की कम से कम 1 फ़ोटो जोड़ें।"
+  },
+  "errNothingToSendBack": {
+    "en": "There is nothing to send back right now.",
+    "hi": "अभी वापस भेजने के लिए कुछ नहीं है।"
+  },
+  "errJobStarted": {
+    "en": "Work has already started, so this cannot be cancelled here.",
+    "hi": "काम शुरू हो चुका है, इसलिए यहाँ रद्द नहीं हो सकता।"
+  },
+  "errJobStartedDispute": {
+    "en": "Work has started. Please report a problem and BuildCrew support will help.",
+    "hi": "काम शुरू हो चुका है। कृपया 'समस्या बताएँ' दबाएँ, BuildCrew सहायता मदद करेगी।"
+  },
+  "errNoShowTooEarly": {
+    "en": "You can report this in {minutes} min. Please give the worker a little more time.",
+    "hi": "आप {minutes} मिनट बाद बता सकते हैं। कारीगर को थोड़ा और समय दें।",
+    "placeholders": {
+      "minutes": "String"
+    }
+  },
+  "errNudgeTooSoon": {
+    "en": "You already reminded workers. Please try again later.",
+    "hi": "आप कारीगरों को याद दिला चुके हैं। थोड़ी देर बाद फिर कोशिश करें।"
+  },
+  "errDateInPast": {
+    "en": "The start date cannot be in the past.",
+    "hi": "शुरू होने की तारीख बीती हुई नहीं हो सकती।"
+  },
+  "errDateTooFar": {
+    "en": "Please choose a date within the next year.",
+    "hi": "कृपया अगले एक साल के भीतर की तारीख चुनें।"
+  },
+  "errChatClosed": {
+    "en": "This chat is closed. The job went to another worker.",
+    "hi": "यह चैट बंद है। यह काम दूसरे कारीगर को मिल गया है।"
+  },
+  "errTooEarlyDispute": {
+    "en": "You can report a problem after you start the work.",
+    "hi": "काम शुरू करने के बाद ही समस्या बता सकते हैं।"
+  },
+  "errPaymentNotHeld": {
+    "en": "The payment is not in escrow, so there is nothing to protect.",
+    "hi": "भुगतान एस्क्रो में नहीं है।"
+  },
+  "errAlreadyRated": {
+    "en": "The rating is already done (or payment was released automatically).",
+    "hi": "रेटिंग हो चुकी है (या भुगतान अपने आप जारी हो गया है)।"
+  },
+  "errPaymentPending": {
+    "en": "The customer has not paid yet. Work starts after payment.",
+    "hi": "ग्राहक ने अभी भुगतान नहीं किया। भुगतान के बाद काम शुरू होगा।"
+  },
+  "errValidation": {
+    "en": "Some details are missing or wrong. Please check and try again.",
+    "hi": "कुछ जानकारी छूटी या गलत है। कृपया जाँचकर फिर कोशिश करें।"
+  },
+  "errTooManyPhotos": {
+    "en": "Maximum 5 photos.",
+    "hi": "ज़्यादा से ज़्यादा 5 फ़ोटो।"
+  },
+  "errAccountSuspended": {
+    "en": "Your account is on hold. Please call support.",
+    "hi": "आपका खाता रोका गया है। कृपया सहायता को फ़ोन करें।"
+  },
+  "errJobNotCompleted": {
+    "en": "Mark the work as done first.",
+    "hi": "पहले काम पूरा करें।"
+  }
+}

@@ -1,10 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
+import '../../core/poller.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
@@ -13,6 +12,7 @@ import 'customer_home.dart' show customerRoute;
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 import '../common/chat.dart';
+import '../common/completion_ui.dart';
 import '../worker/assignment_screen.dart' show EscrowLine;
 import '../worker/job_detail.dart' show WorkItemView;
 import '../worker/worker_shell.dart' show badgeLabel, initials;
@@ -32,35 +32,65 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
   bool _byRating = false;
   Json? _job;
   Object? _error;
-  Timer? _timer;
+  late final Poller _poller;
+  final _acting = ValueNotifier<bool>(false); // a button's request is in flight: no polling, no double taps
+  String? _uid;
+  int _seq = 0, _applied = 0; // an older response arriving late must never overwrite a newer one
 
   AppState get state => widget.state;
 
   @override
   void initState() {
     super.initState();
+    _uid = state.user?.id;
+    state.addListener(_onState);
     _load();
-    // Quiet refresh while the screen is open: new quotes, worker moving on the map, "finished".
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) => _load(silent: true));
+    // Quiet refresh while the screen is open and the app is in the foreground: new quotes, worker moving on the
+    // map, "finished". Pull-to-refresh and every action refresh immediately.
+    _poller = Poller(const Duration(seconds: 3), () => _load(silent: true), enabled: () => !_acting.value)..start();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _poller.dispose();
+    state.removeListener(_onState);
+    _acting.dispose();
     super.dispose();
   }
 
+  /// Another account signed in on this phone: this job belongs to the old one.
+  void _onState() {
+    if (mounted && state.user?.id != _uid) Navigator.of(context).maybePop();
+  }
+
   Future<void> _load({bool silent = false}) async {
+    final seq = ++_seq;
     try {
       final j = await state.api.customerJob(widget.jobId);
-      if (mounted) {
-        setState(() {
-          _job = j;
-          _error = null;
-        });
-      }
+      if (!mounted || seq < _applied) return;
+      _applied = seq;
+      setState(() {
+        _job = j;
+        _error = null;
+      });
     } catch (e) {
-      if (mounted && !silent) setState(() => _error = e);
+      if (!mounted) return;
+      if (e is ApiException && (e.code == 'err.not_found' || e.code == 'err.not_your_job')) {
+        Navigator.of(context).maybePop(); // not this account's job (account switched mid-flow)
+        return;
+      }
+      if (!silent && _job == null) setState(() => _error = e);
+    }
+  }
+
+  Future<void> _nudge(Json job) async {
+    final l = L.of(context);
+    try {
+      await state.api.nudgeJob(job['id'] as String);
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BC.money, content: Text(l.nudgeSent, style: const TextStyle(fontSize: 15, color: Colors.white))));
+    } catch (e) {
+      if (mounted) showError(context, e);
     }
   }
 
@@ -140,7 +170,13 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
       if (a != null) ...[
         _Tracker(status: status, assignment: a),
         const SizedBox(height: 14),
-        _NextStep(state: state, job: job, a: a, onPay: () => _openPayment(job, (a['worker'] as Json)['name'] as String, a['price_inr'] as num, job['fee_inr'] as num? ?? 30), reload: _load),
+        ValueListenableBuilder<bool>(
+          valueListenable: _acting,
+          builder: (_, acting, __) => _NextStep(
+              state: state, job: job, a: a, busy: _acting, acting: acting,
+              onPay: () => _openPayment(job, (a['worker'] as Json)['name'] as String, a['price_inr'] as num, job['fee_inr'] as num? ?? 30),
+              reload: _load),
+        ),
       ] else if (status == 'open' || status == 'bidding') ...[
         Row(children: [
           Expanded(child: Text(l.workersQuoted(bids.length), style: Theme.of(context).textTheme.titleLarge)),
@@ -154,6 +190,24 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
         ]),
         const SizedBox(height: 10),
         if (bids.isEmpty) InfoBanner(icon: Icons.hourglass_top_rounded, color: const Color(0xFF92400E), text: l.waitingForQuotes),
+        if (job['no_quotes_24h'] == true) ...[
+          const SizedBox(height: 10),
+          AppCard(
+            color: BC.pendingSoft,
+            borderColor: BC.pending.withValues(alpha: 0.5),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                const Icon(Icons.lightbulb_rounded, color: BC.pendingInk),
+                const SizedBox(width: 8),
+                Expanded(child: Text(l.noQuotesTitle, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: BC.pendingInk))),
+              ]),
+              const SizedBox(height: 6),
+              Text(l.noQuotesBody, style: BC.subtle),
+              const SizedBox(height: 10),
+              SecondaryButton(icon: Icons.notifications_active_rounded, label: l.remindWorkers, onPressed: () => _nudge(job)),
+            ]),
+          ),
+        ],
         for (final (i, b) in bids.indexed) ...[
           _BidCard(
             bid: b,
@@ -241,11 +295,13 @@ class _Tracker extends StatelessWidget {
 
 /// ONE card that always says what happens next and offers the one action that matters.
 class _NextStep extends StatelessWidget {
-  const _NextStep({required this.state, required this.job, required this.a, required this.onPay, required this.reload});
+  const _NextStep({required this.state, required this.job, required this.a, required this.onPay, required this.reload, required this.busy, required this.acting});
   final AppState state;
   final Json job, a;
   final VoidCallback onPay;
   final Future<void> Function({bool silent}) reload;
+  final ValueNotifier<bool> busy; // shared "an action is running" flag (also pauses polling)
+  final bool acting;
 
   @override
   Widget build(BuildContext context) {
@@ -323,19 +379,62 @@ class _NextStep extends StatelessWidget {
       );
     } else if (status == 'assigned' || status == 'in_progress') {
       final done = a['worker_done_at'] != null;
-      main = hero(
-        icon: done ? Icons.task_alt_rounded : Icons.construction_rounded,
-        color: done ? BC.money : BC.info,
-        title: done ? l.workerSaysDone(name) : l.workerAtSite(name),
-        sub: done ? l.checkAndConfirm : (att.isNotEmpty ? l.attendanceDays(att.length) : null),
-        child: workerRow,
-        action: FilledButton.icon(
-          onPressed: () => _confirmDone(context),
-          style: FilledButton.styleFrom(backgroundColor: BC.money),
-          icon: const Icon(Icons.task_alt_rounded),
-          label: BtnLabel(l.workIsDone),
-        ),
-      );
+      if (a['rework_open'] == true) {
+        final round = (a['rework_count'] as num?)?.toInt() ?? 1;
+        main = hero(
+          icon: Icons.replay_rounded,
+          color: BC.pendingInk,
+          title: l.reworkWaiting(name),
+          sub: l.reworkWaitingSub(round, round + ((a['rework_left'] as num?)?.toInt() ?? 0)),
+          child: workerRow,
+        );
+      } else if (done) {
+        final hours = hoursUntil(a['auto_confirm_at'] as String?);
+        final note = (a['worker_done_note'] as String?) ?? '';
+        main = hero(
+          icon: Icons.task_alt_rounded,
+          color: BC.money,
+          title: l.workerSaysDone(name),
+          sub: l.checkAndConfirm,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            workerRow,
+            const SizedBox(height: 12),
+            Text(l.compareTitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            BeforeAfter(
+              before: ((a['before_photos'] as List?) ?? const []).cast<String>(),
+              after: ((a['proof_photos'] as List?) ?? const []).cast<String>(),
+            ),
+            if (note.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text('${l.workerNoteLabel}: $note', maxLines: 5, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, height: 1.4)),
+            ],
+            if (hours != null) ...[
+              const SizedBox(height: 12),
+              InfoBanner(icon: Icons.timer_rounded, color: BC.pendingInk, text: l.doneBannerCountdown(hours)),
+            ],
+          ]),
+          action: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            PrimaryButton(color: BC.money, icon: Icons.task_alt_rounded, label: l.yesWorkDone, busy: acting, onPressed: () => _confirmDone(context)),
+            const SizedBox(height: 10),
+            SecondaryButton(icon: Icons.replay_rounded, label: l.notDoneSendBack, onPressed: acting ? null : () => _sendBack(context, name)),
+          ]),
+        );
+      } else {
+        main = hero(
+          icon: Icons.construction_rounded,
+          color: BC.info,
+          title: l.workerAtSite(name),
+          sub: att.isNotEmpty ? l.attendanceDays(att.length) : null,
+          child: workerRow,
+          action: FilledButton.icon(
+            onPressed: acting ? null : () => _confirmDone(context),
+            style: FilledButton.styleFrom(backgroundColor: BC.money),
+            icon: const Icon(Icons.task_alt_rounded),
+            label: BtnLabel(l.workIsDone),
+          ),
+        );
+      }
     } else if (status == 'completed' && !rated && escrow == 'held') {
       main = hero(
         icon: Icons.star_rounded,
@@ -351,7 +450,9 @@ class _NextStep extends StatelessWidget {
         color: BC.money,
         title: l.allDone,
         sub: pay == null ? null : l.escrowReleased(inr(pay['worker_payout_inr'] as num)),
-        child: workerRow,
+        child: a['auto_confirmed'] == true && escrow == 'released'
+            ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [workerRow, const SizedBox(height: 10), InfoBanner(icon: Icons.timer_rounded, color: BC.money, text: l.autoReleasedCustomer)])
+            : workerRow,
         action: pay == null
             ? null
             : OutlinedButton.icon(
@@ -389,12 +490,139 @@ class _NextStep extends StatelessWidget {
       if (status != 'disputed' && escrow == 'held') ...[
         const SizedBox(height: 4),
         TextButton.icon(
-          onPressed: () => _dispute(context),
+          onPressed: acting ? null : () => _dispute(context),
           icon: const Icon(Icons.report_gmailerrorred_rounded, color: BC.danger),
           label: Text(l.reportProblem, style: const TextStyle(color: BC.danger)),
         ),
       ],
+      // ---- before work starts: the customer can always walk away (money back in full) or pick someone else
+      if (status == 'assigned' && a['started_at'] == null) ...[
+        if (a['can_report_no_show'] == true) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: BC.danger.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(BC.r), border: Border.all(color: BC.danger.withValues(alpha: 0.4))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text(l.noShowTitle, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: BC.danger)),
+              Text(l.noShowSub, style: BC.subtle),
+              const SizedBox(height: 10),
+              PrimaryButton(color: BC.danger, icon: Icons.person_off_rounded, label: l.noShowBtn, busy: acting, onPressed: () => _noShow(context)),
+            ]),
+          ),
+        ],
+        if (a['worker_suspended'] == true) ...[
+          const SizedBox(height: 10),
+          InfoBanner(icon: Icons.block_rounded, color: BC.danger, text: l.workerSuspendedBanner),
+        ],
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(
+            child: TextButton.icon(
+              onPressed: acting ? null : () => _changeWorker(context),
+              icon: const Icon(Icons.swap_horiz_rounded),
+              label: Text(l.changeWorker, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+          Expanded(
+            child: TextButton.icon(
+              onPressed: acting ? null : () => _cancelHire(context),
+              icon: const Icon(Icons.cancel_outlined, color: BC.danger),
+              label: Text(l.cancelJob, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BC.danger)),
+            ),
+          ),
+        ]),
+      ],
+      if (((a['timeline'] as List?) ?? const []).isNotEmpty) ...[
+        const SizedBox(height: 10),
+        CompletionTimeline(events: (a['timeline'] as List).cast<Json>()),
+      ],
+      // ---- demo only: pretend time passes (48 h auto-confirm, arrival time, support's decision)
+      if (status == 'disputed') DemoTimeSkip(state: state, jobId: job['id'] as String, label: l.demoSkipSupport, by: const Duration(hours: 24), onDone: () => reload()),
+      if (status == 'in_progress' && a['auto_confirm_at'] != null)
+        DemoTimeSkip(state: state, jobId: job['id'] as String, label: l.demoSkip48, by: const Duration(hours: 48), onDone: () => reload()),
+      if (status == 'assigned' && a['started_at'] == null && a['can_report_no_show'] != true && a['no_show_after'] != null)
+        DemoTimeSkip(state: state, jobId: job['id'] as String, label: l.demoSkipEta, by: const Duration(hours: 2), onDone: () => reload()),
     ]);
+  }
+
+  /// One action at a time; polling pauses meanwhile; errors become friendly snackbars.
+  Future<void> _guard(BuildContext context, Future<void> Function() fn) async {
+    if (busy.value) return;
+    busy.value = true;
+    try {
+      await fn();
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  void _snack(BuildContext context, String text, {Color color = BC.ink}) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(backgroundColor: color, content: Text(text, style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.white))));
+  }
+
+  Future<bool> _ask(BuildContext context, String title, String body, String yes, {bool danger = false}) async {
+    final l = L.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(c, true), style: danger ? FilledButton.styleFrom(backgroundColor: BC.danger) : null, child: Text(yes)),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _sendBack(BuildContext context, String name) async {
+    final l = L.of(context);
+    final r = await showSendBackSheet(context, left: (a['rework_left'] as num?)?.toInt() ?? 0);
+    if (r == null || !context.mounted) return;
+    await _guard(context, () async {
+      final keys = await uploadPhotos(state.api, r.photos);
+      final out = await state.api.sendBack(job['id'] as String, reasons: r.reasons, note: r.note, photos: keys);
+      await reload();
+      _snack(context, out['outcome'] == 'disputed' ? l.sentBackDisputed : l.sentBackDone(name), color: out['outcome'] == 'disputed' ? BC.danger : BC.money);
+    });
+  }
+
+  Future<void> _noShow(BuildContext context) async {
+    final l = L.of(context);
+    if (!await _ask(context, l.noShowBtn, l.noShowConfirmBody, l.noShowBtn, danger: true) || !context.mounted) return;
+    await _guard(context, () async {
+      final out = await state.api.reportNoShow(job['id'] as String);
+      await reload();
+      final refunded = (out['refunded_inr'] as num?) ?? 0;
+      _snack(context, refunded > 0 ? l.noShowDone(inr(refunded)) : l.noShowDoneFree, color: BC.money);
+    });
+  }
+
+  Future<void> _changeWorker(BuildContext context) async {
+    final l = L.of(context);
+    if (!await _ask(context, l.changeWorker, l.changeWorkerBody, l.changeWorker) || !context.mounted) return;
+    await _guard(context, () async {
+      await state.api.reopenJob(job['id'] as String);
+      await reload();
+      _snack(context, l.changeWorkerDone, color: BC.money);
+    });
+  }
+
+  Future<void> _cancelHire(BuildContext context) async {
+    final l = L.of(context);
+    if (!await _ask(context, l.cancelJob, l.cancelHireBody, l.cancelJob, danger: true) || !context.mounted) return;
+    await _guard(context, () async {
+      final out = await state.api.cancelJob(job['id'] as String);
+      await reload();
+      final refunded = (out['refunded_inr'] as num?) ?? 0;
+      _snack(context, refunded > 0 ? l.cancelledRefund(inr(refunded)) : l.cancelledFree);
+    });
   }
 
   Future<void> _confirmDone(BuildContext context) async {
@@ -410,14 +638,12 @@ class _NextStep extends StatelessWidget {
         ],
       ),
     );
-    if (ok != true) return;
-    try {
+    if (ok != true || !context.mounted) return;
+    await _guard(context, () async {
       await state.api.completeJob(job['id'] as String);
       await reload();
       if (context.mounted) await _rate(context);
-    } catch (e) {
-      if (context.mounted) showError(context, e);
-    }
+    });
   }
 
   Future<void> _rate(BuildContext context) async {
@@ -432,20 +658,20 @@ class _NextStep extends StatelessWidget {
       context: context,
       builder: (d) => AlertDialog(
         title: Text(l.reportProblem),
-        content: TextField(controller: c, maxLines: 4, decoration: InputDecoration(hintText: l.disputeHint)),
+        content: TextField(controller: c, maxLines: 4, maxLength: 1000, decoration: InputDecoration(hintText: l.disputeHint)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d, false), child: Text(l.cancel)),
           FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(l.submit)),
         ],
       ),
     );
-    if (ok != true || c.text.trim().length < 5) return;
-    try {
-      await state.api.dispute(job['id'] as String, c.text.trim());
+    final text = c.text.trim();
+    if (ok != true || text.length < 5 || !context.mounted) return;
+    await _guard(context, () async {
+      await state.api.dispute(job['id'] as String, text);
       await reload();
-    } catch (e) {
-      if (context.mounted) showError(context, e);
-    }
+      _snack(context, l.reportedSnack);
+    });
   }
 }
 
@@ -618,7 +844,11 @@ class _RateWorkerScreenState extends State<RateWorkerScreen> {
                     );
                     if (context.mounted) Navigator.pop(context, true);
                   } catch (e) {
-                    if (context.mounted) showError(context, e);
+                    if (context.mounted) {
+                      showError(context, e);
+                      // rated twice / released automatically while this screen was open: nothing left to do here
+                      if (e is ApiException && e.code == 'err.already_rated') Navigator.pop(context, true);
+                    }
                   } finally {
                     if (mounted) setState(() => _busy = false);
                   }

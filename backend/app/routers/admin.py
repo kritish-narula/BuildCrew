@@ -156,7 +156,7 @@ def job_detail(job_id: uuid.UUID, user: User = Depends(A), db: Session = Depends
     j = db.get(Job, job_id)
     if not j:
         raise AppError("err.not_found", 404)
-    a = db.scalar(select(Assignment).where(Assignment.job_id == j.id))
+    a = flows.active_assignment(db, j.id)
     out = {**job_card(db, j, "en"), "customer": db.get(User, j.customer_id).name,
            "work_items": [work_item_view(db, wi, "en", include_audio=True, admin=True) for wi in j.work_items],
            "bids": [{"id": str(b.id), "price_inr": b.quoted_price_paise / 100, "status": b.status.value,
@@ -174,7 +174,7 @@ def cancel_job(job_id: uuid.UUID, user: User = Depends(A), db: Session = Depends
     j = db.get(Job, job_id)
     if not j:
         raise AppError("err.not_found", 404)
-    a = db.scalar(select(Assignment).where(Assignment.job_id == j.id))
+    a = flows.active_assignment(db, j.id)
     if a:
         p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
         if p and p.escrow_state == EscrowState.held:

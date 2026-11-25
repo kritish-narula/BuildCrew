@@ -8,7 +8,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger, Boolean, Date, DateTime, Enum, Float, ForeignKey, Index, Integer, SmallInteger,
-    String, Text, UniqueConstraint, func,
+    String, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -111,6 +111,7 @@ class Job(Base):
     start_date: Mapped[date] = mapped_column(Date)
     status: Mapped[JobStatus] = mapped_column(_enum(JobStatus), default=JobStatus.open, index=True)
     created_at: Mapped[datetime] = _created()
+    nudged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # customer reminded nearby workers
 
     work_items: Mapped[list["WorkItem"]] = relationship(back_populates="job", order_by="WorkItem.sort_order",
                                                         cascade="all, delete-orphan")
@@ -164,9 +165,13 @@ class Bid(Base):
 
 
 class Assignment(Base):
+    """One hire. A job has at most ONE ACTIVE assignment (`released_at IS NULL`); a released one
+    (worker withdrew / no-show / customer changed worker) stays as history so money trails
+    and strikes remain auditable, and the job can be hired out again."""
     __tablename__ = "assignments"
+    __table_args__ = (Index("uq_assignment_active_job", "job_id", unique=True, postgresql_where=text("released_at IS NULL")),)
     id: Mapped[uuid.UUID] = _pk()
-    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"), unique=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"), index=True)
     worker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     accepted_bid_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bids.id"))
     escrow_status: Mapped[EscrowState] = mapped_column(_enum(EscrowState), default=EscrowState.created)
@@ -177,10 +182,33 @@ class Assignment(Base):
     worker_lat: Mapped[float | None] = mapped_column(Float)
     worker_lng: Mapped[float | None] = mapped_column(Float)
     worker_loc_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    worker_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # worker says "finished"
+    expected_arrival_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # journey start + ETA
+    worker_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # worker says "finished" (current round)
+    # Completion disagreement flow (see domain/flows.py)
+    proof_photos: Mapped[list[str]] = mapped_column(ARRAY(String(500)), default=list, server_default="{}")
+    worker_done_note: Mapped[str | None] = mapped_column(Text)
+    rework_count: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")  # "send back" rounds used
+    rework_open: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # sent back, worker yet to redo
+    auto_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # hire ended (not the escrow!)
+    release_reason: Mapped[str | None] = mapped_column(String(30))  # customer_changed | worker_withdrew | no_show | cancelled | suspended
 
     job: Mapped[Job] = relationship()
     worker: Mapped[User] = relationship()
+
+
+class AssignmentEvent(Base):
+    """Append-only completion history shown as a timeline in both apps:
+    worker_done · rework_requested · confirmed · auto_confirmed · auto_rated · disputed · released."""
+    __tablename__ = "assignment_events"
+    id: Mapped[uuid.UUID] = _pk()
+    assignment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    actor_role: Mapped[str] = mapped_column(String(10))  # worker | customer | system | admin
+    reasons: Mapped[list[str]] = mapped_column(ARRAY(String(30)), default=list, server_default="{}")
+    note: Mapped[str | None] = mapped_column(Text)
+    photos: Mapped[list[str]] = mapped_column(ARRAY(String(500)), default=list, server_default="{}")
+    created_at: Mapped[datetime] = _created()
 
 
 class Attendance(Base):
@@ -216,6 +244,7 @@ class Rating(Base):
     clarity: Mapped[int | None] = mapped_column(SmallInteger)
     timely_payment: Mapped[int | None] = mapped_column(SmallInteger)
     overall: Mapped[float] = mapped_column(Float)  # computed server-side, never trusted from client
+    is_auto: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # neutral auto-rating: excluded from averages
     comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created()
 

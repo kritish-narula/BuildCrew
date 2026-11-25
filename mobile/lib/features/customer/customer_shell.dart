@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
+import '../../core/poller.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../common/chat.dart';
 import '../common/profile.dart';
@@ -14,7 +13,7 @@ import 'post_job.dart';
 import 'workers.dart';
 
 /// Customer app: Home · Bookings · Messages · Profile. The shell owns the bookings list (one
-/// fetch, refreshed every 10 s) so Home and Bookings always agree, and the unread badge.
+/// fetch, refreshed every 4 s while the app is open, at once on resume) so Home and Bookings always agree, and the unread badge.
 class CustomerShell extends StatefulWidget {
   const CustomerShell({super.key, required this.state});
   final AppState state;
@@ -30,7 +29,7 @@ class _CustomerShellState extends State<CustomerShell> {
   bool _failed = false;
   bool _loading = false;
   String? _uid;
-  Timer? _timer;
+  late final Poller _poller;
 
   AppState get _s => widget.state;
 
@@ -40,12 +39,12 @@ class _CustomerShellState extends State<CustomerShell> {
     _uid = _s.user?.id;
     _s.addListener(_onState);
     _reload();
-    _timer = Timer.periodic(const Duration(seconds: 10), (_) => _reload());
+    _poller = Poller(const Duration(seconds: 4), _reload)..start(); // paused in the background, immediate on resume
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _poller.dispose();
     _s.removeListener(_onState);
     super.dispose();
   }

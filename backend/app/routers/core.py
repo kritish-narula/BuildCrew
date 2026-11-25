@@ -208,6 +208,11 @@ def chat_list(job_id: uuid.UUID, with_user: uuid.UUID = Query(alias="with"), use
 def chat_send(job_id: uuid.UUID, body: ChatIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     from ..models import ChatMessage
     job, c, w = _chat_peers(db, user, job_id, body.to)
+    from ..domain.flows import active_assignment
+    from ..enums import JobStatus
+    hired = active_assignment(db, job.id)
+    if (hired and hired.worker_id != w) or job.status == JobStatus.cancelled:
+        raise AppError("err.chat_closed", 409)  # not hired (or job cancelled): the old thread stays readable, read-only
     m = ChatMessage(job_id=job.id, sender_id=user.id, recipient_id=w if user.id == c else c, body=body.body.strip())
     db.add(m)
     db.commit()

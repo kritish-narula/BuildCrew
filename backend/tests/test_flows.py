@@ -99,7 +99,9 @@ def test_full_lifecycle_with_mandatory_rating():
         assert a.status_code == 200 and a.json()["geofence_ok"]
     far = client.post("/worker/attendance", headers=plumber, json={"assignment_id": asg, "kind": "out", "lat": 18.40, "lng": 73.70})
     assert far.json()["geofence_ok"] is False  # recorded, but flagged
-    assert client.post(f"/worker/assignments/{asg}/done", headers=plumber).status_code == 200
+    assert client.post(f"/worker/assignments/{asg}/done", headers=plumber).status_code == 422  # proof photo is required
+    proof = upload(plumber, "photo", "after.jpg", b"\xff\xd8afterjpeg")
+    assert client.post(f"/worker/assignments/{asg}/done", headers=plumber, json={"photos": [proof]}).status_code == 200
     assert client.get(f"/customer/jobs/{jid}", headers=cust).json()["assignment"]["worker_done_at"]
 
     assert client.post(f"/customer/jobs/{jid}/complete", headers=cust).status_code == 200

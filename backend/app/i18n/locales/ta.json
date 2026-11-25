@@ -48,5 +48,17 @@
  "err.already_resolved": null,
  "voice.balance": null,
  "kyc.l1_prompt": null,
- "err.payment_pending": null
+ "err.payment_pending": null,
+ "err.hire_cancelled": null,
+ "err.job_disputed": null,
+ "err.proof_required": null,
+ "err.nothing_to_send_back": null,
+ "err.job_started": null,
+ "err.job_started_dispute": null,
+ "err.no_show_too_early": null,
+ "err.nudge_too_soon": null,
+ "err.date_in_past": null,
+ "err.date_too_far": null,
+ "err.chat_closed": null,
+ "err.too_early_to_dispute": null
 }

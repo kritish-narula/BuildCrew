@@ -63,7 +63,7 @@ class DemoApi implements Api {
   }
 
   Future<void> _save() async => (await SharedPreferences.getInstance()).setString(_key, jsonEncode(_db));
-  Future<void> _lag() => Future.delayed(Duration(milliseconds: 250 + _rnd.nextInt(250)));
+  Future<void> _lag() => Future.delayed(Duration(milliseconds: 60 + _rnd.nextInt(60))); // snappy: the owner asked for fast refresh
   String _id(String p) => '$p${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(999)}';
   String _now() => DateTime.now().toIso8601String();
   Never _err(String code) => throw ApiException(code, '');
@@ -105,7 +105,8 @@ class DemoApi implements Api {
         'thumbnail': [for (final it in j['items'] as List) ...((it as Map)['photos'] as List)].cast<String?>().firstOrNull,
       };
 
-  Json? _assignmentFor(Json d, String jobId) => _all(d, 'assignments').where((a) => a['job_id'] == jobId).firstOrNull;
+  /// The job's ACTIVE hire (a released one — cancelled / no-show / worker withdrew — is history).
+  Json? _assignmentFor(Json d, String jobId) => _all(d, 'assignments').where((a) => a['job_id'] == jobId && a['released_at'] == null).firstOrNull;
   Json? _paymentFor(Json d, String aid) => _all(d, 'payments').where((p) => p['assignment_id'] == aid).firstOrNull;
 
   Json _paymentView(Json p) => {
@@ -120,7 +121,20 @@ class DemoApi implements Api {
       for (final r in (d['ratings'] as List).cast<Map>().where((r) => r['assignment_id'] == a['id'])) r['direction'] as String: r,
     };
     final bid = _row(d, 'bids', a['bid_id'] as String);
+    final job = _row(d, 'jobs', a['job_id'] as String);
+    final events = ((a['events'] as List?) ?? const []).cast<Map>().toList();
+    final rework = a['rework_open'] == true ? events.lastWhere((e) => e['kind'] == 'rework_requested', orElse: () => <String, dynamic>{}) : null;
+    final due = _autoConfirmAt(a);
+    final noShow = _noShowAfter(d, a);
     return {
+      'proof_photos': a['proof'] ?? <String>[], 'worker_done_note': a['done_note'],
+      'before_photos': [for (final it in job['items'] as List) ...((it as Map)['photos'] as List)],
+      'rework_count': a['rework_count'] ?? 0, 'rework_left': max(0, _maxRework - ((a['rework_count'] as int?) ?? 0)), 'rework_open': a['rework_open'] == true,
+      'rework': rework == null || rework.isEmpty ? null : {'reasons': rework['reasons'], 'note': rework['note'], 'at': rework['at'], 'photos': rework['photos']},
+      'auto_confirm_at': due == null ? null : due.toIso8601String(), 'auto_confirm_hours': _autoConfirm.inHours, 'auto_confirmed': a['auto_confirmed'] == true,
+      'no_show_after': noShow?.toIso8601String(), 'can_report_no_show': noShow != null && !DateTime.now().isBefore(noShow),
+      'worker_suspended': _user(d, a['worker_id'] as String)['suspended'] == true,
+      'timeline': [for (final e in events) {'kind': e['kind'], 'by': e['by'], 'at': e['at'], 'reasons': e['reasons'] ?? <String>[], 'note': e['note'], 'photos': e['photos'] ?? <String>[]}],
       'tracking': _tracking(d, a), 'worker_done_at': a['worker_done_at'],
       'id': a['id'], 'worker': _workerSummary(d, a['worker_id'] as String), 'price_inr': bid['price'],
       'started_at': a['started_at'], 'completed_at': a['completed_at'], 'payment': p == null ? null : _paymentView(p),
@@ -153,6 +167,7 @@ class DemoApi implements Api {
 
   /// Start the worker ~3 km from the house (or from the phone's real position if it is far).
   void _beginJourney(Json d, Json a, {double? lat, double? lng}) {
+    // (also starts the no-show clock: ETA at departure + 60 min, see _noShowAfter)
     final j = _row(d, 'jobs', a['job_id'] as String);
     Map<String, dynamic> from;
     if (lat != null && lng != null && _dist({'lat': lat, 'lng': lng}, j) > 0.5) {
@@ -162,6 +177,8 @@ class DemoApi implements Api {
     }
     a['journey_from'] = from;
     a['journey_started_at'] = _now();
+    final km = _dist({'lat': from['lat'], 'lng': from['lng']}, j);
+    a['expected_arrival_at'] = DateTime.now().add(Duration(minutes: km > 0.15 ? max(1, (km / 20 * 60).round()) : 30)).toIso8601String();
   }
 
   double _dist(Json u, Json j) {
@@ -190,6 +207,7 @@ class DemoApi implements Api {
   /// Workers quote on a customer's new job ~15 s after posting; a customer accepts a worker's
   /// lowest pending quote ~30 s after it was placed. Lazy: evaluated whenever data is read.
   void _simulate(Json d) {
+    _sweepAuto(d); // 48 h auto-confirm is evaluated on every read, like the backend does on list/detail
     final now = DateTime.now();
     for (final j in _all(d, 'jobs').toList()) {
       if (!(j['status'] == 'open' || j['status'] == 'bidding') || j['sim'] != true) continue;
@@ -233,7 +251,194 @@ class DemoApi implements Api {
   }
 
   void _requirePaid(Json d, Json a) {
+    if (a['released_at'] != null) _err('err.hire_cancelled');
     if (_paymentFor(d, a['id'] as String)?['state'] == 'created') _err('err.payment_pending');
+  }
+
+  // ---------------------------------------------------------------- completion flow (mirrors backend/app/domain/flows.py)
+  static const _autoConfirm = Duration(hours: 48); // customer silent this long after "work finished" → auto-confirmed + paid
+  static const _maxRework = 2; // "send back" rounds; the 3rd disagreement opens a dispute
+  static const _reworkReasons = ['incomplete', 'poor_quality', 'damage', 'not_came', 'other'];
+  static const _noShowGrace = Duration(minutes: 60);
+
+  DateTime? _at(Object? v) => v is String ? DateTime.tryParse(v) : null;
+
+  Json _own(Json d, String jobId) {
+    final j = _row(d, 'jobs', jobId);
+    if (j['customer_id'] != _me) _err('err.not_found');
+    return j;
+  }
+
+  void _event(Json a, String kind, String by, {List<String> reasons = const [], String? note, List<String> photos = const []}) {
+    ((a['events'] ??= <dynamic>[]) as List).add({'kind': kind, 'by': by, 'at': _now(), 'reasons': reasons, 'note': note, 'photos': photos});
+  }
+
+  bool _rated(Json d, Json a) =>
+      (d['ratings'] as List).cast<Map>().any((r) => r['assignment_id'] == a['id'] && r['direction'] == 'customer_to_worker');
+
+  DateTime? _autoConfirmAt(Json a) {
+    final done = _at(a['worker_done_at']);
+    if (done == null || a['rework_open'] == true || a['released_at'] != null || a['auto_confirmed'] == true) return null;
+    return done.add(_autoConfirm);
+  }
+
+  /// Neutral rating: releases the money (the mandatory-rating gate stays intact) but scores nothing.
+  void _autoRate(Json d, Json a, Json p) {
+    if (_rated(d, a)) return;
+    (d['ratings'] as List).add({'assignment_id': a['id'], 'direction': 'customer_to_worker', 'ratee': a['worker_id'], 'overall': 0.0,
+      'is_auto': true, 'comment': null, 'created_at': _now()});
+    final w = _user(d, a['worker_id'] as String);
+    w['completed'] = (w['completed'] as int) + 1; // the job counts; the average and rating_count do not move
+    w['earned'] = ((w['earned'] as num?) ?? 0) + (p['payout'] as num);
+    p['state'] = 'released';
+    p['released_at'] = _now();
+  }
+
+  /// The 48 h rule. Only for money that is HELD; never during a dispute; never for a released hire.
+  void _sweepAuto(Json d) {
+    final now = DateTime.now();
+    for (final a in _all(d, 'assignments').toList()) {
+      if (a['released_at'] != null || a['no_auto'] == true) continue;
+      final p = _paymentFor(d, a['id'] as String);
+      if (p == null || p['state'] != 'held') continue;
+      final j = _row(d, 'jobs', a['job_id'] as String);
+      final due = _autoConfirmAt(a);
+      final doneAt = _at(a['completed_at']);
+      if (j['status'] == 'in_progress' && due != null && !now.isBefore(due)) {
+        j['status'] = 'completed';
+        a['completed_at'] = _now();
+        a['auto_confirmed'] = true;
+        _event(a, 'auto_confirmed', 'system');
+        _autoRate(d, a, p);
+      } else if (j['status'] == 'completed' && doneAt != null && !now.isBefore(doneAt.add(_autoConfirm)) && !_rated(d, a)) {
+        a['auto_confirmed'] = true;
+        _event(a, 'auto_rated', 'system');
+        _autoRate(d, a, p);
+      }
+    }
+  }
+
+  void _strike(Json d, String workerId) {
+    final u = _user(d, workerId);
+    u['strikes'] = ((u['strikes'] as int?) ?? 0) + 1;
+    if ((u['strikes'] as int) >= 3) u['suspended'] = true;
+  }
+
+  /// Unpaid order → voided; held → refunded IN FULL (quote + fee). Settled money is never touched.
+  num _voidOrRefund(Json d, Json a) {
+    final p = _paymentFor(d, a['id'] as String);
+    if (p == null) return 0;
+    if (p['state'] == 'created') {
+      _t(d, 'payments').remove(p['id']);
+      return 0;
+    }
+    if (p['state'] != 'held') _err('err.payment_not_held');
+    final amount = p['amount'] as num;
+    p['state'] = 'refunded';
+    p['refund'] = amount;
+    p['payout'] = 0;
+    p['fee'] = 0;
+    p['released_at'] = _now();
+    return amount;
+  }
+
+  /// End a hire BEFORE work started. reopen → back on the market (earlier quotes return); else the job is cancelled.
+  Json _releaseHire(Json d, Json a, String reason, {required bool reopen}) {
+    final j = _row(d, 'jobs', a['job_id'] as String);
+    if (a['released_at'] != null) return {'status': j['status'], 'refunded_inr': 0};
+    if (j['status'] == 'in_progress' || j['status'] == 'disputed' || j['status'] == 'completed' || a['started_at'] != null || a['worker_done_at'] != null) {
+      _err('err.job_started');
+    }
+    if (j['status'] != 'assigned') _err('err.job_closed');
+    final paid = _paymentFor(d, a['id'] as String)?['state'] == 'held';
+    final refunded = _voidOrRefund(d, a);
+    a['released_at'] = _now();
+    a['release_reason'] = reason;
+    _row(d, 'bids', a['bid_id'] as String)['status'] = 'withdrawn';
+    _event(a, 'released', reason == 'worker_withdrew' ? 'worker' : 'customer', reasons: [reason]);
+    if (reopen) {
+      var revived = 0;
+      for (final o in _all(d, 'bids').where((b) => b['job_id'] == j['id'] && b['status'] == 'rejected')) {
+        o['status'] = 'pending';
+        revived++;
+      }
+      j['status'] = revived > 0 ? 'bidding' : 'open';
+    } else {
+      j['status'] = 'cancelled';
+    }
+    if (paid && (reason == 'worker_withdrew' || reason == 'no_show')) _strike(d, a['worker_id'] as String);
+    return {'status': j['status'], 'refunded_inr': refunded};
+  }
+
+  /// ETA given at departure + 60 min (worker never set off: start date 09:00 + 3 h). null = not reportable.
+  DateTime? _noShowAfter(Json d, Json a) {
+    if (a['started_at'] != null || a['worker_done_at'] != null || a['released_at'] != null) return null;
+    final exp = _at(a['expected_arrival_at']);
+    if (exp != null) return exp.add(_noShowGrace);
+    final js = _at(a['journey_started_at']);
+    if (js != null) return js.add(const Duration(minutes: 90));
+    final p = _paymentFor(d, a['id'] as String);
+    final paid = _at(p?['paid_at']);
+    if (p == null || p['state'] != 'held' || paid == null) return null;
+    final start = DateTime.tryParse('${_row(d, 'jobs', a['job_id'] as String)['start_date']}T09:00:00') ?? paid;
+    return (paid.isAfter(start) ? paid : start).add(const Duration(minutes: 180));
+  }
+
+  /// Money stays frozen; the demo "support team" decides when [demoSkipTime] passes 24 h (50/50 split).
+  Json _openDispute(Json d, Json a, String reason, String byRole, {bool auto = false}) {
+    final j = _row(d, 'jobs', a['job_id'] as String);
+    final list = (d['disputes'] ??= <dynamic>[]) as List;
+    if (j['status'] == 'disputed') {
+      final open = list.cast<Map>().where((x) => x['assignment_id'] == a['id'] && x['status'] != 'resolved').lastOrNull;
+      if (open != null) return open.cast<String, dynamic>();
+    }
+    if (!(j['status'] == 'assigned' || j['status'] == 'in_progress' || j['status'] == 'completed')) _err('err.job_closed');
+    if (reason.trim().length < 5) _err('err.validation');
+    if (_paymentFor(d, a['id'] as String)?['state'] != 'held') _err('err.payment_not_held');
+    if (byRole == 'worker' && a['started_at'] == null && a['worker_done_at'] == null) _err('err.too_early_to_dispute');
+    j['status'] = 'disputed';
+    final row = <String, dynamic>{'id': _id('d'), 'assignment_id': a['id'], 'reason': reason.trim(), 'by': byRole, 'status': 'open', 'created_at': _now()};
+    list.add(row);
+    final t = reason.trim();
+    _event(a, 'disputed', auto ? 'system' : byRole, note: t.length > 500 ? t.substring(0, 500) : t);
+    return row;
+  }
+
+  void _demoResolveDispute(Json d, Json a) {
+    final p = _paymentFor(d, a['id'] as String);
+    final j = _row(d, 'jobs', a['job_id'] as String);
+    if (p == null || p['state'] != 'held') return;
+    final payout = p['payout'] as num;
+    final half = (payout / 2).round();
+    p['refund'] = (p['amount'] as num) - half - (p['fee'] as num);
+    p['payout'] = half;
+    p['state'] = 'split';
+    p['released_at'] = _now();
+    final w = _user(d, a['worker_id'] as String);
+    w['earned'] = ((w['earned'] as num?) ?? 0) + half;
+    j['status'] = 'completed';
+    a['completed_at'] ??= _now();
+    a['rework_open'] = false;
+    for (final x in ((d['disputes'] as List?) ?? const []).cast<Map>().where((x) => x['assignment_id'] == a['id'])) {
+      x['status'] = 'resolved';
+    }
+    _event(a, 'dispute_resolved', 'admin', note: 'worker_share=50%');
+  }
+
+  @override
+  Future<void> demoSkipTime(String jobId, Duration by) async {
+    final d = await _d;
+    final a = _assignmentFor(d, jobId) ?? _err('err.hire_cancelled');
+    for (final k in ['worker_done_at', 'completed_at', 'expected_arrival_at']) {
+      final t = _at(a[k]);
+      if (t != null) a[k] = t.subtract(by).toIso8601String();
+    }
+    final p = _paymentFor(d, a['id'] as String);
+    final paid = _at(p?['paid_at']);
+    if (p != null && paid != null) p['paid_at'] = paid.subtract(by).toIso8601String();
+    if (_row(d, 'jobs', jobId)['status'] == 'disputed' && by >= const Duration(hours: 24)) _demoResolveDispute(d, a);
+    _sweepAuto(d);
+    await _save();
   }
 
   // ---------------------------------------------------------------- auth
@@ -323,7 +528,7 @@ class DemoApi implements Api {
     if (dup != null) return {'id': dup['id'], 'status': dup['status'], 'price_inr': dup['price']};
     final j = _row(d, 'jobs', jobId);
     if (!(j['status'] == 'open' || j['status'] == 'bidding')) _err('err.job_closed');
-    if (priceInr < 100) _err('err.validation');
+    if (priceInr < 100 || priceInr > 10000000) _err('err.validation'); // zero / negative / absurd prices
     var b = _all(d, 'bids').where((b) => b['job_id'] == jobId && b['worker_id'] == _me).firstOrNull;
     if (b != null && b['status'] == 'pending') {
       b['price'] = priceInr;
@@ -349,7 +554,7 @@ class DemoApi implements Api {
     final bids = _all(d, 'bids').where((b) => b['worker_id'] == _me).toList()
       ..sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
     for (final b in bids) {
-      final a = _all(d, 'assignments').where((a) => a['bid_id'] == b['id']).firstOrNull;
+      final a = _all(d, 'assignments').where((a) => a['bid_id'] == b['id'] && a['released_at'] == null).firstOrNull;
       out.add({'id': b['id'], 'price_inr': b['price'], 'status': b['status'], 'created_at': b['created_at'],
         'job': _jobCard(_row(d, 'jobs', b['job_id'] as String)), 'assignment_id': a?['id']});
     }
@@ -373,7 +578,7 @@ class DemoApi implements Api {
     final d = await _d;
     _simulate(d);
     return [
-      for (final a in _all(d, 'assignments').where((a) => a['worker_id'] == _me))
+      for (final a in _all(d, 'assignments').where((a) => a['worker_id'] == _me && a['released_at'] == null))
         {
           ..._assignmentView(d, a),
           'job': {..._jobCard(_row(d, 'jobs', a['job_id'] as String)), 'address': _row(d, 'jobs', a['job_id'] as String)['address']},
@@ -434,13 +639,53 @@ class DemoApi implements Api {
   Future<void> sendLocation(String assignmentId, double lat, double lng) async {} // demo moves the marker itself
 
   @override
-  Future<void> markDone(String assignmentId) async {
+  Future<void> markDone(String assignmentId, {List<String> photos = const [], String? note}) async {
     await _lag();
     final d = await _d;
     final a = _row(d, 'assignments', assignmentId);
+    if (a['worker_id'] != _me) _err('err.not_found');
+    if (_user(d)['suspended'] == true) _err('err.account_suspended');
+    _sweepAuto(d);
+    if (a['released_at'] != null) _err('err.hire_cancelled');
+    final j = _row(d, 'jobs', a['job_id'] as String);
+    if (j['status'] == 'completed' || (a['worker_done_at'] != null && a['rework_open'] != true && j['status'] == 'in_progress')) return; // idempotent
+    if (j['status'] == 'disputed') _err('err.job_disputed');
+    if (!(j['status'] == 'assigned' || j['status'] == 'in_progress')) _err('err.job_closed');
+    final proof = [for (final p in photos) if (p.trim().isNotEmpty) p.trim()];
+    if (proof.length > 5) _err('err.too_many_photos');
+    if (proof.isEmpty) _err('err.proof_required');
+    final n = note?.trim();
+    if (n != null && n.length > 1000) _err('err.validation');
     await startWork(assignmentId);
     a['worker_done_at'] = _now();
+    a['proof'] = proof;
+    a['done_note'] = (n == null || n.isEmpty) ? null : n;
+    a['rework_open'] = false;
+    _event(a, 'worker_done', 'worker', note: a['done_note'] as String?, photos: proof);
     await _save();
+  }
+
+  @override
+  Future<void> workerDispute(String assignmentId, String reason) async {
+    await _lag();
+    final d = await _d;
+    final a = _row(d, 'assignments', assignmentId);
+    if (a['worker_id'] != _me) _err('err.not_found');
+    _sweepAuto(d);
+    if (a['released_at'] != null) _err('err.hire_cancelled');
+    _openDispute(d, a, reason, 'worker');
+    await _save();
+  }
+
+  @override
+  Future<Json> withdrawHire(String assignmentId) async {
+    await _lag();
+    final d = await _d;
+    final a = _row(d, 'assignments', assignmentId);
+    if (a['worker_id'] != _me) _err('err.not_found');
+    final out = _releaseHire(d, a, 'worker_withdrew', reopen: true);
+    await _save();
+    return out;
   }
 
   @override
@@ -515,7 +760,7 @@ class DemoApi implements Api {
   }
 
   Json _breakdown(Json d, String wid) {
-    final rs = (d['ratings'] as List).cast<Map>().where((r) => r['ratee'] == wid && r['direction'] == 'customer_to_worker').toList();
+    final rs = (d['ratings'] as List).cast<Map>().where((r) => r['ratee'] == wid && r['direction'] == 'customer_to_worker' && r['is_auto'] != true).toList();
     final u = _user(d, wid);
     double avg(String k) => rs.isEmpty ? (u['rating'] as num).toDouble() : rs.fold<num>(0, (s, r) => s + (r[k] as num)) / rs.length;
     double r1(double v) => double.parse(v.toStringAsFixed(1));
@@ -525,7 +770,7 @@ class DemoApi implements Api {
 
   List<Json> _history(Json d, String wid) {
     final out = <Json>[];
-    for (final r in (d['ratings'] as List).cast<Map>().where((r) => r['ratee'] == wid && r['direction'] == 'customer_to_worker')) {
+    for (final r in (d['ratings'] as List).cast<Map>().where((r) => r['ratee'] == wid && r['direction'] == 'customer_to_worker' && r['is_auto'] != true)) {
       final a = _row(d, 'assignments', r['assignment_id'] as String);
       final j = _row(d, 'jobs', a['job_id'] as String);
       out.add({'job_id': j['id'], 'locality': j['locality'], 'trades': [for (final it in j['items'] as List) (it as Map)['trade']].toSet().toList(),
@@ -541,7 +786,7 @@ class DemoApi implements Api {
     final d = await _d;
     final u = _user(d);
     return {..._workerSummary(d, _me!), 'phone': u['phone'], 'upi': _maskUpi(u['upi'] as String?), 'is_online': u['online'],
-      'breakdown': _breakdown(d, _me!), 'history': _history(d, _me!), 'kyc': _kyc(u), 'eshram_registered': u['eshram'] == true, 'strikes': 0};
+      'breakdown': _breakdown(d, _me!), 'history': _history(d, _me!), 'kyc': _kyc(u), 'eshram_registered': u['eshram'] == true, 'strikes': (u['strikes'] as int?) ?? 0};
   }
 
   @override
@@ -659,10 +904,19 @@ class DemoApi implements Api {
       final p = a == null ? null : _paymentFor(d, a['id'] as String);
       out.add({..._jobCard(j), 'bid_count': _all(d, 'bids').where((b) => b['job_id'] == j['id'] && b['status'] != 'withdrawn').length,
         'needs_rating': j['status'] == 'completed' && p?['state'] == 'held', 'worker_name': a == null ? null : _user(d, a['worker_id'] as String)['name'],
-        'payment_state': p?['state']});
+        'payment_state': p?['state'],
+        'needs_action': a != null && j['status'] == 'in_progress' && a['worker_done_at'] != null && a['rework_open'] != true,
+        'rework_open': a != null && a['rework_open'] == true, 'auto_confirm_at': a == null ? null : _autoConfirmAt(a)?.toIso8601String(),
+        'no_quotes_24h': _noQuotes24h(d, j)});
     }
     await _save();
     return out;
+  }
+
+  bool _noQuotes24h(Json d, Json j) {
+    if (!(j['status'] == 'open' || j['status'] == 'bidding')) return false;
+    if (DateTime.now().difference(DateTime.parse(j['created_at'] as String)) < const Duration(hours: 24)) return false;
+    return !_all(d, 'bids').any((b) => b['job_id'] == j['id'] && b['status'] == 'pending');
   }
 
   /// Same model as the backend. Extra optional [texts] (aligned with [trades]) and [city] improve the
@@ -690,6 +944,12 @@ class DemoApi implements Api {
     await _lag();
     final items = body['work_items'] as List;
     if (items.isEmpty) _err('err.no_work_items');
+    final sd = DateTime.tryParse('${body['start_date']}');
+    if (sd != null) {
+      final n = DateTime.now(), today = DateTime(n.year, n.month, n.day), day = DateTime(sd.year, sd.month, sd.day);
+      if (day.isBefore(today)) _err('err.date_in_past');
+      if (day.isAfter(today.add(const Duration(days: 365)))) _err('err.date_too_far');
+    }
     final d = await _d;
     final id = _id('j');
     final bodyCity = (body['city'] as String?)?.trim() ?? '';
@@ -734,6 +994,7 @@ class DemoApi implements Api {
             'fair': DemoPricing.fairCheck(b['price'] as num, _pricingItems(j), _cityOf(d, j), _user(d, b['worker_id'] as String)['trades'] as List)}
       ],
       'assignment': a == null ? null : _assignmentView(d, a), 'fee_inr': fee,
+      'no_quotes_24h': _noQuotes24h(d, j), 'nudged_at': j['nudged_at'],
     };
   }
 
@@ -757,8 +1018,9 @@ class DemoApi implements Api {
     final d = await _d;
     final j = _row(d, 'jobs', jobId);
     if (j['customer_id'] != _me) _err('err.not_your_job');
-    final a = _assignmentFor(d, jobId) ?? _err('err.not_found');
-    final p = _paymentFor(d, a['id'] as String) ?? _err('err.not_found');
+    final a = _assignmentFor(d, jobId) ?? _err('err.hire_cancelled'); // a stale payment page after a cancel / change of worker
+    final p = _paymentFor(d, a['id'] as String) ?? _err('err.hire_cancelled');
+    if (p['state'] == 'created' && j['status'] != 'assigned') _err('err.job_closed');
     if (p['state'] == 'created') {
       p['state'] = 'held';
       p['method'] = method;
@@ -774,15 +1036,51 @@ class DemoApi implements Api {
   @override
   Future<void> completeJob(String jobId) async {
     final d = await _d;
-    final j = _row(d, 'jobs', jobId);
-    if (j['customer_id'] != _me) _err('err.not_your_job');
-    final a = _assignmentFor(d, jobId) ?? _err('err.not_found');
+    final j = _own(d, jobId);
+    final a = _assignmentFor(d, jobId) ?? _err('err.hire_cancelled');
+    _sweepAuto(d); // the 48 h rule applies before the customer's action is evaluated
+    if (j['status'] == 'completed') return; // idempotent
+    if (j['status'] == 'disputed') _err('err.job_disputed');
     if (!(j['status'] == 'assigned' || j['status'] == 'in_progress')) _err('err.job_closed');
     _requirePaid(d, a);
     j['status'] = 'completed';
     a['started_at'] ??= _now();
-    a['completed_at'] = _now();
+    a['completed_at'] ??= _now();
+    a['rework_open'] = false;
+    _event(a, 'confirmed', 'customer');
     await _save();
+  }
+
+  @override
+  Future<Json> sendBack(String jobId, {required List<String> reasons, String? note, List<String> photos = const []}) async {
+    await _lag();
+    final d = await _d;
+    final j = _own(d, jobId);
+    final a = _assignmentFor(d, jobId) ?? _err('err.hire_cancelled');
+    _sweepAuto(d);
+    if (j['status'] == 'disputed') _err('err.job_disputed');
+    if (j['status'] != 'in_progress' || a['worker_done_at'] == null || a['rework_open'] == true) _err('err.nothing_to_send_back');
+    final rs = reasons.toSet().toList();
+    if (rs.isEmpty || rs.any((r) => !_reworkReasons.contains(r))) _err('err.validation');
+    final n = note?.trim();
+    if (n != null && n.length > 1000) _err('err.validation');
+    if (photos.length > 5) _err('err.too_many_photos');
+    final noteOrNull = (n == null || n.isEmpty) ? null : n;
+    _event(a, 'rework_requested', 'customer', reasons: rs, note: noteOrNull, photos: photos);
+    final rounds = (a['rework_count'] as int?) ?? 0;
+    Json out;
+    if (rounds >= _maxRework) {
+      // 3rd disagreement: no more ping-pong. Support decides; the money stays frozen in escrow.
+      final dsp = _openDispute(d, a, 'Auto-opened after ${_maxRework + 1} disagreements. Customer says: ${rs.join(', ')}. ${noteOrNull ?? ''}', 'customer', auto: true);
+      out = {'outcome': 'disputed', 'dispute_id': dsp['id'], 'rework_count': rounds};
+    } else {
+      a['rework_count'] = rounds + 1;
+      a['rework_open'] = true;
+      a['worker_done_at'] = null; // the worker must finish again, with new proof
+      out = {'outcome': 'rework', 'rework_count': rounds + 1, 'rework_left': _maxRework - rounds - 1};
+    }
+    await _save();
+    return out;
   }
 
   @override
@@ -814,21 +1112,76 @@ class DemoApi implements Api {
   }
 
   @override
-  Future<void> cancelJob(String jobId) async {
+  Future<Json> cancelJob(String jobId) async {
     final d = await _d;
-    final j = _row(d, 'jobs', jobId);
-    if (!(j['status'] == 'open' || j['status'] == 'bidding')) _err('err.job_closed');
-    j['status'] = 'cancelled';
-    for (final b in _all(d, 'bids').where((b) => b['job_id'] == jobId && b['status'] == 'pending')) {
-      b['status'] = 'rejected';
+    final j = _own(d, jobId);
+    if (j['status'] == 'cancelled') return {'status': 'cancelled', 'refunded_inr': 0};
+    if (j['status'] == 'open' || j['status'] == 'bidding') {
+      j['status'] = 'cancelled';
+      for (final b in _all(d, 'bids').where((b) => b['job_id'] == jobId && b['status'] == 'pending')) {
+        b['status'] = 'rejected';
+      }
+      await _save();
+      return {'status': 'cancelled', 'refunded_inr': 0};
     }
+    final a = _assignmentFor(d, jobId);
+    if (j['status'] == 'assigned' && a != null) {
+      final out = _releaseHire(d, a, 'cancelled', reopen: false);
+      await _save();
+      return out;
+    }
+    _err(j['status'] == 'in_progress' ? 'err.job_started_dispute' : 'err.job_closed');
+  }
+
+  @override
+  Future<Json> reopenJob(String jobId) async {
+    await _lag();
+    final d = await _d;
+    final j = _own(d, jobId);
+    final a = _assignmentFor(d, jobId);
+    if (a == null) {
+      if (j['status'] == 'open' || j['status'] == 'bidding') return {'status': j['status'], 'refunded_inr': 0};
+      _err('err.job_closed');
+    }
+    final out = _releaseHire(d, a, 'customer_changed', reopen: true);
+    await _save();
+    return out;
+  }
+
+  @override
+  Future<Json> reportNoShow(String jobId) async {
+    await _lag();
+    final d = await _d;
+    _own(d, jobId);
+    final a = _assignmentFor(d, jobId) ?? _err('err.hire_cancelled');
+    if (a['started_at'] != null || a['worker_done_at'] != null) _err('err.job_started');
+    final due = _noShowAfter(d, a);
+    if (due == null || DateTime.now().isBefore(due)) {
+      throw ApiException('err.no_show_too_early', '${due == null ? 60 : max(1, due.difference(DateTime.now()).inMinutes + 1)}');
+    }
+    final out = _releaseHire(d, a, 'no_show', reopen: true);
+    await _save();
+    return out;
+  }
+
+  @override
+  Future<void> nudgeJob(String jobId) async {
+    final d = await _d;
+    final j = _own(d, jobId);
+    if (!(j['status'] == 'open' || j['status'] == 'bidding')) _err('err.job_closed');
+    final last = _at(j['nudged_at']);
+    if (last != null && DateTime.now().difference(last) < const Duration(hours: 6)) _err('err.nudge_too_soon');
+    j['nudged_at'] = _now();
     await _save();
   }
 
   @override
   Future<void> dispute(String jobId, String reason) async {
     final d = await _d;
-    _row(d, 'jobs', jobId)['status'] = 'disputed';
+    _own(d, jobId);
+    final a = _assignmentFor(d, jobId) ?? _err('err.hire_cancelled');
+    _sweepAuto(d);
+    _openDispute(d, a, reason, 'customer');
     await _save();
   }
 
@@ -838,11 +1191,12 @@ class DemoApi implements Api {
     final d = await _d;
     final out = <Json>[];
     for (final j in _all(d, 'jobs').where((j) => j['customer_id'] == _me)) {
-      final a = _assignmentFor(d, j['id'] as String);
-      final p = a == null ? null : _paymentFor(d, a['id'] as String);
+      for (final a in _all(d, 'assignments').where((a) => a['job_id'] == j['id'])) {
+      final p = _paymentFor(d, a['id'] as String);
       if (p == null) continue;
-      out.add({..._paymentView(p), 'job_id': j['id'], 'locality': j['locality'], 'worker_name': _user(d, a!['worker_id'] as String)['name'],
+      out.add({..._paymentView(p), 'job_id': j['id'], 'locality': j['locality'], 'worker_name': _user(d, a['worker_id'] as String)['name'],
         'trades': [for (final it in j['items'] as List) (it as Map)['trade']].toSet().toList(), 'created_at': j['created_at']});
+      }
     }
     out.sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
     return out;
@@ -908,6 +1262,12 @@ class DemoApi implements Api {
   Future<void> sendChat(String jobId, String to, String body) async {
     final d = await _d;
     if (_me == null) _err('err.unauthorized');
+    if (body.trim().isEmpty || body.length > 1000) _err('err.validation');
+    final job = _row(d, 'jobs', jobId);
+    final hired = _assignmentFor(d, jobId);
+    final workerId = job['customer_id'] == _me ? to : _me;
+    // Not hired (or job cancelled): the thread stays readable but read-only.
+    if ((hired != null && hired['worker_id'] != workerId) || job['status'] == 'cancelled') _err('err.chat_closed');
     (d['chat'] as List).add({'job_id': jobId, 'from': _me, 'to': to, 'body': body.trim(), 'at': _now(), 'read': false});
     await _save();
   }
@@ -1071,7 +1431,8 @@ class DemoApi implements Api {
       'a3': {'id': 'a3', 'job_id': 'j3', 'worker_id': 'w7', 'bid_id': 'b4'},
       'a4': {'id': 'a4', 'job_id': 'j4', 'worker_id': 'w1', 'bid_id': 'b6', 'started_at': ago(const Duration(days: 2)),
         'journey_started_at': ago(const Duration(days: 2, minutes: 30))},
-      'a5': {'id': 'a5', 'job_id': 'j5', 'worker_id': 'w9', 'bid_id': 'b7', 'started_at': ago(const Duration(days: 8)), 'completed_at': ago(const Duration(days: 1))},
+      'a5': {'id': 'a5', 'job_id': 'j5', 'worker_id': 'w9', 'bid_id': 'b7', 'started_at': ago(const Duration(days: 8)), 'completed_at': ago(const Duration(days: 1)),
+        'no_auto': true}, // seeded "awaiting rating" example stays that way (real jobs follow the 48 h rule)
     };
     final payments = <String, dynamic>{
       'p3': {'id': 'p3', 'assignment_id': 'a3', 'amount': pr('b4') + fee, 'fee': fee, 'payout': pr('b4'), 'state': 'held', 'method': 'upi', 'paid_at': ago(const Duration(days: 3))},

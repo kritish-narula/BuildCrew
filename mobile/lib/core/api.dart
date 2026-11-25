@@ -63,8 +63,13 @@ abstract class Api {
   /// "I'm on my way" → customer sees live distance + ETA. Then position updates while travelling.
   Future<void> startJourney(String assignmentId, double? lat, double? lng);
   Future<void> sendLocation(String assignmentId, double lat, double lng);
-  /// Worker says the work is finished (customer confirms + rates).
-  Future<void> markDone(String assignmentId);
+  /// Worker says the work is finished. At least one "after" proof photo (a key from [upload]) is required;
+  /// the customer then confirms, sends it back or reports a problem. Idempotent (safe to replay offline).
+  Future<void> markDone(String assignmentId, {List<String> photos = const [], String? note});
+  /// Worker: "customer is not confirming / unfair" → dispute, money stays in escrow.
+  Future<void> workerDispute(String assignmentId, String reason);
+  /// Worker can no longer do a job they were hired for (before starting): refund + job re-opens + strike if paid.
+  Future<Json> withdrawHire(String assignmentId);
   Future<Json> earnings();
   Future<Json> withdraw();
   Future<Json> workerProfile();
@@ -86,8 +91,22 @@ abstract class Api {
   Future<Json> payJob(String jobId, String method);
   Future<void> completeJob(String jobId);
   Future<Json> rateWorker(String jobId, Json stars);
-  Future<void> cancelJob(String jobId);
+  /// Cancel: free before a hire; after a hire (work not started) the hire ends and paid money is refunded in
+  /// full (`refunded_inr`). After work started → throws `err.job_started_dispute`. Idempotent.
+  Future<Json> cancelJob(String jobId);
+  /// "Not done yet — send back". [reasons]: incomplete | poor_quality | damage | not_came | other. Rounds 1-2 return
+  /// `{outcome: rework, rework_count, rework_left}`; the 3rd disagreement opens a dispute (`outcome: disputed`).
+  Future<Json> sendBack(String jobId, {required List<String> reasons, String? note, List<String> photos = const []});
+  /// "Choose another worker": ends the hire (refund if paid) and re-opens the job; earlier quotes return.
+  Future<Json> reopenJob(String jobId);
+  /// "Worker never arrived": allowed 60 min after the ETA. Refund if paid, job re-opens.
+  Future<Json> reportNoShow(String jobId);
+  /// No quotes yet: remind nearby workers (once per 6 h → `err.nudge_too_soon`).
+  Future<void> nudgeJob(String jobId);
   Future<void> dispute(String jobId, String reason);
+  /// DEMO ONLY: pretend [by] has passed for this job (timers: 48 h auto-confirm, no-show ETA, support decision).
+  /// The real backend throws `err.unsupported`.
+  Future<void> demoSkipTime(String jobId, Duration by);
   Future<List<Json>> payments();
   Future<List<Json>> browseWorkers(String? trade);
   Future<Json> workerPublic(String workerId);
@@ -186,7 +205,12 @@ class HttpApi implements Api {
   Future<void> sendLocation(String assignmentId, double lat, double lng) =>
       _post('/worker/assignments/$assignmentId/location', {'lat': lat, 'lng': lng});
   @override
-  Future<void> markDone(String assignmentId) => _post('/worker/assignments/$assignmentId/done');
+  Future<void> markDone(String assignmentId, {List<String> photos = const [], String? note}) =>
+      _post('/worker/assignments/$assignmentId/done', {'photos': photos, 'note': note});
+  @override
+  Future<void> workerDispute(String assignmentId, String reason) => _post('/worker/assignments/$assignmentId/dispute', {'reason': reason});
+  @override
+  Future<Json> withdrawHire(String assignmentId) async => _map(await _post('/worker/assignments/$assignmentId/withdraw'));
   @override
   Future<Json> earnings() async => _map(await _get('/worker/earnings'));
   @override
@@ -228,7 +252,18 @@ class HttpApi implements Api {
   @override
   Future<Json> rateWorker(String jobId, Json stars) async => _map(await _post('/customer/jobs/$jobId/rate', stars));
   @override
-  Future<void> cancelJob(String jobId) => _post('/customer/jobs/$jobId/cancel');
+  Future<Json> cancelJob(String jobId) async => _map(await _post('/customer/jobs/$jobId/cancel'));
+  @override
+  Future<Json> sendBack(String jobId, {required List<String> reasons, String? note, List<String> photos = const []}) async =>
+      _map(await _post('/customer/jobs/$jobId/rework', {'reasons': reasons, 'note': note, 'photos': photos}));
+  @override
+  Future<Json> reopenJob(String jobId) async => _map(await _post('/customer/jobs/$jobId/reopen'));
+  @override
+  Future<Json> reportNoShow(String jobId) async => _map(await _post('/customer/jobs/$jobId/no-show'));
+  @override
+  Future<void> nudgeJob(String jobId) => _post('/customer/jobs/$jobId/nudge');
+  @override
+  Future<void> demoSkipTime(String jobId, Duration by) async => throw ApiException('err.unsupported', '');
   @override
   Future<void> dispute(String jobId, String reason) => _post('/customer/jobs/$jobId/dispute', {'reason': reason});
   @override

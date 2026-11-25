@@ -1,10 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
+import '../../core/poller.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
@@ -53,7 +52,8 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Json> _msgs = [];
   final List<_Pending> _pending = [];
   bool _loading = true;
-  Timer? _timer;
+  bool _readOnly = false; // the job went to another worker (or was cancelled): history only, no new messages
+  late final Poller _poller;
   int _seq = 0; // each fetch gets a number; an older fetch finishing late is ignored
   int _applied = 0;
 
@@ -61,13 +61,14 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _load(silent: false);
-    // The other side's messages arrive by polling (same for demo and the real backend).
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load());
+    // The other side's messages arrive by polling (same for demo and the real backend): every 2 s while the
+    // app is in the foreground, immediately on resume; paused in the background.
+    _poller = Poller(const Duration(seconds: 2), () => _load())..start();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _poller.dispose();
     _c.dispose();
     _scroll.dispose();
     super.dispose();
@@ -122,7 +123,14 @@ class _ChatScreenState extends State<ChatScreen> {
       _toBottom();
     } catch (e) {
       if (!mounted) return;
-      setState(() => p.failed = true);
+      if (e is ApiException && e.code == 'err.chat_closed') {
+        setState(() {
+          _pending.remove(p);
+          _readOnly = true;
+        });
+      } else {
+        setState(() => p.failed = true);
+      }
       showError(context, e);
     }
   }
@@ -192,6 +200,15 @@ class _ChatScreenState extends State<ChatScreen> {
                       },
                     ),
         ),
+        if (_readOnly)
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+              child: InfoBanner(icon: Icons.lock_outline_rounded, color: BC.inkSoft, text: l.chatClosedBar),
+            ),
+          )
+        else
         SafeArea(
           top: false,
           child: Padding(
@@ -223,7 +240,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-/// Inbox shortcut with an unread badge — put it in any app bar. Polls every ~15 s.
+/// Inbox shortcut with an unread badge — put it in any app bar. Polls every 8 s (foreground only).
 class ChatInboxButton extends StatefulWidget {
   const ChatInboxButton({super.key, required this.state});
   final AppState state;
@@ -233,18 +250,18 @@ class ChatInboxButton extends StatefulWidget {
 
 class _ChatInboxButtonState extends State<ChatInboxButton> {
   int _unread = 0;
-  Timer? _timer;
+  late final Poller _poller;
 
   @override
   void initState() {
     super.initState();
     _poll();
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => _poll());
+    _poller = Poller(const Duration(seconds: 8), _poll)..start();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _poller.dispose();
     super.dispose();
   }
 
@@ -286,7 +303,7 @@ class ChatInboxScreen extends StatelessWidget {
       );
 }
 
-/// The list of conversations (both roles). Refreshes every 6 s; [onUnread] reports the total so
+/// The list of conversations (both roles). Refreshes every 8 s (foreground only), or by pulling down; [onUnread] reports the total so
 /// a shell can show a badge on its Messages tab.
 class ChatInboxView extends StatefulWidget {
   const ChatInboxView({super.key, required this.state, this.onUnread});
@@ -299,18 +316,18 @@ class ChatInboxView extends StatefulWidget {
 class _ChatInboxViewState extends State<ChatInboxView> {
   List<Json>? _threads;
   bool _error = false;
-  Timer? _timer;
+  late final Poller _poller;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 6), (_) => _load());
+    _poller = Poller(const Duration(seconds: 8), _load)..start(); // the inbox list also feeds the unread badge
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _poller.dispose();
     super.dispose();
   }
 

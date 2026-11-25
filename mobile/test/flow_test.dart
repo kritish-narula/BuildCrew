@@ -22,13 +22,18 @@ Future<SessionUser> signInAs(String phone) async {
   return r.user;
 }
 
+String _daysAhead(int n) {
+  final d = DateTime.now().add(Duration(days: n));
+  return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
 Json _jobBody() => {
       'location_lat': 18.5074,
       'location_lng': 73.8077,
       'address_text': 'Plot 12, Kothrud, Pune',
       'city': 'Pune',
       'locality': 'Kothrud',
-      'start_date': '2026-12-01',
+      'start_date': _daysAhead(3),
       'work_items': [
         {
           'trade': 'mason',
@@ -185,7 +190,7 @@ void main() {
       // the worker cannot start before the customer has paid
       await signInAs(_ramesh);
       await expectLater(api.startJourney(aid, null, null), _apiError('err.payment_pending'));
-      await expectLater(api.markDone(aid), _apiError('err.payment_pending'));
+      await expectLater(api.markDone(aid, photos: [_photo]), _apiError('err.payment_pending'));
       final wAssign = (await api.assignments()).firstWhere((x) => x['id'] == aid);
       expect((wAssign['job'] as Map)['address'], 'Plot 12, Kothrud, Pune');
       expect(wAssign['customer_name'], priya.name);
@@ -232,7 +237,8 @@ void main() {
       });
       expect(dup['geofence_ok'], true);
       await api.attendance({'assignment_id': aid, 'kind': 'out', 'lat': jobCard['lat'], 'lng': jobCard['lng'], 'client_ref': 'att-qa-2'});
-      await api.markDone(aid);
+      await expectLater(api.markDone(aid), _apiError('err.proof_required'), reason: 'at least one proof photo is mandatory');
+      await api.markDone(aid, photos: ['proof_after_1.jpg']);
 
       await signInAs(_priya);
       job = await api.customerJob(jobId);
@@ -305,12 +311,17 @@ void main() {
       await expectLater(api.rateCustomer(aid, 5, 5, null), _apiError('err.already_rated'));
     }, timeout: const Timeout(Duration(minutes: 3)));
 
-    test('cancel is only possible before a worker is hired', () async {
+    test('cancel: free before a hire, refused once work started or finished', () async {
       await signInAs(_priya);
       final id = (await api.createJob(_jobBody()))['id'] as String;
       await api.cancelJob(id);
       expect((await api.customerJob(id))['status'], 'cancelled');
-      await expectLater(api.cancelJob('j3'), _apiError('err.job_closed')); // seeded, already assigned
+      expect((await api.cancelJob(id))['status'], 'cancelled', reason: 'a second tap is harmless');
+      await signInAs('9100000002'); // Anil owns seeded j4 (work already in progress)
+      await expectLater(api.cancelJob('j4'), _apiError('err.job_started_dispute'));
+      await signInAs(_neha); // Neha owns seeded j5 (completed)
+      await expectLater(api.cancelJob('j5'), _apiError('err.job_closed'));
+      await expectLater(api.cancelJob('j4'), _apiError('err.not_found'), reason: 'not her job');
       final Json empty = _jobBody();
       empty['work_items'] = <Json>[];
       await expectLater(api.createJob(empty), _apiError('err.no_work_items'));
@@ -392,6 +403,381 @@ void main() {
       api.token = null;
       await expectLater(api.sendChat('j1', 'w1', 'hi'), _apiError('err.unauthorized'));
       expect(await api.chatThreads(), isEmpty);
+    });
+  });
+
+  // ====================================================================================================
+  // Completion disagreement flow, auto-confirm, hire release / refund rules, lifecycle edge cases.
+  // Time is faked with DemoApi.demoSkipTime (it moves the stored timestamps back, like the backend tests do).
+  // ====================================================================================================
+  group('completion flow + edge cases', () {
+    /// Priya posts a mason job; [worker] quotes 15000; Priya hires + (optionally) pays. Returns ids.
+    Future<({String jobId, String aid})> hire({String worker = _ramesh, bool pay = true, String? rival}) async {
+      await signInAs(_priya);
+      final jobId = (await api.createJob(_jobBody()))['id'] as String;
+      if (rival != null) {
+        await signInAs(rival);
+        await api.placeBid(jobId, 16000, 'rival-$jobId');
+      }
+      await signInAs(worker);
+      await api.placeBid(jobId, 15000, 'ref-$worker-$jobId');
+      await signInAs(_priya);
+      final bids = ((await api.customerJob(jobId))['bids'] as List).cast<Map>();
+      final mine = bids.firstWhere((b) => b['price_inr'] == 15000);
+      final aid = (await api.acceptBid(jobId, mine['id'] as String))['assignment_id'] as String;
+      if (pay) await api.payJob(jobId, 'upi');
+      return (jobId: jobId, aid: aid);
+    }
+
+    Future<Map> asg(String jobId) async => (await api.customerJob(jobId))['assignment'] as Map;
+    Future<String> escrow(String jobId) async => (await asg(jobId))['payment']['escrow_state'] as String;
+    List<String> kinds(Map a) => [for (final e in (a['timeline'] as List).cast<Map>()) e['kind'] as String];
+
+    Future<void> done(String worker, String aid, {String photo = 'after.jpg'}) async {
+      await signInAs(worker);
+      await api.markDone(aid, photos: [photo], note: 'finished');
+      await signInAs(_priya);
+    }
+
+    test('proof photo is mandatory; customer sees before and after; double tap = one event', () async {
+      final h = await hire();
+      await signInAs(_ramesh);
+      await expectLater(api.markDone(h.aid), _apiError('err.proof_required'));
+      await expectLater(api.markDone(h.aid, photos: ['  ']), _apiError('err.proof_required'));
+      await api.markDone(h.aid, photos: ['after_1.jpg'], note: 'Wall built');
+      await api.markDone(h.aid, photos: ['after_1.jpg']); // double tap / offline replay
+      await signInAs(_priya);
+      final a = await asg(h.jobId);
+      expect(a['proof_photos'], ['after_1.jpg']);
+      expect(a['before_photos'], [_photo]);
+      expect(a['worker_done_note'], 'Wall built');
+      expect(a['auto_confirm_at'], isNotNull);
+      expect(a['auto_confirm_hours'], 48);
+      expect(kinds(a), ['worker_done']);
+      expect((await api.customerJobs()).firstWhere((j) => j['id'] == h.jobId)['needs_action'], true);
+    });
+
+    test('send back -> worker fixes -> customer confirms -> rates -> money released; timeline shows it all', () async {
+      final h = await hire();
+      await done(_ramesh, h.aid);
+      final out = await api.sendBack(h.jobId, reasons: ['poor_quality', 'damage'], note: 'Tile cracked', photos: ['crack.jpg']);
+      expect(out, {'outcome': 'rework', 'rework_count': 1, 'rework_left': 1});
+      var a = await asg(h.jobId);
+      expect(a['rework_open'], true);
+      expect(a['worker_done_at'], isNull);
+      expect(a['auto_confirm_at'], isNull, reason: 'the 48 h clock does not run while the worker owes a fix');
+      expect((a['rework'] as Map)['reasons'], ['poor_quality', 'damage']);
+      expect((a['rework'] as Map)['note'], 'Tile cracked');
+      expect((a['rework'] as Map)['photos'], ['crack.jpg']);
+      await expectLater(api.sendBack(h.jobId, reasons: ['other']), _apiError('err.nothing_to_send_back'));
+
+      // the worker sees the red card data and must attach NEW proof
+      await signInAs(_ramesh);
+      final mine = (await api.assignments()).firstWhere((x) => x['id'] == h.aid);
+      expect(mine['rework_open'], true);
+      expect((mine['rework'] as Map)['reasons'], ['poor_quality', 'damage']);
+      await expectLater(api.markDone(h.aid), _apiError('err.proof_required'));
+      await api.markDone(h.aid, photos: ['fixed.jpg'], note: 'Replaced the tile');
+      await signInAs(_priya);
+      a = await asg(h.jobId);
+      expect(a['rework_open'], false);
+      expect(a['proof_photos'], ['fixed.jpg']);
+      expect(a['rework_count'], 1);
+
+      await api.completeJob(h.jobId);
+      await api.completeJob(h.jobId); // idempotent
+      expect(await escrow(h.jobId), 'held');
+      await api.rateWorker(h.jobId, {'quality': 5, 'timeliness': 5, 'behaviour': 5, 'value_for_money': 5});
+      expect(await escrow(h.jobId), 'released');
+      expect(kinds(await asg(h.jobId)), ['worker_done', 'rework_requested', 'worker_done', 'confirmed']);
+      await expectLater(api.sendBack(h.jobId, reasons: ['other']), _apiError('err.nothing_to_send_back'));
+    });
+
+    test('send-back validation: needs a reason from the list, work must be claimed finished, not someone else\'s job', () async {
+      final h = await hire();
+      await expectLater(api.sendBack(h.jobId, reasons: ['incomplete']), _apiError('err.nothing_to_send_back'));
+      await done(_ramesh, h.aid);
+      await expectLater(api.sendBack(h.jobId, reasons: []), _apiError('err.validation'));
+      await expectLater(api.sendBack(h.jobId, reasons: ['made_up']), _apiError('err.validation'));
+      await expectLater(api.sendBack(h.jobId, reasons: ['other'], note: 'x' * 1001), _apiError('err.validation'));
+      await signInAs(_neha);
+      await expectLater(api.sendBack(h.jobId, reasons: ['other']), _apiError('err.not_found'));
+      await signInAs(_priya);
+      expect((await api.sendBack(h.jobId, reasons: ['not_came'])).containsKey('rework_left'), true);
+    });
+
+    test('3rd disagreement opens a dispute: nothing can move the money, support decides', () async {
+      final h = await hire();
+      for (var round = 1; round <= 2; round++) {
+        await done(_ramesh, h.aid, photo: 'try$round.jpg');
+        final r = await api.sendBack(h.jobId, reasons: ['incomplete'], note: 'round $round');
+        expect(r['outcome'], 'rework');
+        expect(r['rework_count'], round);
+      }
+      expect(((await asg(h.jobId))['rework_left']), 0);
+      await done(_ramesh, h.aid, photo: 'try3.jpg');
+      final third = await api.sendBack(h.jobId, reasons: ['incomplete'], note: 'still not done');
+      expect(third['outcome'], 'disputed');
+      expect((await api.customerJob(h.jobId))['status'], 'disputed');
+      expect(await escrow(h.jobId), 'held');
+      expect(kinds(await asg(h.jobId)).where((k) => k == 'rework_requested').length, 3);
+      expect(kinds(await asg(h.jobId)).last, 'disputed');
+
+      // frozen: confirm / send back / mark done / cancel / rate are all refused
+      await expectLater(api.completeJob(h.jobId), _apiError('err.job_disputed'));
+      await expectLater(api.sendBack(h.jobId, reasons: ['other']), _apiError('err.job_disputed'));
+      await expectLater(api.cancelJob(h.jobId), _apiError('err.job_closed'));
+      await expectLater(api.rateWorker(h.jobId, {'quality': 5, 'timeliness': 5, 'behaviour': 5, 'value_for_money': 5}), _apiError('err.job_not_completed'));
+      await signInAs(_ramesh);
+      await expectLater(api.markDone(h.aid, photos: ['x.jpg']), _apiError('err.job_disputed'));
+      await signInAs(_priya);
+      await api.dispute(h.jobId, 'Please help us decide'); // a manual second report is harmless (same dispute)
+      expect((await asg(h.jobId))['timeline'].where((e) => e['kind'] == 'disputed').length, 1);
+
+      // demo: support decides after a day (50/50): worker gets half, customer the rest minus the fee
+      await api.demoSkipTime(h.jobId, const Duration(hours: 24));
+      expect((await api.customerJob(h.jobId))['status'], 'completed');
+      final p = (await asg(h.jobId))['payment'] as Map;
+      expect(p['escrow_state'], 'split');
+      expect(p['worker_payout_inr'], 7500);
+      expect(p['refund_inr'], 7500);
+      expect(kinds(await asg(h.jobId)).last, 'dispute_resolved');
+    });
+
+    test('worker can report an unfair / silent customer; money stays frozen', () async {
+      final h = await hire();
+      await signInAs(_ramesh);
+      await expectLater(api.workerDispute(h.aid, 'Customer is not answering'), _apiError('err.too_early_to_dispute'));
+      await api.markDone(h.aid, photos: ['after.jpg']);
+      await api.workerDispute(h.aid, 'Customer is not confirming');
+      await api.workerDispute(h.aid, 'Customer is not confirming'); // idempotent
+      await signInAs(_priya);
+      expect((await api.customerJob(h.jobId))['status'], 'disputed');
+      expect(await escrow(h.jobId), 'held');
+    });
+
+    test('customer silent for 48 h after "finished": auto-confirmed, paid, neutral rating that does not touch the average', () async {
+      final h = await hire();
+      await signInAs(_ramesh);
+      final before = await api.workerProfile();
+      final jobsBefore = (await api.workerPublic(before['id'] as String))['completed_jobs'] as int;
+      await done(_ramesh, h.aid);
+      await api.demoSkipTime(h.jobId, const Duration(hours: 47));
+      var a = await asg(h.jobId);
+      expect((await api.customerJob(h.jobId))['status'], 'in_progress', reason: '47 h: still waiting');
+      expect(a['auto_confirmed'], false);
+      expect(DateTime.parse(a['auto_confirm_at'] as String).isAfter(DateTime.now()), true, reason: 'about 1 h left');
+      await api.demoSkipTime(h.jobId, const Duration(hours: 2));
+      final j = await api.customerJob(h.jobId);
+      a = j['assignment'] as Map;
+      expect(j['status'], 'completed');
+      expect(a['auto_confirmed'], true);
+      expect((a['payment'] as Map)['escrow_state'], 'released');
+      expect(((a['ratings'] as Map)['customer_to_worker'] as Map)['is_auto'], true);
+      expect(kinds(a), ['worker_done', 'auto_confirmed']);
+      await expectLater(api.rateWorker(h.jobId, {'quality': 1, 'timeliness': 1, 'behaviour': 1, 'value_for_money': 1}), _apiError('err.already_rated'));
+      await expectLater(api.sendBack(h.jobId, reasons: ['other']), _apiError('err.nothing_to_send_back'));
+
+      await signInAs(_ramesh);
+      final after = await api.workerProfile();
+      expect(after['rating'], before['rating']);
+      expect(after['rating_count'], before['rating_count']);
+      expect((after['history'] as List).any((x) => x['job_id'] == h.jobId), false, reason: 'auto rating is not shown as a review');
+      expect((await api.workerPublic(before['id'] as String))['completed_jobs'], jobsBefore + 1);
+      await api.rateCustomer(h.aid, 5, 3, null); // the worker may still rate the customer
+    });
+
+    test('no auto-confirm while the worker owes a fix or the job is in dispute', () async {
+      final h = await hire();
+      await done(_ramesh, h.aid);
+      await api.sendBack(h.jobId, reasons: ['incomplete']);
+      await api.demoSkipTime(h.jobId, const Duration(hours: 100));
+      expect((await api.customerJob(h.jobId))['status'], 'in_progress');
+      expect(await escrow(h.jobId), 'held');
+    });
+
+    test('customer confirmed but never rated for 48 h: neutral rating releases the money', () async {
+      final h = await hire();
+      await done(_ramesh, h.aid);
+      await api.completeJob(h.jobId);
+      expect(await escrow(h.jobId), 'held');
+      await api.demoSkipTime(h.jobId, const Duration(hours: 49));
+      expect(await escrow(h.jobId), 'released');
+      expect(kinds(await asg(h.jobId)).last, 'auto_rated');
+    });
+
+    test('cancel after accepting but before paying voids the order; a stale pay screen cannot charge', () async {
+      final h = await hire(pay: false);
+      final out = await api.cancelJob(h.jobId);
+      expect(out['status'], 'cancelled');
+      expect(out['refunded_inr'], 0);
+      expect((await api.customerJob(h.jobId))['status'], 'cancelled');
+      expect((await api.customerJob(h.jobId))['assignment'], isNull);
+      await expectLater(api.payJob(h.jobId, 'upi'), _apiError('err.hire_cancelled'));
+      expect((await api.payments()).any((p) => p['job_id'] == h.jobId), false, reason: 'nothing was ever charged');
+      await signInAs(_ramesh);
+      expect((await api.assignments()).any((x) => x['id'] == h.aid), false);
+    });
+
+    test('cancel after paying but before the worker starts: full refund (quote + fee)', () async {
+      final h = await hire();
+      expect(await escrow(h.jobId), 'held');
+      final out = await api.cancelJob(h.jobId);
+      expect(out['refunded_inr'], 15030);
+      expect((await api.customerJob(h.jobId))['status'], 'cancelled');
+      final rec = (await api.payments()).firstWhere((p) => p['job_id'] == h.jobId);
+      expect(rec['escrow_state'], 'refunded');
+      expect(rec['refund_inr'], 15030);
+      expect(rec['worker_payout_inr'], 0);
+      expect((await api.cancelJob(h.jobId))['status'], 'cancelled', reason: 'double tap');
+    });
+
+    test('seeded paid-and-assigned job can be cancelled with a refund; seeded in-progress job needs support', () async {
+      await signInAs(_priya);
+      final out = await api.cancelJob('j3');
+      expect(out['refunded_inr'] as num, greaterThan(0));
+      await signInAs('9100000002');
+      await expectLater(api.cancelJob('j4'), _apiError('err.job_started_dispute'));
+    });
+
+    test('cancel after work started goes through support (dispute), not cancel', () async {
+      final h = await hire();
+      await signInAs(_ramesh);
+      final jc = await api.workerJob(h.jobId);
+      await api.attendance({'assignment_id': h.aid, 'kind': 'in', 'lat': jc['lat'], 'lng': jc['lng'], 'client_ref': 'att-${h.aid}', 'offline': false});
+      await signInAs(_priya);
+      await expectLater(api.cancelJob(h.jobId), _apiError('err.job_started_dispute'));
+      await expectLater(api.reopenJob(h.jobId), _apiError('err.job_started'));
+      await expectLater(api.reportNoShow(h.jobId), _apiError('err.job_started'));
+      expect(await escrow(h.jobId), 'held');
+      await api.dispute(h.jobId, 'I want to stop this job');
+      expect((await api.customerJob(h.jobId))['status'], 'disputed');
+    });
+
+    test('choose another worker: refund, earlier quotes return, new hire can be paid once', () async {
+      final h = await hire(rival: _sunil);
+      final out = await api.reopenJob(h.jobId);
+      expect(out['status'], 'bidding');
+      expect(out['refunded_inr'], 15030);
+      expect((await api.reopenJob(h.jobId))['status'], 'bidding', reason: 'double tap');
+      final j = await api.customerJob(h.jobId);
+      expect(j['assignment'], isNull);
+      final live = (j['bids'] as List).cast<Map>();
+      expect(live.map((b) => b['price_inr']).toList(), [16000], reason: 'the rival quote is back, the old worker is gone');
+      expect(live.single['status'], 'pending');
+      await signInAs(_ramesh);
+      expect((await api.assignments()).any((x) => x['id'] == h.aid), false);
+      await signInAs(_priya);
+      final second = (await api.acceptBid(h.jobId, live.single['id'] as String))['assignment_id'] as String;
+      expect(second, isNot(h.aid));
+      await api.payJob(h.jobId, 'upi');
+      await api.payJob(h.jobId, 'upi'); // paying twice charges once
+      expect(await escrow(h.jobId), 'held');
+      final recs = (await api.payments()).where((p) => p['job_id'] == h.jobId).toList();
+      expect(recs.map((p) => p['escrow_state']).toSet(), {'refunded', 'held'});
+    });
+
+    test('worker withdraws after being hired: customer refunded, job re-opens, strike if it was paid', () async {
+      final h = await hire();
+      await signInAs(_ramesh);
+      final before = (await api.workerProfile())['strikes'] as int;
+      final out = await api.withdrawHire(h.aid);
+      expect(out['refunded_inr'], 15030);
+      expect((await api.workerProfile())['strikes'], before + 1);
+      expect((await api.assignments()).any((x) => x['id'] == h.aid), false);
+      await api.withdrawHire(h.aid); // idempotent, no second strike
+      expect((await api.workerProfile())['strikes'], before + 1);
+      await signInAs(_priya);
+      final j = await api.customerJob(h.jobId);
+      expect(['open', 'bidding'].contains(j['status']), true);
+      expect(j['assignment'], isNull);
+      // an unpaid hire costs the worker nothing
+      final u = await hire(pay: false, worker: _sunil);
+      await signInAs(_sunil);
+      final s0 = (await api.workerProfile())['strikes'] as int;
+      await api.withdrawHire(u.aid);
+      expect((await api.workerProfile())['strikes'], s0);
+    });
+
+    test('worker never arrives: report only after ETA + 60 min; refund, re-open, strike', () async {
+      final h = await hire();
+      await expectLater(api.reportNoShow(h.jobId), _apiError('err.no_show_too_early'));
+      expect((await asg(h.jobId))['can_report_no_show'], false);
+      await api.demoSkipTime(h.jobId, const Duration(hours: 2));
+      expect((await asg(h.jobId))['can_report_no_show'], true);
+      final out = await api.reportNoShow(h.jobId);
+      expect(out['refunded_inr'], 15030);
+      expect(['open', 'bidding'].contains(out['status']), true);
+      await expectLater(api.reportNoShow(h.jobId), _apiError('err.hire_cancelled'));
+      await signInAs(_ramesh);
+      expect(((await api.workerProfile())['strikes'] as int) >= 1, true);
+    });
+
+    test('job date in the past or more than a year away is refused; today is fine', () async {
+      await signInAs(_priya);
+      await expectLater(api.createJob({..._jobBody(), 'start_date': _daysAhead(-2)}), _apiError('err.date_in_past'));
+      await expectLater(api.createJob({..._jobBody(), 'start_date': _daysAhead(800)}), _apiError('err.date_too_far'));
+      expect((await api.createJob({..._jobBody(), 'start_date': _daysAhead(0)}))['status'], 'open');
+    });
+
+    test('zero, negative and absurd prices are refused', () async {
+      await signInAs(_priya);
+      final id = (await api.createJob(_jobBody()))['id'] as String;
+      await signInAs(_ramesh);
+      for (final bad in [0, -500, 99, 10000001]) {
+        await expectLater(api.placeBid(id, bad, 'bad-$bad'), _apiError('err.validation'));
+      }
+    });
+
+    test('no quotes for 24 h: hint + nudge (once per 6 h)', () async {
+      await signInAs(_priya);
+      final id = (await api.createJob(_jobBody()))['id'] as String;
+      expect((await api.customerJob(id))['no_quotes_24h'], false);
+      await api.nudgeJob(id);
+      await expectLater(api.nudgeJob(id), _apiError('err.nudge_too_soon'));
+      expect((await api.customerJob(id))['nudged_at'], isNotNull);
+      // seeded j1 is only 40 minutes old; seeded j6 has quotes: neither shows the hint
+      expect((await api.customerJob('j1'))['no_quotes_24h'], false);
+    });
+
+    test('chat with a worker who was not hired becomes read-only after the hire; long text refused', () async {
+      final h = await hire(rival: _sunil);
+      final priya = await signInAs(_priya);
+      await signInAs(_sunil);
+      await expectLater(api.sendChat(h.jobId, priya.id, 'is the job still open?'), _apiError('err.chat_closed'));
+      await signInAs(_ramesh);
+      await api.sendChat(h.jobId, priya.id, 'Reaching at 9');
+      await expectLater(api.sendChat(h.jobId, priya.id, 'y' * 1001), _apiError('err.validation'));
+      await signInAs(_sunil);
+      expect((await api.chat(h.jobId, priya.id)), isEmpty, reason: 'history is still readable');
+    });
+
+    test('account switched mid-flow: another account cannot act on this job', () async {
+      final h = await hire();
+      await done(_ramesh, h.aid);
+      await signInAs(_neha); // someone else signs in on the same phone
+      await expectLater(api.completeJob(h.jobId), _apiError('err.not_found'));
+      await expectLater(api.sendBack(h.jobId, reasons: ['other']), _apiError('err.not_found'));
+      await expectLater(api.cancelJob(h.jobId), _apiError('err.not_found'));
+      await expectLater(api.reopenJob(h.jobId), _apiError('err.not_found'));
+      await expectLater(api.dispute(h.jobId, 'not my job at all'), _apiError('err.not_found'));
+      await signInAs(_sunil);
+      await expectLater(api.markDone(h.aid, photos: ['x.jpg']), _apiError('err.not_found'));
+      await expectLater(api.withdrawHire(h.aid), _apiError('err.not_found'));
+      await signInAs(_priya);
+      expect(await escrow(h.jobId), 'held');
+    });
+
+    test('rating already given: second submit is refused, money released once', () async {
+      final h = await hire();
+      await done(_ramesh, h.aid);
+      await api.completeJob(h.jobId);
+      final stars = {'quality': 4, 'timeliness': 4, 'behaviour': 4, 'value_for_money': 4};
+      await api.rateWorker(h.jobId, stars);
+      await expectLater(api.rateWorker(h.jobId, stars), _apiError('err.already_rated'));
+      await signInAs(_ramesh);
+      final e = await api.earnings();
+      expect(((e['history'] as List).cast<Map>().where((r) => r['kind'] == 'job' && r['state'] == 'released').length) >= 1, true);
     });
   });
 }

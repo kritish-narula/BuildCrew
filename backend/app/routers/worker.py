@@ -35,6 +35,7 @@ def _my_assignment(db: Session, user: User, assignment_id: uuid.UUID) -> Assignm
     a = db.get(Assignment, assignment_id)
     if not a or a.worker_id != user.id:
         raise AppError("err.not_found", 404)
+    flows.maybe_auto_confirm(db, a)
     return a
 
 
@@ -112,7 +113,7 @@ def my_bids(user: User = Depends(W), db: Session = Depends(get_db)):
     bids = db.scalars(select(Bid).where(Bid.worker_id == user.id).order_by(Bid.created_at.desc())).all()
     out = []
     for b in bids:
-        a = db.scalar(select(Assignment).where(Assignment.accepted_bid_id == b.id))
+        a = db.scalar(select(Assignment).where(Assignment.accepted_bid_id == b.id, Assignment.released_at.is_(None)))
         out.append({"id": str(b.id), "price_inr": b.quoted_price_paise / 100, "status": b.status.value,
                     "created_at": b.created_at.isoformat(), "job": job_card(db, b.job, user.language_code),
                     "assignment_id": str(a.id) if a else None,
@@ -132,7 +133,9 @@ def withdraw_bid(bid_id: uuid.UUID, user: User = Depends(W), db: Session = Depen
 
 @router.get("/assignments")
 def assignments(user: User = Depends(W), db: Session = Depends(get_db)):
-    rows = db.scalars(select(Assignment).where(Assignment.worker_id == user.id)).all()
+    if flows.sweep_auto_confirm(db):
+        db.commit()
+    rows = db.scalars(select(Assignment).where(Assignment.worker_id == user.id, Assignment.released_at.is_(None))).all()
     out = []
     for a in sorted(rows, key=lambda x: x.job.created_at, reverse=True):
         v = assignment_view(db, a, user.language_code)
@@ -171,11 +174,39 @@ def location(assignment_id: uuid.UUID, body: LocIn, user: User = Depends(W), db:
     return {"ok": True}
 
 
+class DoneIn(BaseModel):
+    photos: list[str] = Field(default=[], max_length=5)  # "after" proof photo keys: at least 1 is required
+    note: str | None = Field(default=None, max_length=1000)
+
+
 @router.post("/assignments/{assignment_id}/done")
-def done(assignment_id: uuid.UUID, user: User = Depends(W), db: Session = Depends(get_db)):
-    flows.worker_done(db, user, _my_assignment(db, user, assignment_id))
+def done(assignment_id: uuid.UUID, body: DoneIn | None = None, user: User = Depends(W), db: Session = Depends(get_db)):
+    """"Work finished" (also the "fixed it" after a send-back). Needs >= 1 proof photo. Idempotent."""
+    body = body or DoneIn()
+    flows.worker_done(db, user, _my_assignment(db, user, assignment_id), body.photos, body.note)
     db.commit()
     return {"ok": True}
+
+
+class WorkerDisputeIn(BaseModel):
+    reason: str = Field(min_length=5, max_length=2000)
+
+
+@router.post("/assignments/{assignment_id}/dispute")
+def dispute(assignment_id: uuid.UUID, body: WorkerDisputeIn, user: User = Depends(W), db: Session = Depends(get_db)):
+    """"Customer is not confirming / unfair": money stays in escrow, support decides."""
+    d = flows.raise_dispute(db, user, _my_assignment(db, user, assignment_id), body.reason)
+    db.commit()
+    return {"id": str(d.id), "status": d.status.value}
+
+
+@router.post("/assignments/{assignment_id}/withdraw")
+def withdraw_hire(assignment_id: uuid.UUID, user: User = Depends(W), db: Session = Depends(get_db)):
+    """Worker can no longer do the job (before starting). Customer is refunded in full, the job re-opens,
+    and a strike is recorded if the customer had already paid."""
+    out = flows.worker_withdraw_hire(db, user, _my_assignment(db, user, assignment_id))
+    db.commit()
+    return out
 
 
 class AttendanceIn(BaseModel):

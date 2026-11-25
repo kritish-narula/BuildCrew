@@ -24,7 +24,9 @@ from ..errors import AppError
 JOB_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     JobStatus.open: {JobStatus.bidding, JobStatus.cancelled},
     JobStatus.bidding: {JobStatus.assigned, JobStatus.cancelled},
-    JobStatus.assigned: {JobStatus.in_progress, JobStatus.cancelled, JobStatus.disputed},
+    # assigned → bidding/open = the hire was released before work started (worker withdrew / no-show /
+    # customer changed worker); the job goes back to the market. assigned → cancelled = customer cancelled.
+    JobStatus.assigned: {JobStatus.in_progress, JobStatus.cancelled, JobStatus.disputed, JobStatus.bidding, JobStatus.open},
     JobStatus.in_progress: {JobStatus.completed, JobStatus.disputed},
     JobStatus.completed: {JobStatus.disputed},  # dispute window after completion
     JobStatus.disputed: {JobStatus.completed, JobStatus.cancelled},  # admin resolution
@@ -33,8 +35,8 @@ JOB_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
 
 BID_TRANSITIONS: dict[BidStatus, set[BidStatus]] = {
     BidStatus.pending: {BidStatus.accepted, BidStatus.rejected, BidStatus.withdrawn},
-    BidStatus.accepted: set(),
-    BidStatus.rejected: set(),
+    BidStatus.accepted: {BidStatus.withdrawn},          # the hire was released
+    BidStatus.rejected: {BidStatus.pending},            # quotes come back when a hire is released and the job re-opens
     BidStatus.withdrawn: set(),
 }
 

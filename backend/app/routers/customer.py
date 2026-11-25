@@ -1,6 +1,6 @@
 import statistics
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -31,27 +31,35 @@ def _own(db: Session, user: User, job_id: uuid.UUID) -> Job:
 
 
 def _assignment(db: Session, job: Job) -> Assignment:
-    a = db.scalar(select(Assignment).where(Assignment.job_id == job.id))
+    """The ACTIVE hire. After a cancel / no-show / change-of-worker there is none (err.hire_cancelled);
+    anything still running on an old screen (e.g. a late "Pay") is refused instead of touching money."""
+    a = flows.active_assignment(db, job.id)
     if not a:
-        raise AppError("err.not_found", 404)
+        raise AppError("err.hire_cancelled", 409)
+    flows.maybe_auto_confirm(db, a)  # the 48 h rule applies before ANY customer action is evaluated
     return a
 
 
 @router.get("/jobs")
 def jobs(user: User = Depends(C), db: Session = Depends(get_db)):
     """C1. Active + completed jobs with bid counts and the 'rate to release payment' flag."""
+    if flows.sweep_auto_confirm(db):
+        db.commit()
     rows = db.scalars(select(Job).where(Job.customer_id == user.id).order_by(Job.created_at.desc())).all()
     counts = dict(db.execute(select(Bid.job_id, func.count()).where(Bid.job_id.in_([j.id for j in rows]),
                                                                     Bid.status != BidStatus.withdrawn)
                              .group_by(Bid.job_id)).all()) if rows else {}
     out = []
     for j in rows:
-        a = db.scalar(select(Assignment).where(Assignment.job_id == j.id))
+        a = flows.active_assignment(db, j.id)
         p = db.scalar(select(Payment).where(Payment.assignment_id == a.id)) if a else None
         out.append({**job_card(db, j, user.language_code), "bid_count": counts.get(j.id, 0),
                     "needs_rating": j.status == JobStatus.completed and p is not None and p.escrow_state.value == "held",
                     "worker_name": a.worker.name if a else None,
-                    "payment_state": p.escrow_state.value if p else None})
+                    "payment_state": p.escrow_state.value if p else None,
+                    "needs_action": bool(a and j.status == JobStatus.in_progress and a.worker_done_at and not a.rework_open),
+                    "rework_open": bool(a and a.rework_open), "auto_confirm_at": (flows.auto_confirm_at(a).isoformat() if a and flows.auto_confirm_at(a) else None),
+                    "no_quotes_24h": flows.no_quotes_hint(db, j)})
     return out
 
 
@@ -82,6 +90,10 @@ def create_job(body: JobIn, user: User = Depends(C), db: Session = Depends(get_d
     s = get_settings()
     if not body.work_items:
         raise AppError("err.no_work_items", 422)
+    if body.start_date < flows.today_ist():
+        raise AppError("err.date_in_past", 422)
+    if body.start_date > flows.today_ist() + timedelta(days=365):
+        raise AppError("err.date_too_far", 422)
     for wi in body.work_items:
         if len(wi.photo_keys) > 5:
             raise AppError("err.too_many_photos", 422)
@@ -152,10 +164,13 @@ def price_estimate(trades: str | None = None, locality: str | None = None, city:
 def job_detail(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
     """C3/C4. Work items, bids for comparison, assignment tracking + escrow + ratings."""
     job = _own(db, user, job_id)
+    a = flows.active_assignment(db, job.id)
+    if a and flows.maybe_auto_confirm(db, a):
+        db.commit()
     bids = db.scalars(select(Bid).where(Bid.job_id == job.id, Bid.status != BidStatus.withdrawn)
                       .order_by(Bid.quoted_price_paise)).all()
-    a = db.scalar(select(Assignment).where(Assignment.job_id == job.id))
     out = {**job_card(db, job, user.language_code),
+           "no_quotes_24h": flows.no_quotes_hint(db, job), "nudged_at": job.nudged_at.isoformat() if job.nudged_at else None,
            "work_items": [work_item_view(db, wi, user.language_code, include_audio=True) for wi in job.work_items],
            "bids": [{"id": str(b.id), "price_inr": b.quoted_price_paise / 100, "status": b.status.value,
                      "created_at": b.created_at.isoformat(), "worker": worker_summary(db, b.worker),
@@ -236,14 +251,70 @@ def release(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(ge
 
 @router.post("/jobs/{job_id}/cancel")
 def cancel(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
+    """Cancel the job. Before a hire: free. Hired but work not started: the hire ends and anything paid is
+    refunded IN FULL. Work started: not here - report a problem (support decides). Idempotent."""
     job = _own(db, user, job_id)
-    if job.status not in (JobStatus.open, JobStatus.bidding):
+    if job.status == JobStatus.cancelled:
+        return {"status": "cancelled", "refunded_inr": 0}
+    if job.status in (JobStatus.open, JobStatus.bidding):
+        transition(db, job, kind="job", field="status", new=JobStatus.cancelled, actor_id=user.id)
+        for b in db.scalars(select(Bid).where(Bid.job_id == job.id, Bid.status == BidStatus.pending)):
+            transition(db, b, kind="bid", field="status", new=BidStatus.rejected, actor_id=user.id)
+        db.commit()
+        return {"status": job.status.value, "refunded_inr": 0}
+    a = flows.active_assignment(db, job.id)
+    if job.status == JobStatus.assigned and a:
+        out = flows.customer_cancel_hire(db, user, a, reopen=False)
+        db.commit()
+        return out
+    raise AppError("err.job_started_dispute" if job.status == JobStatus.in_progress else "err.job_closed", 409)
+
+
+@router.post("/jobs/{job_id}/reopen")
+def reopen(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
+    """"Choose another worker": ends the current hire (refund if paid) and puts the job back on the market;
+    earlier quotes return."""
+    job = _own(db, user, job_id)
+    a = flows.active_assignment(db, job.id)
+    if not a:
+        if job.status in (JobStatus.open, JobStatus.bidding):
+            return {"status": job.status.value, "refunded_inr": 0}  # idempotent double tap
         raise AppError("err.job_closed", 409)
-    transition(db, job, kind="job", field="status", new=JobStatus.cancelled, actor_id=user.id)
-    for b in db.scalars(select(Bid).where(Bid.job_id == job.id, Bid.status == BidStatus.pending)):
-        transition(db, b, kind="bid", field="status", new=BidStatus.rejected, actor_id=user.id)
+    out = flows.customer_cancel_hire(db, user, a, reopen=True)
     db.commit()
-    return {"status": job.status.value}
+    return out
+
+
+@router.post("/jobs/{job_id}/no-show")
+def no_show(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
+    """"Worker never arrived": allowed 60 min after the ETA. Refund if paid, job re-opens, worker gets a strike."""
+    job = _own(db, user, job_id)
+    out = flows.report_no_show(db, user, _assignment(db, job))
+    db.commit()
+    return out
+
+
+@router.post("/jobs/{job_id}/nudge")
+def nudge(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
+    """No quotes yet: remind nearby workers (max once every 6 h)."""
+    flows.nudge_workers(db, user, _own(db, user, job_id))
+    db.commit()
+    return {"ok": True}
+
+
+class ReworkIn(BaseModel):
+    reasons: list[str] = Field(min_length=1, max_length=5)
+    note: str | None = Field(default=None, max_length=1000)
+    photos: list[str] = Field(default=[], max_length=5)
+
+
+@router.post("/jobs/{job_id}/rework")
+def rework(job_id: uuid.UUID, body: ReworkIn, user: User = Depends(C), db: Session = Depends(get_db)):
+    """"Not done yet - send back" (rounds 1-2). The 3rd disagreement opens a dispute automatically."""
+    job = _own(db, user, job_id)
+    out = flows.request_rework(db, user, _assignment(db, job), body.reasons, body.note, body.photos)
+    db.commit()
+    return out
 
 
 class DisputeIn(BaseModel):

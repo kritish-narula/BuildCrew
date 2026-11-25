@@ -760,8 +760,12 @@ class _VoiceAmountButtonState extends State<VoiceAmountButton> {
 /// FutureBuilder with consistent loading / error+retry states and pull-to-refresh.
 /// While reloading it keeps showing the previous data (no spinner flash, scroll is kept).
 class AsyncList<T> extends StatefulWidget {
-  const AsyncList({super.key, required this.load, required this.builder});
+  const AsyncList({super.key, required this.load, required this.builder, this.refresh});
   final Future<T> Function() load;
+
+  /// Optional "reload now" signal (e.g. a shell's 4 s poll or app resume). Reloads quietly: the old data stays on
+  /// screen, and a tick is skipped while the previous load is still running.
+  final Listenable? refresh;
   final Widget Function(BuildContext, T data, Future<void> Function() reload) builder;
   @override
   State<AsyncList<T>> createState() => _AsyncListState<T>();
@@ -770,13 +774,42 @@ class AsyncList<T> extends StatefulWidget {
 class _AsyncListState<T> extends State<AsyncList<T>> {
   T? _data;
   bool _has = false;
+  bool _loading = true;
   late Future<T> _f = _track(widget.load());
 
-  Future<T> _track(Future<T> f) => f.then((v) {
-        _data = v;
-        _has = true;
-        return v;
-      });
+  @override
+  void initState() {
+    super.initState();
+    widget.refresh?.addListener(_onTick);
+  }
+
+  @override
+  void didUpdateWidget(AsyncList<T> old) {
+    super.didUpdateWidget(old);
+    if (old.refresh != widget.refresh) {
+      old.refresh?.removeListener(_onTick);
+      widget.refresh?.addListener(_onTick);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.refresh?.removeListener(_onTick);
+    super.dispose();
+  }
+
+  void _onTick() {
+    if (!_loading) reload();
+  }
+
+  Future<T> _track(Future<T> f) {
+    _loading = true;
+    return f.then((v) {
+      _data = v;
+      _has = true;
+      return v;
+    }).whenComplete(() => _loading = false);
+  }
 
   Future<void> reload() async {
     if (!mounted) return;
@@ -795,7 +828,7 @@ class _AsyncListState<T> extends State<AsyncList<T>> {
       builder: (ctx, s) {
         final waiting = s.connectionState != ConnectionState.done;
         if (waiting && !_has) return const Center(child: CircularProgressIndicator(color: BC.brand));
-        if (!waiting && s.hasError) {
+        if (!waiting && s.hasError && !_has) {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(32),
@@ -809,7 +842,8 @@ class _AsyncListState<T> extends State<AsyncList<T>> {
             ),
           );
         }
-        final data = (waiting ? _data : s.data) as T;
+        // Keep the previous data while reloading, and when a background refresh fails (no spinner / error flash).
+        final data = (waiting || s.hasError ? _data : s.data) as T;
         return RefreshIndicator(color: BC.brand, onRefresh: reload, child: widget.builder(ctx, data, reload));
       },
     );

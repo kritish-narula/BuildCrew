@@ -6,12 +6,14 @@ import '../../core/api.dart';
 import '../../core/location.dart';
 import '../../core/app_state.dart';
 import '../../core/outbox.dart';
+import '../../core/poller.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 import '../common/chat.dart';
+import '../common/completion_ui.dart';
 import 'worker_shell.dart' show PendingChip;
 
 /// The job the worker has WON: address, attendance (S9), escrow status, rate the customer.
@@ -29,33 +31,52 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
   bool _busy = false;
   Json? _a;
   bool _loadFailed = false;
-  Timer? _refresh, _share;
+  bool _gone = false; // the hire ended (customer cancelled / chose someone else / reported no-show)
+  Timer? _share;
+  late final Poller _poller;
+  String? _uid;
+  int _seq = 0, _applied = 0; // an older response arriving late must never overwrite a newer one
 
   AppState get state => widget.state;
 
   @override
   void initState() {
     super.initState();
+    _uid = state.user?.id;
+    state.addListener(_onState);
     _load();
-    _refresh = Timer.periodic(const Duration(seconds: 6), (_) {
-      if (!_busy) _load();
-    });
+    _poller = Poller(const Duration(seconds: 3), _load, enabled: () => !_busy)..start();
   }
 
   @override
   void dispose() {
-    _refresh?.cancel();
+    _poller.dispose();
     _share?.cancel();
+    state.removeListener(_onState);
     super.dispose();
   }
 
+  /// Another account signed in on this phone: this screen belongs to the old one.
+  void _onState() {
+    if (mounted && state.user?.id != _uid) Navigator.of(context).maybePop();
+  }
+
   Future<void> _load() async {
+    final seq = ++_seq;
     try {
       final all = await state.api.assignments();
-      final a = all.firstWhere((x) => x['id'] == widget.assignmentId);
-      if (!mounted) return;
+      final a = all.where((x) => x['id'] == widget.assignmentId).firstOrNull;
+      if (!mounted || seq < _applied) return;
+      _applied = seq;
+      if (a == null) {
+        setState(() => _gone = true);
+        _share?.cancel();
+        _share = null;
+        return;
+      }
       setState(() {
         _a = a;
+        _gone = false;
         _loadFailed = false;
       });
       _syncSharing(a);
@@ -95,6 +116,71 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _finish() async {
+    final l = L.of(context);
+    final r = await showFinishWorkSheet(context);
+    if (r == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final sent = await Outbox.instance.done(widget.assignmentId, r.photos, r.note);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: sent ? BC.money : BC.ink,
+        content: Text(sent ? l.finishSentWaiting : l.savedDoneOffline, style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.white)),
+      ));
+      await _load();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _withdraw() async {
+    final l = L.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(l.withdrawHireTitle),
+        content: Text(l.withdrawHireBody),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(c, true), style: FilledButton.styleFrom(backgroundColor: BC.danger), child: Text(l.withdrawHireConfirm)),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await state.api.withdrawHire(widget.assignmentId);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _dispute() async {
+    final l = L.of(context);
+    final c = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(l.reportProblem),
+        content: TextField(controller: c, maxLines: 4, maxLength: 1000, decoration: InputDecoration(hintText: l.disputeHint)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(l.submit)),
+        ],
+      ),
+    );
+    final text = c.text.trim();
+    if (ok != true || text.length < 5 || !mounted) return;
+    await _run(() => state.api.workerDispute(widget.assignmentId, text));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BC.ink, content: Text(l.reportedSnack, style: const TextStyle(fontSize: 15, color: Colors.white))));
   }
 
   Future<void> _startJourney() => _run(() async {
@@ -140,7 +226,20 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     final a = _a;
     return Scaffold(
       appBar: AppBar(title: Text(l.myWork, maxLines: 1, overflow: TextOverflow.ellipsis)),
-      body: a != null
+      body: _gone
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.work_off_rounded, size: 56, color: BC.inkFaint),
+                  const SizedBox(height: 12),
+                  Text(l.hireEndedWorker, textAlign: TextAlign.center, style: context.tt.bodyLarge),
+                  const SizedBox(height: 16),
+                  SecondaryButton(label: l.ok, expand: false, onPressed: () => Navigator.of(context).maybePop()),
+                ]),
+              ),
+            )
+          : a != null
           ? RefreshIndicator(color: BC.brand, onRefresh: _load, child: _body(l, a))
           : _loadFailed
               ? Center(
@@ -217,12 +316,17 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
       );
     } else if (status == 'assigned' || status == 'in_progress') {
       final done = a['worker_done_at'] != null;
+      final rework = a['rework_open'] == true;
+      final queued = Outbox.instance.hasPendingFor('done', widget.assignmentId);
+      final hoursLeft = hoursUntil(a['auto_confirm_at'] as String?);
       next = step(
-        icon: done ? Icons.hourglass_bottom_rounded : Icons.construction_rounded,
-        color: done ? BC.pendingInk : BC.money,
-        title: done ? l.waitingCustomerConfirm : l.workInProgress,
-        sub: done ? l.waitingCustomerConfirmSub : l.attendanceHint,
+        icon: rework ? Icons.replay_rounded : (done ? Icons.hourglass_bottom_rounded : Icons.construction_rounded),
+        color: rework ? BC.danger : (done ? BC.pendingInk : BC.money),
+        title: rework ? l.reworkCardTitle : (done ? l.waitingCustomerConfirm : l.workInProgress),
+        sub: rework ? l.reworkCardSub : (done ? l.waitingCustomerConfirmSub : l.attendanceHint),
         actions: [
+          if (done && ((a['proof_photos'] as List?) ?? const []).isNotEmpty) ThumbRow((a['proof_photos'] as List).cast<String>()),
+          if (done && hoursLeft != null) InfoBanner(icon: Icons.timer_rounded, color: BC.info, text: l.autoReleaseWorker(hoursLeft)),
           Row(children: [
             Expanded(
               child: PrimaryButton(
@@ -244,12 +348,11 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
               ),
             ),
           ]),
-          if (!done)
-            SecondaryButton(
-              onPressed: _busy ? null : () => _run(() => state.api.markDone(widget.assignmentId)),
-              icon: Icons.task_alt_rounded,
-              label: l.workFinished,
-            ),
+          if (rework)
+            PrimaryButton(big: true, color: BC.danger, busy: _busy, onPressed: _finish, icon: Icons.task_alt_rounded, label: l.doneAgain)
+          else if (!done && !queued)
+            SecondaryButton(onPressed: _busy ? null : _finish, icon: Icons.task_alt_rounded, label: l.workFinished),
+          if (queued) InfoBanner(icon: Icons.cloud_upload_outlined, color: BC.pendingInk, text: l.savedDoneOffline),
         ],
       );
     } else if (status == 'completed' && escrow == 'held') {
@@ -261,6 +364,8 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
       const PendingChip(),
       next,
+      if (a['rework_open'] == true && a['rework'] is Map) ...[const SizedBox(height: 12), _ReworkCard(rework: (a['rework'] as Map).cast<String, dynamic>(), round: (a['rework_count'] as num?)?.toInt() ?? 1, total: (((a['rework_count'] as num?) ?? 0) + ((a['rework_left'] as num?) ?? 0)).toInt())],
+      if (status == 'completed' && a['auto_confirmed'] == true && escrow == 'released') ...[const SizedBox(height: 12), InfoBanner(icon: Icons.timer_rounded, color: BC.money, text: l.autoPaidWorker)],
       const SizedBox(height: 12),
       AppCard(
         padding: const EdgeInsets.all(BC.pad),
@@ -326,12 +431,27 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
             ),
           ),
       ],
+      if (((a['timeline'] as List?) ?? const []).isNotEmpty) ...[
+        const SizedBox(height: 12),
+        CompletionTimeline(events: (a['timeline'] as List).cast<Json>()),
+      ],
       const SizedBox(height: 12),
       if (status != 'completed')
         SecondaryButton(
           onPressed: () => openChat(context, state, jobId: job['id'] as String, withUser: job['customer_id'] as String? ?? '', title: l.chatWithCustomer),
           icon: Icons.chat_bubble_outline_rounded,
           label: l.chatWithCustomer,
+        ),
+      if (escrow == 'held' && (a['worker_done_at'] != null || a['rework_open'] == true || status == 'completed') && status != 'disputed')
+        TextButton.icon(
+          onPressed: _busy ? null : _dispute,
+          icon: const Icon(Icons.report_gmailerrorred_rounded, color: BC.danger),
+          label: Text(l.workerDisputeBtn, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: BC.danger)),
+        ),
+      if (status == 'assigned' && a['started_at'] == null)
+        TextButton(
+          onPressed: _busy ? null : _withdraw,
+          child: Text(l.withdrawHireBtn, style: const TextStyle(color: BC.inkSoft)),
         ),
       if (status == 'completed' && !rated) _RateCustomer(state: state, assignmentId: widget.assignmentId, onDone: _load),
       if (status == 'completed' && rated) InfoBanner(icon: Icons.thumb_up_alt_rounded, color: BC.money, text: l.thanksForRating),
@@ -347,6 +467,42 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
   String _day(String iso) {
     final d = DateTime.parse(iso).toLocal();
     return '${d.day}/${d.month}/${d.year}';
+  }
+}
+
+/// Red card: exactly what the customer said was wrong (reasons, note, photos).
+class _ReworkCard extends StatelessWidget {
+  const _ReworkCard({required this.rework, required this.round, required this.total});
+  final Json rework;
+  final int round, total;
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final reasons = ((rework['reasons'] as List?) ?? const []).cast<String>();
+    final note = (rework['note'] as String?) ?? '';
+    final photos = ((rework['photos'] as List?) ?? const []).cast<String>();
+    return Container(
+      padding: const EdgeInsets.all(BC.pad),
+      decoration: BoxDecoration(color: BC.danger.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(BC.rMd), border: Border.all(color: BC.danger.withValues(alpha: 0.45))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.report_rounded, color: BC.danger),
+          const SizedBox(width: 8),
+          Expanded(child: Text(l.reworkCustomerSays, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: BC.danger))),
+          StatusPill(label: l.reworkCardRound(round, total), color: BC.danger, bg: Colors.white),
+        ]),
+        const SizedBox(height: 10),
+        ReasonChips(reasons),
+        if (note.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(note, style: const TextStyle(fontSize: 16, height: 1.4, color: BC.ink)),
+        ],
+        if (photos.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          ThumbRow(photos, size: 80),
+        ],
+      ]),
+    );
   }
 }
 
