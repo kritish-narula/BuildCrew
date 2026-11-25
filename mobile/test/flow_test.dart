@@ -881,7 +881,7 @@ void main() {
   });
 
   group('contractor team hiring', () {
-    Json teamBody({int headcount = 2, int days = 3, int wage = 950}) => {
+    Json teamBody({int headcount = 2, int days = 3, int wage = 1000}) => {
           ..._jobBody(),
           'kind': 'team',
           'address_text': 'Site 4, Hadapsar, Pune',
