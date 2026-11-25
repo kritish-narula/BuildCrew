@@ -361,6 +361,7 @@ class DemoApi implements Api {
   Future<void> withdrawBid(String bidId) async {
     final d = await _d;
     final b = _row(d, 'bids', bidId);
+    if (b['worker_id'] != _me) _err('err.not_found');
     if (b['status'] != 'pending') _err('err.job_closed');
     b['status'] = 'withdrawn';
     await _save();
@@ -743,6 +744,7 @@ class DemoApi implements Api {
     final j = _row(d, 'jobs', jobId);
     final b = _row(d, 'bids', bidId);
     if (j['customer_id'] != _me) _err('err.not_your_job');
+    if (b['job_id'] != jobId) _err('err.not_found');
     if (b['status'] != 'pending') _err('err.job_closed');
     _doAccept(d, j, b);
     await _save();
@@ -755,8 +757,8 @@ class DemoApi implements Api {
     final d = await _d;
     final j = _row(d, 'jobs', jobId);
     if (j['customer_id'] != _me) _err('err.not_your_job');
-    final a = _assignmentFor(d, jobId)!;
-    final p = _paymentFor(d, a['id'] as String)!;
+    final a = _assignmentFor(d, jobId) ?? _err('err.not_found');
+    final p = _paymentFor(d, a['id'] as String) ?? _err('err.not_found');
     if (p['state'] == 'created') {
       p['state'] = 'held';
       p['method'] = method;
@@ -773,8 +775,10 @@ class DemoApi implements Api {
   Future<void> completeJob(String jobId) async {
     final d = await _d;
     final j = _row(d, 'jobs', jobId);
-    final a = _assignmentFor(d, jobId)!;
+    if (j['customer_id'] != _me) _err('err.not_your_job');
+    final a = _assignmentFor(d, jobId) ?? _err('err.not_found');
     if (!(j['status'] == 'assigned' || j['status'] == 'in_progress')) _err('err.job_closed');
+    _requirePaid(d, a);
     j['status'] = 'completed';
     a['started_at'] ??= _now();
     a['completed_at'] = _now();
@@ -787,7 +791,9 @@ class DemoApi implements Api {
     final d = await _d;
     final j = _row(d, 'jobs', jobId);
     if (j['status'] != 'completed') _err('err.job_not_completed');
-    final a = _assignmentFor(d, jobId)!;
+    final a = _assignmentFor(d, jobId) ?? _err('err.not_found');
+    final p = _paymentFor(d, a['id'] as String);
+    if (p == null || p['state'] != 'held') _err('err.payment_pending');
     final rs = d['ratings'] as List;
     if (rs.cast<Map>().any((r) => r['assignment_id'] == a['id'] && r['direction'] == 'customer_to_worker')) _err('err.already_rated');
     final v = [stars['quality'], stars['timeliness'], stars['behaviour'], stars['value_for_money']].cast<int>();
@@ -800,7 +806,6 @@ class DemoApi implements Api {
     w['rating_count'] = (w['rating_count'] as int) + 1;
     w['completed'] = (w['completed'] as int) + 1;
     // MANDATORY RATING GATE → release only now
-    final p = _paymentFor(d, a['id'] as String)!;
     p['state'] = 'released';
     p['released_at'] = _now();
     w['earned'] = ((w['earned'] as num?) ?? 0) + (p['payout'] as num);
