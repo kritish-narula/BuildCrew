@@ -7,6 +7,7 @@ import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import 'customer_home.dart' show customerRoute;
 import '../../widgets/media.dart';
 
 /// C6 payment page. The customer pays quote + ₹30 into ESCROW: BuildCrew holds it and
@@ -35,7 +36,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final p = await widget.state.api.payJob(widget.jobId, _method);
       if (!mounted) return;
       HapticFeedback.heavyImpact();
-      await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+      await Navigator.of(context).pushReplacement(customerRoute<void>(
         builder: (_) => PaymentSuccessScreen(payment: p, workerName: widget.workerName),
       ));
     } catch (e) {
@@ -66,7 +67,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                    Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                     Text(sub, style: const TextStyle(color: BC.inkSoft)),
                   ]),
                 ),
@@ -91,7 +92,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(l.payingFor(widget.workerName), style: const TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
-            Text(inr(total), style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.w800, fontFeatures: BC.tabular)),
+            Text(inr(total), style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
             const SizedBox(height: 12),
             _row(l.workerPrice, inr(widget.price)),
             _row(l.platformFee, inr(widget.fee)),
@@ -177,7 +178,7 @@ class PaymentSuccessScreen extends StatelessWidget {
             FilledButton(onPressed: () => Navigator.pop(context), child: Text(l.trackWorker(workerName))),
             const SizedBox(height: 8),
             TextButton(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(payment: payment, workerName: workerName))),
+              onPressed: () => Navigator.of(context).push(customerRoute<void>(builder: (_) => ReceiptScreen(payment: payment, workerName: workerName))),
               child: Text(l.viewReceipt, style: const TextStyle(fontSize: 16)),
             ),
           ]),
@@ -238,7 +239,7 @@ class ReceiptScreen extends StatelessWidget {
                 child: const Icon(Icons.construction_rounded, color: Colors.white),
               ),
               const SizedBox(width: 10),
-              const Text('BuildCrew', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+              const Text('BuildCrew', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
               const Spacer(),
               StatusPill(
                 label: statusText,
@@ -247,7 +248,7 @@ class ReceiptScreen extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 18),
-            Text(inr(payment['amount_inr'] as num), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, fontFeatures: BC.tabular)),
+            Text(inr(payment['amount_inr'] as num), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
             const Divider(height: 28),
             for (final (a, b) in rows)
               Padding(

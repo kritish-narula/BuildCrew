@@ -6,7 +6,7 @@ import 'core/app_state.dart';
 import 'core/theme.dart';
 import 'core/updater.dart';
 import 'features/auth/auth_screens.dart';
-import 'features/customer/customer_home.dart';
+import 'features/customer/customer_shell.dart';
 import 'features/onboarding/onboarding.dart';
 import 'features/worker/worker_shell.dart';
 import 'l10n/gen/app_localizations.dart';
@@ -36,6 +36,9 @@ GoRouter buildRouter(AppState s) {
         return '/role';
       }
       if (loc == '/' || onboarding.contains(loc)) return home();
+      // Role guard: after "switch account" (demo) the old role's screen must not stay open.
+      const roleHomes = {'/worker', '/customer', '/admin'};
+      if (roleHomes.contains(loc) && loc != home()) return home();
       return null;
     },
     routes: [
@@ -47,7 +50,7 @@ GoRouter buildRouter(AppState s) {
       GoRoute(path: '/phone', builder: (_, __) => PhoneScreen(state: s)),
       GoRoute(path: '/otp', builder: (_, __) => OtpScreen(state: s)),
       GoRoute(path: '/worker', builder: (_, __) => WorkerShell(state: s)),
-      GoRoute(path: '/customer', builder: (_, __) => CustomerHome(state: s)),
+      GoRoute(path: '/customer', builder: (_, __) => CustomerShell(state: s)),
       GoRoute(path: '/admin', builder: (_, __) => AdminOnMobile(state: s)),
     ],
   );

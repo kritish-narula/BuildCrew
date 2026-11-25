@@ -50,6 +50,13 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   String get _lang => widget.state.language ?? 'hi';
 
+  @override
+  void dispose() {
+    _area.dispose();
+    _address.dispose();
+    super.dispose();
+  }
+
   bool get _canNext => switch (_step) {
         0 => _works.isNotEmpty,
         1 => _works.every((w) => w.hasContent) && !_works.any((w) => w.uploading),
@@ -102,7 +109,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     }
     if (!mounted) return;
     final note = await showRecorderSheet(context);
-    if (note == null) return;
+    if (note == null || !mounted) return;
     setState(() {
       w.audio = note;
       w.audioKey = null;
@@ -121,6 +128,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     });
     try {
       w.audioKey = (await widget.state.api.upload('audio', a.path))['key'] as String;
+      if (!mounted) return;
       setState(() => w.transcribing = true);
       final t = await widget.state.api.transcribe(w.audioKey!, _lang);
       if (w.transcript.text.isEmpty) w.transcript.text = t;
@@ -286,7 +294,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                         Icon(s.icon, size: 48, color: s.color),
                         const SizedBox(height: 8),
-                        Text(tradeLabel(l, t), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                        Text(tradeLabel(l, t), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                       ]),
                     ),
                     if (on) Positioned(top: 10, right: 10, child: Icon(Icons.check_circle_rounded, color: s.color, size: 28)),
@@ -347,7 +355,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         const SizedBox(height: 10),
         FilledButton.tonalIcon(
           onPressed: _locating ? null : _useGps,
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(BC.tap)),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
           icon: _locating ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 3)) : const Icon(Icons.my_location_rounded),
           label: Text(_point != null ? l.locationCaptured : l.useMyLocation, style: const TextStyle(fontSize: 17)),
         ),
@@ -408,7 +416,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
           const SizedBox(height: 6),
           FittedBox(
             child: Text('${inr(e['total_low_inr'] as num)} – ${inr(e['total_high_inr'] as num)}',
-                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, color: BC.money, fontFeatures: BC.tabular)),
+                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: BC.money, fontFeatures: BC.tabular)),
           ),
           const SizedBox(height: 4),
           Text(l.fairPriceSub(_area.text.trim()), style: const TextStyle(color: BC.inkSoft)),
@@ -424,7 +432,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
             title: Text(tradeLabel(l, it['trade'] as String), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
             subtitle: Text(l.basedOnJobs(it['samples'] as int)),
             trailing: Text('${inr(it['low_inr'] as num)}–${inr(it['high_inr'] as num)}',
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, fontFeatures: BC.tabular)),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, fontFeatures: BC.tabular)),
           ),
         ),
       const SizedBox(height: 8),
@@ -460,12 +468,12 @@ class _WorkCardEditor extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(color: BC.ink, borderRadius: BorderRadius.circular(8)),
-              child: Text(l.workN(index + 1), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+              child: Text(l.workN(index + 1), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(width: 8),
             Icon(s.icon, color: s.color),
             const SizedBox(width: 4),
-            Text(tradeLabel(l, draft.trade), style: TextStyle(color: s.color, fontWeight: FontWeight.w800, fontSize: 17)),
+            Text(tradeLabel(l, draft.trade), style: TextStyle(color: s.color, fontWeight: FontWeight.w700, fontSize: 17)),
             const Spacer(),
             // Speaker chip: which work has which audio, at a glance.
             if (a != null) StatusPill(label: '🔊 ${mmss(a.seconds)}', color: BC.brandDark, bg: BC.brandSoft),

@@ -6,11 +6,12 @@ import uuid
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import services
 from ..config import get_settings
+from ..crypto import mask_phone
 from ..db import get_db
 from ..enums import LANGUAGE_CODES, LANGUAGES, EscrowState, Role, SupportChannel, Trade
 from ..errors import AppError
@@ -188,11 +189,18 @@ def _chat_peers(db: Session, user: User, job_id: uuid.UUID, other: uuid.UUID):
 @files.get("/jobs/{job_id}/chat")
 def chat_list(job_id: uuid.UUID, with_user: uuid.UUID = Query(alias="with"), user: User = Depends(current_user),
               db: Session = Depends(get_db)):
+    """Both directions of one customer<->worker thread, oldest first. Opening it marks the
+    messages addressed to the caller as read."""
     from ..models import ChatMessage
     job, c, w = _chat_peers(db, user, job_id, with_user)
     rows = db.scalars(select(ChatMessage).where(ChatMessage.job_id == job.id,
                                                 ChatMessage.sender_id.in_([c, w]), ChatMessage.recipient_id.in_([c, w]))
-                      .order_by(ChatMessage.created_at)).all()
+                      .order_by(ChatMessage.created_at, ChatMessage.id)).all()
+    unread = [m for m in rows if m.recipient_id == user.id and m.read_at is None]
+    for m in unread:
+        m.read_at = func.now()
+    if unread:
+        db.commit()
     return [{"mine": m.sender_id == user.id, "body": m.body, "at": m.created_at.isoformat()} for m in rows]
 
 
@@ -205,6 +213,30 @@ def chat_send(job_id: uuid.UUID, body: ChatIn, user: User = Depends(current_user
     db.commit()
     services.realtime().publish(f"chat:{job.id}", "message", {"id": str(m.id)})
     return {"ok": True}
+
+
+@files.get("/chats")
+def chat_threads(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Inbox: one row per (job, other person), newest first, with unread count."""
+    from ..models import ChatMessage, Job
+    rows = db.scalars(select(ChatMessage).where(or_(ChatMessage.sender_id == user.id, ChatMessage.recipient_id == user.id))
+                      .order_by(ChatMessage.created_at.desc(), ChatMessage.id)).all()
+    threads: dict[tuple, dict] = {}
+    for m in rows:  # newest first → the first row seen for a thread is its last message
+        other = m.recipient_id if m.sender_id == user.id else m.sender_id
+        th = threads.setdefault((m.job_id, other), {"last": m, "unread": 0})
+        if m.recipient_id == user.id and m.read_at is None:
+            th["unread"] += 1
+    out = []
+    for (job_id, other), th in threads.items():
+        job, ou = db.get(Job, job_id), db.get(User, other)
+        if not job or not ou:
+            continue
+        out.append({"job_id": str(job_id), "with_user": str(other), "with_name": ou.name or mask_phone(ou.phone),
+                    "trades": sorted({wi.trade.value for wi in job.work_items}), "locality": job.locality,
+                    "last_body": th["last"].body, "last_at": th["last"].created_at.isoformat(), "unread": th["unread"]})
+    out.sort(key=lambda x: x["last_at"], reverse=True)
+    return out
 
 
 @files.post("/payments/webhook")

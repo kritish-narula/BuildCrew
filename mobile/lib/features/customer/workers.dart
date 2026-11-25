@@ -5,6 +5,7 @@ import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import 'customer_home.dart' show customerRoute;
 import '../../widgets/media.dart';
 import '../worker/assignment_screen.dart' show EscrowLine;
 import '../worker/worker_shell.dart' show badgeLabel, initials;
@@ -60,15 +61,15 @@ class _BrowseWorkersScreenState extends State<BrowseWorkersScreen> {
                       return Card(
                         child: ListTile(
                           minTileHeight: 84,
-                          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                          onTap: () => Navigator.of(context).push(customerRoute<void>(
                               builder: (_) => WorkerProfileScreen(state: widget.state, workerId: w['id'] as String))),
                           leading: Stack(children: [
                             CircleAvatar(radius: 26, backgroundColor: BC.brand,
-                                child: Text(initials(w['name'] as String), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
+                                child: Text(initials(w['name'] as String), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
                             if (w['online'] == true)
                               const Positioned(right: 0, bottom: 0, child: CircleAvatar(radius: 7, backgroundColor: Colors.white, child: CircleAvatar(radius: 5, backgroundColor: BC.money))),
                           ]),
-                          title: Text(w['name'] as String, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                          title: Text(w['name'] as String, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
                           subtitle: Text((w['trades'] as List).map((t) => tradeLabel(l, t as String)).join(', ')),
                           trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
                             StarBadge(w['rating'] as num),
@@ -102,7 +103,7 @@ class WorkerProfileScreen extends StatelessWidget {
           return ListView(padding: const EdgeInsets.fromLTRB(20, 0, 20, 32), children: [
             Row(children: [
               CircleAvatar(radius: 40, backgroundColor: BC.brand,
-                  child: Text(initials(w['name'] as String), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800))),
+                  child: Text(initials(w['name'] as String), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700))),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -188,7 +189,7 @@ class PaymentsScreen extends StatelessWidget {
                             child: Text('${(p['trades'] as List).map((t) => tradeLabel(l, t as String)).join(', ')} · ${p['locality']}',
                                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                           ),
-                          Text(inr(p['amount_inr'] as num), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, fontFeatures: BC.tabular)),
+                          Text(inr(p['amount_inr'] as num), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
                         ]),
                         if (p['worker_name'] != null) Text(p['worker_name'] as String, style: const TextStyle(color: BC.inkSoft)),
                         Text(l.feeIncluded(inr(p['platform_fee_inr'] as num)), style: const TextStyle(color: BC.inkSoft, fontSize: 13)),

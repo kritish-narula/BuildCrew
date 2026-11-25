@@ -8,6 +8,7 @@ import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import 'customer_home.dart' show customerRoute;
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 import '../common/chat.dart';
@@ -96,7 +97,7 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
   }
 
   Future<void> _openPayment(Json job, String worker, num price, num fee) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
+    await Navigator.of(context).push(customerRoute<void>(
         builder: (_) => PaymentScreen(state: state, jobId: job['id'] as String, workerName: worker, price: price, fee: fee)));
     await _load();
   }
@@ -104,9 +105,9 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
   Widget _line(String a, String b, {bool bold = false}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(children: [
-          Text(a, style: TextStyle(fontSize: 16, fontWeight: bold ? FontWeight.w800 : FontWeight.w500)),
+          Text(a, style: TextStyle(fontSize: 16, fontWeight: bold ? FontWeight.w700 : FontWeight.w500)),
           const Spacer(),
-          Text(b, style: TextStyle(fontSize: bold ? 20 : 16, fontWeight: bold ? FontWeight.w800 : FontWeight.w600, fontFeatures: BC.tabular)),
+          Text(b, style: TextStyle(fontSize: bold ? 20 : 16, fontWeight: bold ? FontWeight.w700 : FontWeight.w600, fontFeatures: BC.tabular)),
         ]),
       );
 
@@ -158,7 +159,7 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
             lowest: !_byRating && i == 0 && bids.length > 1,
             onAccept: () => _accept(job, b),
             onChat: () => openChat(context, state, jobId: job['id'] as String, withUser: (b['worker'] as Json)['id'] as String, title: (b['worker'] as Json)['name'] as String),
-            onProfile: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerProfileScreen(state: state, workerId: (b['worker'] as Json)['id'] as String))),
+            onProfile: () => Navigator.of(context).push(customerRoute<void>(builder: (_) => WorkerProfileScreen(state: state, workerId: (b['worker'] as Json)['id'] as String))),
           ),
           const SizedBox(height: 10),
         ],
@@ -228,7 +229,7 @@ class _Tracker extends StatelessWidget {
                 ]),
                 const SizedBox(height: 6),
                 Text(steps[i].$1, textAlign: TextAlign.center, maxLines: 2,
-                    style: TextStyle(fontSize: 12, fontWeight: i == reached ? FontWeight.w800 : FontWeight.w600, color: i <= reached ? BC.ink : BC.inkFaint)),
+                    style: TextStyle(fontSize: 12, fontWeight: i == reached ? FontWeight.w700 : FontWeight.w600, color: i <= reached ? BC.ink : BC.inkFaint)),
               ]),
             ),
         ]),
@@ -266,7 +267,7 @@ class _NextStep extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                  Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                   if (sub != null) Text(sub, style: const TextStyle(color: BC.inkSoft, fontSize: 15)),
                 ]),
               ),
@@ -277,15 +278,15 @@ class _NextStep extends StatelessWidget {
         );
 
     final workerRow = Row(children: [
-      CircleAvatar(radius: 22, backgroundColor: BC.brand, child: Text(initials(name), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
+      CircleAvatar(radius: 22, backgroundColor: BC.brand, child: Text(initials(name), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
       const SizedBox(width: 10),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
           StarBadge(w['rating'] as num, count: w['rating_count'] as int),
         ]),
       ),
-      Text(inr(a['price_inr'] as num), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, fontFeatures: BC.tabular)),
+      Text(inr(a['price_inr'] as num), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
     ]);
 
     late final Widget main;
@@ -307,7 +308,7 @@ class _NextStep extends StatelessWidget {
         icon: Icons.two_wheeler_rounded,
         color: BC.info,
         title: l.workerOnTheWay(name),
-        sub: l.distanceEta((tr['distance_km'] as num).toStringAsFixed(1), tr['eta_min'] as int),
+        sub: l.distanceEta((tr['distance_km'] as num).toStringAsFixed(1), (tr['eta_min'] as num).toInt()),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           TrackingMap(
             houseLat: (job['lat'] as num).toDouble(),
@@ -353,7 +354,7 @@ class _NextStep extends StatelessWidget {
         action: pay == null
             ? null
             : OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                onPressed: () => Navigator.of(context).push(customerRoute<void>(
                     builder: (_) => ReceiptScreen(payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>()))),
                 icon: const Icon(Icons.receipt_long_rounded),
                 label: Text(l.viewReceipt),
@@ -371,7 +372,7 @@ class _NextStep extends StatelessWidget {
           child: Row(children: [
             Expanded(child: EscrowLine(state: escrow, amount: escrow == 'held' ? pay['amount_inr'] as num : pay['worker_payout_inr'] as num)),
             TextButton(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              onPressed: () => Navigator.of(context).push(customerRoute<void>(
                   builder: (_) => ReceiptScreen(payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>()))),
               child: Text(l.receipt),
             ),
@@ -419,7 +420,7 @@ class _NextStep extends StatelessWidget {
   }
 
   Future<void> _rate(BuildContext context) async {
-    final done = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => RateWorkerScreen(state: state, job: job, a: a)));
+    final done = await Navigator.of(context).push<bool>(customerRoute(builder: (_) => RateWorkerScreen(state: state, job: job, a: a)));
     if (done == true) await reload();
   }
 
@@ -464,22 +465,22 @@ class _BidCard extends StatelessWidget {
           InkWell(
             onTap: onProfile,
             child: Row(children: [
-              CircleAvatar(radius: 26, backgroundColor: BC.brand, child: Text(initials(w['name'] as String), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
+              CircleAvatar(radius: 26, backgroundColor: BC.brand, child: Text(initials(w['name'] as String), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    Flexible(child: Text(w['name'] as String, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+                    Flexible(child: Text(w['name'] as String, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
                     if (w['verified'] == true) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.verified_rounded, color: BC.info, size: 18)),
                   ]),
                   Row(children: [
                     StarBadge(w['rating'] as num),
-                    Text('  ·  ${l.jobsDone(w['completed_jobs'] as int)}', style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
+                    Flexible(child: Text('  ·  ${l.jobsDone((w['completed_jobs'] as num).toInt())}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600))),
                   ]),
                 ]),
               ),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(inr(bid['price_inr'] as num), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, fontFeatures: BC.tabular)),
+                Text(inr(bid['price_inr'] as num), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
                 if (lowest) StatusPill(label: l.lowest, color: BC.money, bg: BC.moneySoft),
               ]),
             ]),
@@ -501,7 +502,7 @@ class _BidCard extends StatelessWidget {
               flex: 2,
               child: FilledButton.icon(
                 onPressed: bid['status'] == 'pending' ? onAccept : null,
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(BC.tap)),
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
                 icon: const Icon(Icons.handshake_rounded),
                 label: Text(l.accept),
               ),
@@ -526,6 +527,12 @@ class _RateWorkerScreenState extends State<RateWorkerScreen> {
   final _v = {'quality': 0, 'timeliness': 0, 'behaviour': 0, 'value_for_money': 0};
   final _comment = TextEditingController();
   bool _busy = false;
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    super.dispose();
+  }
 
   double get _overall => _v.values.every((x) => x > 0) ? _v.values.reduce((a, b) => a + b) / 4 : 0;
 
@@ -572,7 +579,7 @@ class _RateWorkerScreenState extends State<RateWorkerScreen> {
               const Spacer(),
               const Icon(Icons.star_rounded, color: BC.pending, size: 30),
               Text(_overall == 0 ? '—' : _overall.toStringAsFixed(2),
-                  style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800, fontFeatures: BC.tabular)),
+                  style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
             ]),
           ),
         ),

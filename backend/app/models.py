@@ -269,6 +269,7 @@ class ChatMessage(Base):  # addition: chat logs are dispute evidence (A4)
     recipient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _created()
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # set when the recipient opens the thread
 
 
 class SupportTicket(Base):

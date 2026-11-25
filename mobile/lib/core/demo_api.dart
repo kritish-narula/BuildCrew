@@ -833,25 +833,70 @@ class DemoApi implements Api {
     };
   }
 
+  /// Chat is stored once and read by whichever persona is signed in, exactly like the backend:
+  /// a message sent as the customer shows up (unread) when the worker account opens the app.
   @override
   Future<List<Json>> chat(String jobId, String withUser) async {
     final d = await _d;
-    return [
-      for (final m in (d['chat'] as List).cast<Map>().where((m) => m['job_id'] == jobId &&
-          ((m['from'] == _me && m['to'] == withUser) || (m['from'] == withUser && m['to'] == _me))))
-        {'mine': m['from'] == _me, 'body': m['body'], 'at': m['at']}
-    ];
+    final me = _me;
+    final out = <Json>[];
+    var changed = false;
+    for (final m in (d['chat'] as List).cast<Map>()) {
+      if (m['job_id'] != jobId) continue;
+      final mine = m['from'] == me && m['to'] == withUser;
+      final theirs = m['from'] == withUser && m['to'] == me;
+      if (!mine && !theirs) continue;
+      if (theirs && m['read'] != true) {
+        m['read'] = true; // opening the thread = read
+        changed = true;
+      }
+      out.add({'mine': mine, 'body': m['body'], 'at': m['at']});
+    }
+    if (changed) await _save();
+    return out;
   }
 
   @override
   Future<void> sendChat(String jobId, String to, String body) async {
     final d = await _d;
-    final chat = d['chat'] as List;
-    chat.add({'job_id': jobId, 'from': _me, 'to': to, 'body': body, 'at': _now()});
-    // a friendly automatic reply so the demo feels alive
-    chat.add({'job_id': jobId, 'from': to, 'to': _me, 'body': _lang == 'hi' ? 'ठीक है, मैं समय पर आ जाऊँगा।' : 'OK, I will be there on time.',
-      'at': DateTime.now().add(const Duration(seconds: 2)).toIso8601String()});
+    if (_me == null) _err('err.unauthorized');
+    (d['chat'] as List).add({'job_id': jobId, 'from': _me, 'to': to, 'body': body.trim(), 'at': _now(), 'read': false});
     await _save();
+  }
+
+  @override
+  Future<List<Json>> chatThreads() async {
+    final d = await _d;
+    final me = _me;
+    if (me == null) return [];
+    final threads = <String, Json>{};
+    for (final m in (d['chat'] as List).cast<Map>()) {
+      if (m['from'] != me && m['to'] != me) continue;
+      final other = (m['from'] == me ? m['to'] : m['from']) as String;
+      final key = '${m['job_id']}|$other';
+      final t = threads.putIfAbsent(key, () => {'job_id': m['job_id'], 'with_user': other, 'last_body': '', 'last_at': '', 'unread': 0});
+      if ((m['at'] as String).compareTo(t['last_at'] as String) >= 0) {
+        t['last_body'] = m['body'];
+        t['last_at'] = m['at'];
+      }
+      if (m['to'] == me && m['read'] != true) t['unread'] = (t['unread'] as int) + 1;
+    }
+    final out = <Json>[];
+    for (final t in threads.values) {
+      final jobs = _t(d, 'jobs');
+      final users = _t(d, 'users');
+      final j = (jobs[t['job_id']] as Map?)?.cast<String, dynamic>();
+      final u = (users[t['with_user']] as Map?)?.cast<String, dynamic>();
+      if (j == null || u == null) continue;
+      out.add({
+        ...t,
+        'with_name': u['name'] ?? 'BuildCrew',
+        'trades': ([for (final it in j['items'] as List) (it as Map)['trade'] as String]).toSet().toList(),
+        'locality': j['locality'],
+      });
+    }
+    out.sort((a, b) => (b['last_at'] as String).compareTo(a['last_at'] as String));
+    return out;
   }
 
   @override

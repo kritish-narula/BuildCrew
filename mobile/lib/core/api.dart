@@ -97,6 +97,9 @@ abstract class Api {
   Future<String> transcribe(String key, String lang);
   Future<List<Json>> chat(String jobId, String withUser);
   Future<void> sendChat(String jobId, String to, String body);
+  /// Inbox for both roles, newest first: `{job_id, with_user, with_name, trades, locality,
+  /// last_body, last_at, unread}`. Opening a thread via [chat] marks it read.
+  Future<List<Json>> chatThreads();
   Future<String> voiceQuery(String text);
   Future<String> supportTicket(String subject, String? transcript);
 
@@ -241,6 +244,8 @@ class HttpApi implements Api {
   Future<List<Json>> chat(String jobId, String withUser) async => _list(await _get('/jobs/$jobId/chat', {'with': withUser}));
   @override
   Future<void> sendChat(String jobId, String to, String body) => _post('/jobs/$jobId/chat', {'to': to, 'body': body});
+  @override
+  Future<List<Json>> chatThreads() async => _list(await _get('/chats'));
   @override
   Future<String> voiceQuery(String text) async => (_map(await _post('/voice/query', {'text': text})))['answer'] as String;
   @override

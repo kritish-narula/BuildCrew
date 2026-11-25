@@ -1,0 +1,78 @@
+{
+  "chatSending": {
+    "en": "Sending…",
+    "hi": "भेज रहे हैं…"
+  },
+  "chatNotSent": {
+    "en": "Not sent · tap to retry",
+    "hi": "भेजा नहीं गया · दोबारा दबाएँ"
+  },
+  "messagesTitle": {
+    "en": "Messages",
+    "hi": "संदेश"
+  },
+  "messagesEmpty": {
+    "en": "No chats yet. When you message a worker or customer, the chat shows up here.",
+    "hi": "अभी कोई चैट नहीं है। किसी से बात शुरू करते ही चैट यहाँ दिखेगी।"
+  },
+  "navHome": {
+    "en": "Home",
+    "hi": "होम"
+  },
+  "navBookings": {
+    "en": "Bookings",
+    "hi": "बुकिंग"
+  },
+  "navMessages": {
+    "en": "Messages",
+    "hi": "संदेश"
+  },
+  "navProfile": {
+    "en": "Profile",
+    "hi": "प्रोफ़ाइल"
+  },
+  "bookingsTitle": {
+    "en": "Your bookings",
+    "hi": "आपकी बुकिंग"
+  },
+  "bookingsOpen": {
+    "en": "Open",
+    "hi": "खुली"
+  },
+  "bookingsOngoing": {
+    "en": "Ongoing",
+    "hi": "चालू"
+  },
+  "bookingsPast": {
+    "en": "Past",
+    "hi": "पुरानी"
+  },
+  "bookingsEmptyOpen": {
+    "en": "No open bookings. Post a job to get quotes from workers.",
+    "hi": "कोई खुली बुकिंग नहीं। काम डालें और कारीगरों से दाम पाएँ।"
+  },
+  "bookingsEmptyOngoing": {
+    "en": "Nothing in progress right now.",
+    "hi": "अभी कोई काम चालू नहीं है।"
+  },
+  "bookingsEmptyPast": {
+    "en": "Completed and cancelled jobs will show here.",
+    "hi": "पूरे और रद्द हुए काम यहाँ दिखेंगे।"
+  },
+  "attentionTitle": {
+    "en": "Needs your attention",
+    "hi": "आपके ध्यान के लिए"
+  },
+  "allCaughtUp": {
+    "en": "You are all caught up. Nothing needs your attention.",
+    "hi": "सब ठीक है। अभी आपको कुछ करना नहीं है।"
+  },
+  "viewQuotes": {
+    "en": "View quotes",
+    "hi": "दाम देखें"
+  },
+  "seeAllBookings": {
+    "en": "See all bookings",
+    "hi": "सभी बुकिंग देखें"
+  }
+}
