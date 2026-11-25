@@ -22,9 +22,12 @@ Demo mode needs no server. All demo accounts share the data on the phone, so wha
 2. **Mason sees it and quotes**
    - Profile → switch to **Ramesh (mason)**. Your job is at the top of *Jobs* with your photos, 🔊 voice note and distance.
    - Open it: swipe the photos, play the voice note, tap *Show text*. Say or type a price → **Send price**.
+   - **Fair Wage Shield:** the price box shows the fair range for this job. Type a very low price (e.g. ₹500) to see the minimum-wage warning.
 3. **Customer accepts and pays**
    - Switch to **Priya** → open the job.
-   - Ramesh's quote appears next to quotes from other sample workers. Sort by price or rating, open his profile, or chat.
+   - Ramesh's quote appears next to quotes from other sample workers. Each quote is labelled **Fair price**, **Below minimum wage** or **Higher than usual**. Sort by price or rating, open his profile, or chat.
+   - **Chat:** send Ramesh a message, switch to Ramesh — the chat icon at the top of *Jobs* shows an unread badge. Reply, switch back: it's in Priya's **Messages** tab.
+   - Priya's **Bookings** tab lists every job as Open (getting quotes), Ongoing or Past.
    - **Accept** → **Continue to payment** → the payment page shows price + ₹30 fee → choose UPI → **Pay**.
    - The ✓ *Payment successful* screen shows the money held safely (escrow) and a transaction ID.
 4. **Track the worker**
@@ -47,6 +50,7 @@ BuildCrew Admin page: log in with `9000000001` / `123456`. It shows KYC approval
 ## Points to make
 - **No payment until rated:** the server enforces it, not just the app.
 - **Nobody starts before the money is held:** enforced on the server.
+- **Fair Wage Shield (unique):** no other labour app warns when a quote is below the legal minimum wage — it protects workers and tells customers which prices are fair.
 - **Workers:** voice-first, 12 languages, works offline, simple 4-tab app.
 - **Privacy:** the exact address is shown only to the hired worker; voice notes are private; UPI IDs are encrypted.
 - **Updates:** install inside the app.

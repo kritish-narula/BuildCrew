@@ -1,7 +1,7 @@
 {
   "minSupportedBuild": 0,
   "notes": {
-    "en": "Full job flow: post work with photos → worker quotes → you accept and pay on the new payment page → track the worker live with distance and arrival time → worker finishes → you rate with stars → payment released with a receipt. Check-in error fixed. Demo accounts and account switching for presentations. More reliable updates.",
-    "hi": "पूरा काम का सफ़र: फ़ोटो के साथ काम डालें → कारीगर दाम बताए → आप मंज़ूर करें और नए भुगतान पेज पर भुगतान करें → कारीगर को दूरी और पहुँचने के समय के साथ लाइव देखें → काम पूरा → स्टार से रेटिंग → रसीद के साथ भुगतान। हाज़िरी की गड़बड़ी ठीक। डेमो खाते और खाता बदलना। अपडेट अब ज़्यादा भरोसेमंद।"
+    "en": "Big redesign: new Hindi+English font, smaller buttons, cleaner screens, no cut-off text. Chat now works both ways with a Messages inbox and unread counts. Customers get Home / Bookings (Open, Ongoing, Past) / Messages tabs. Realistic Indian prices for your city, works anywhere in India. NEW Fair Wage Shield: workers see the fair price for each job and a warning if a quote is below minimum wage; customers see which quotes are fair.",
+    "hi": "नया डिज़ाइन: नया हिंदी-अंग्रेज़ी फ़ॉन्ट, छोटे बटन, साफ़ स्क्रीन, कटे हुए शब्द नहीं। चैट अब दोनों तरफ़ चलती है — संदेश इनबॉक्स और अनपढ़े संदेशों की गिनती के साथ। ग्राहक के लिए होम / बुकिंग (खुली, चालू, पुरानी) / संदेश टैब। आपके शहर के हिसाब से सही दाम, पूरे भारत में काम करता है। नया फ़ेयर वेज शील्ड: कारीगर को हर काम का सही दाम दिखेगा और न्यूनतम मज़दूरी से कम दाम पर चेतावनी; ग्राहक देख सकेंगे कौन सा दाम सही है।"
   }
 }

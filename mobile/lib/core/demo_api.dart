@@ -1299,7 +1299,12 @@ class DemoPricing {
     final its = est['items'] as List;
     final days = its.fold<double>(0, (s, i) => s + ((i as Map)['est_days'] as num).toDouble());
     final mw = its.fold<int>(0, (s, i) => s + ((i as Map)['min_wage_total'] as int));
-    return {'low': est['total_low_inr'], 'median': est['total_median_inr'], 'high': est['total_high_inr'],
+    // Where the market rate sits near the wage floor, keep a real spread above it.
+    final low = (est['total_low_inr'] as num).toInt();
+    int r50(num v) => ((v / 50).round() * 50).toInt();
+    final median = max((est['total_median_inr'] as num).toInt(), r50(low * 1.15));
+    final high = max((est['total_high_inr'] as num).toInt(), r50(low * 1.35));
+    return {'low': low, 'median': median, 'high': high,
       'min_wage_total': mw, 'est_days': double.parse(days.toStringAsFixed(1))};
   }
 

@@ -192,8 +192,11 @@ def fair_range(job, trades: Iterable[str] | None = None) -> dict:
     est = estimate_items(_job_items(job, trades), getattr(job, "city", None))
     days = round(sum(i["est_days"] for i in est["items"]), 1)
     mw = sum(i["min_wage_total"] for i in est["items"])
-    return {"low": est["total_low_inr"], "median": est["total_median_inr"], "high": est["total_high_inr"],
-            "min_wage_total": int(mw), "est_days": days}
+    # Where the market rate sits near the wage floor, keep a real spread above it.
+    low = int(est["total_low_inr"])
+    median = max(int(est["total_median_inr"]), int(round(low * 1.15 / 50) * 50))
+    high = max(int(est["total_high_inr"]), int(round(low * 1.35 / 50) * 50))
+    return {"low": low, "median": median, "high": high, "min_wage_total": int(mw), "est_days": days}
 
 
 HIGH_FACTOR = 1.2  # more than 20% over the top of the range = "higher than usual"

@@ -66,7 +66,7 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000   # Android emulator
 | Customer | 9100000003 | Neha, homeowner, English |
 | Worker | 9200000001–9200000010 | mason, plumber, electrician, carpenter, painter (+helpers), mixed languages; 9200000008 is a brand-new KYC-L0 worker |
 
-Seed: 6 jobs in Pune (open, bidding with 3 quotes, assigned, in-progress with offline-synced attendance, completed awaiting the mandatory rating, disputed with the customer's voice note as evidence) and price history for the Fair Price Estimate.
+Seed: 6 jobs (sample data in Pune; pricing and the app work anywhere in India) (open, bidding with 3 quotes, assigned, in-progress with offline-synced attendance, completed awaiting the mandatory rating, disputed with the customer's voice note as evidence) and price history for the Fair Price Estimate.
 
 ## 3. Config knobs (`.env`)
 
@@ -155,7 +155,7 @@ backend/app/
   domain/policies.py   who may see private media
   services/            Payment · Translation · Speech · Storage · SMS · Maps · Realtime (mock + real)
   i18n/locales/        server strings (errors, SMS) for 12 languages
-  seed.py              Pune demo data
+  seed.py              demo data (realistic Indian rates)
 mobile/lib/
   core/updater.dart    in-app self-update
   core/theme.dart      design tokens
