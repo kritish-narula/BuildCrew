@@ -102,7 +102,14 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
     att = db.scalars(select(Attendance).where(Attendance.assignment_id == a.id).order_by(Attendance.checkin_at)).all()
     bid = db.get(Bid, a.accepted_bid_id)
     from ..domain.flows import tracking
-    return {"id": str(a.id), "worker": worker_summary(db, a.worker), "price_inr": bid.quoted_price_paise / 100,
+    team_part = {}
+    if a.work_item_id:  # team member: price = wage x planned days; attendance gives days worked
+        from ..domain import team
+        wi = db.get(WorkItem, a.work_item_id)
+        team_part = {"team_member": True, "trade": wi.trade.value, "daily_wage_inr": bid.quoted_price_paise / 100,
+                     "days_planned": a.days_planned, "days_worked": team.days_worked(db, a)}
+    return {**team_part, "id": str(a.id), "worker": worker_summary(db, a.worker),
+            "price_inr": bid.quoted_price_paise * (a.days_planned if a.work_item_id else 1) / 100,
             "tracking": tracking(a), "worker_done_at": a.worker_done_at.isoformat() if a.worker_done_at else None,
             "started_at": a.started_at.isoformat() if a.started_at else None,
             "completed_at": a.completed_at.isoformat() if a.completed_at else None,
@@ -113,7 +120,10 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
 
 
 def job_card(db: Session, job: Job, lang: str) -> dict:
-    return {"id": str(job.id), "customer_id": str(job.customer_id), "status": job.status.value, "locality": job.locality, "city": job.city,
+    from ..domain import team
+    return {"kind": job.kind, "scheduled_for": job.scheduled_for.isoformat() if job.scheduled_for else None,
+            "time_slot": job.time_slot, "team": team.summary(db, job),
+            "id": str(job.id), "customer_id": str(job.customer_id), "status": job.status.value, "locality": job.locality, "city": job.city,
             "address": job.address_text, "lat": job.location_lat, "lng": job.location_lng,
             "start_date": job.start_date.isoformat(), "created_at": job.created_at.isoformat(),
             "trades": [wi.trade.value for wi in job.work_items],

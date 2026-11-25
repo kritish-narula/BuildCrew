@@ -47,6 +47,11 @@ class AppState extends ChangeNotifier {
       s.token = null;
       s.user = null;
     }
+    // Sessions saved before contractor accounts existed carry no customer type -> log in again.
+    if (AppConfig.isDemo && s.user != null && s.user!.role == 'customer' && s.user!.customerType == null) {
+      s.token = null;
+      s.user = null;
+    }
     s.api.token = s.token;
     s.api.language = s.language ?? 'hi';
     return s;
@@ -72,10 +77,11 @@ class AppState extends ChangeNotifier {
   }
 
   /// Refresh the cached user after a profile change (e.g. KYC level 1 sets name + level).
-  Future<void> updateUser({String? name, int? kycLevel}) async {
+  Future<void> updateUser({String? name, int? kycLevel, String? orgName}) async {
     final u = user;
     if (u == null) return;
-    user = SessionUser(id: u.id, phone: u.phone, role: u.role, language: u.language, name: name ?? u.name, kycLevel: kycLevel ?? u.kycLevel);
+    user = SessionUser(id: u.id, phone: u.phone, role: u.role, language: u.language, name: name ?? u.name, kycLevel: kycLevel ?? u.kycLevel,
+        customerType: u.customerType, orgName: orgName ?? u.orgName);
     await _secure.write(key: 'user', value: jsonEncode(user!.toJson()));
     notifyListeners();
   }

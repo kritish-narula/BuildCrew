@@ -3,7 +3,8 @@
 Logins (dev OTP is always 123456):
   admin       9000000001
   customers   9100000001 (homeowner, Hindi) · 9100000002 (contractor, Marathi) · 9100000003 (homeowner, English)
-  workers     9200000001 … 9200000010
+  workers     9200000001 … 9200000024 (every trade has >= 2 workers; 21-24 are dedicated helpers/mazdoor)
+  contractor  9100000002 (Anil Deshmukh, Deshmukh Constructions) has an active team site + an open team job
 """
 import random
 import sys
@@ -69,6 +70,21 @@ WORKERS = [  # phone, name, lang, trades, locality, rating, count, kyc, badges, 
     ("9200000008", "Mohan Jadhav", "mr", ["carpenter", "helper"], "Shivajinagar", 0.0, 0, 0, [], True),  # new, KYC L0
     ("9200000009", "Selvam K", "ta", ["painter"], "Kothrud", 4.4, 15, 1, [], True),
     ("9200000010", "Deepak Gupta", "hi", ["painter", "helper"], "Hadapsar", 4.0, 8, 1, [], False),
+    # More people from different states, so every trade has at least two workers and a real choice.
+    ("9200000011", "Ramkumar Verma", "hi", ["mason"], "Kothrud", 4.3, 14, 1, [], True),               # Uttar Pradesh
+    ("9200000012", "Basavaraj Hiremath", "kn", ["mason", "helper"], "Hadapsar", 4.0, 7, 1, [], True),  # Karnataka
+    ("9200000013", "Murugan S", "ta", ["plumber"], "Aundh", 4.5, 22, 1, [], True),                      # Tamil Nadu
+    ("9200000014", "Shamshad Alam", "hi", ["plumber"], "Baner", 4.2, 11, 1, [], True),                  # Bihar
+    ("9200000015", "Jignesh Patel", "gu", ["electrician"], "Kothrud", 4.4, 17, 1, [], True),            # Gujarat
+    ("9200000016", "Shaji Thomas", "ml", ["electrician", "helper"], "Wakad", 4.6, 26, 2, ["trusted_electrician"], True),  # Kerala
+    ("9200000017", "Rajesh Suthar", "hi", ["carpenter"], "Hadapsar", 4.3, 16, 1, [], True),            # Rajasthan
+    ("9200000018", "Bikash Nayak", "or", ["carpenter"], "Baner", 4.1, 10, 1, [], False),                # Odisha
+    ("9200000019", "Dipak Das", "as", ["painter"], "Wakad", 4.2, 12, 1, [], True),                      # Assam
+    ("9200000020", "Subhash Mondal", "bn", ["painter"], "Viman Nagar", 3.8, 6, 1, [], True),            # West Bengal
+    ("9200000021", "Manoj Mahto", "hi", ["helper"], "Kothrud", 4.0, 9, 1, [], True),                    # Bihar
+    ("9200000022", "Raju Munda", "hi", ["helper"], "Hadapsar", 4.2, 13, 1, [], True),                   # Jharkhand
+    ("9200000023", "Santosh Kamble", "mr", ["helper"], "Aundh", 4.1, 8, 1, [], True),                   # Maharashtra
+    ("9200000024", "Sunita Devi", "hi", ["helper"], "Kharadi", 4.4, 18, 1, [], True),                   # Madhya Pradesh
 ]
 CUSTOMERS = [
     ("9100000001", "Priya Sharma", "hi", CustomerType.homeowner, None),
@@ -98,7 +114,15 @@ JOBS = [
         (Trade.plumber, "पूरे फ्लैट की पाइपलाइन बदलनी है, लीकेज टेस्ट के साथ।", "hi", True),
         (Trade.mason, "Bathroom floor tiling after plumbing, 60 sq ft.", "en", False),
         (Trade.helper, "Debris removal.", "hi", False)]),
+    # Open jobs so the carpenter and helper feeds are never empty (plumber/mason: job 1; electrician/painter: job 2).
+    (2, "Wakad", JobStatus.open, 2, [
+        (Trade.carpenter, "Need a new sliding wardrobe door fitted in the bedroom and the two kitchen drawer channels replaced.", "en", False)]),
+    (0, "Baner", JobStatus.open, 3, [
+        (Trade.helper, "Two helpers needed for one day to shift furniture and clear old tiles and debris from the flat.", "en", False)]),
 ]
+# job index -> (days from today, hour, minute, slot): the schedule shown on every job card
+SCHEDULES = {0: (1, 9, 30, "exact"), 1: (2, 8, 0, "morning"), 2: (-1, 12, 0, "afternoon"), 6: (1, 12, 0, "afternoon"),
+             7: (2, 16, 0, "evening")}
 
 
 def reset(db):
@@ -171,6 +195,11 @@ def run(do_reset: bool = False):
             db.flush()
             for p in range(random.randint(1, 3)):
                 db.add(WorkItemPhoto(work_item_id=wi.id, photo_url=trade_photo(trade.value, p + k), sort_order=p))
+        if j - 1 in SCHEDULES:
+            d_off, hh, mm, slot = SCHEDULES[j - 1]
+            at = datetime.combine(date.today() + timedelta(days=d_off), datetime.min.time()).replace(hour=hh, minute=mm)
+            job.scheduled_for = at.replace(tzinfo=timezone(timedelta(hours=5, minutes=30)))
+            job.time_slot = slot
         audit(db, actor_id=job.customer_id, action="job.posted", entity="job", entity_id=job.id, seed=True)
         jobs.append(job)
     db.flush()
@@ -208,7 +237,7 @@ def run(do_reset: bool = False):
         audit(db, actor_id=job.customer_id, action="bid.accepted", entity="bid", entity_id=bid.id, seed=True)
         return a
 
-    j1, j2, j3, j4, j5, j6 = jobs
+    j1, j2, j3, j4, j5, j6, j7, j8 = jobs
     bids_for(j2, Trade.electrician, 2, [0.95, 0.35])  # 2nd quote is deliberately below minimum wage (Fair Wage Shield demo)
     bids_for(j2, Trade.painter, 1, [1.05])                       # → "3 workers have quoted"
     assign(j3, bids_for(j3, Trade.carpenter, 2)[0], EscrowState.held)
@@ -240,6 +269,74 @@ def run(do_reset: bool = False):
                            body=body, created_at=NOW - timedelta(hours=h)))
     db.add(SupportTicket(user_id=workers[1].id, channel=SupportChannel.voice, subject="Payment kab aayega?",
                          transcript="mera paisa kab aayega?"))
+
+    # ---- Contractor team sites (Anil Deshmukh, 9100000002) ----
+    anil = customers[1]
+    by_phone = {w.phone: w for w in workers}
+    IST = timezone(timedelta(hours=5, minutes=30))
+
+    def team_job(loc, status, days_ago, lines, sched_off):
+        lat, lng = PUNE_LOCALITIES[loc]
+        tj = Job(customer_id=anil.id, location_lat=lat, location_lng=lng, address_text=f"Plot 14, {loc}, Pune", city="Pune",
+                 locality=loc, start_date=date.today() + timedelta(days=sched_off), status=status, kind="team",
+                 scheduled_for=datetime.combine(date.today() + timedelta(days=sched_off), datetime.min.time()).replace(hour=8, tzinfo=IST),
+                 time_slot="morning", created_at=NOW - timedelta(days=days_ago, hours=3))
+        db.add(tj)
+        db.flush()
+        items = []
+        for k, (trade, headcount, days, wage, txt) in enumerate(lines):
+            wi = WorkItem(job_id=tj.id, sort_order=k, trade=trade, text_description=txt, description_language="en",
+                          headcount=headcount, days=days, daily_wage_paise=wage * INR)
+            db.add(wi)
+            db.flush()
+            for p in range(2):
+                db.add(WorkItemPhoto(work_item_id=wi.id, photo_url=trade_photo(trade.value, p + k), sort_order=p))
+            items.append(wi)
+        audit(db, actor_id=anil.id, action="job.posted", entity="job", entity_id=tj.id, seed=True, kind="team")
+        return tj, items
+
+    def team_bid(tj, wi, w, wage, accepted=False):
+        b = Bid(job_id=tj.id, worker_id=w.id, work_item_id=wi.id, quoted_price_paise=wage * INR,
+                status=BidStatus.accepted if accepted else BidStatus.pending, created_at=tj.created_at + timedelta(hours=2))
+        db.add(b)
+        db.flush()
+        if not accepted:
+            return b
+        a = Assignment(job_id=tj.id, work_item_id=wi.id, days_planned=wi.days, worker_id=w.id, accepted_bid_id=b.id,
+                       escrow_status=EscrowState.held, started_at=NOW - timedelta(days=2))
+        db.add(a)
+        db.flush()
+        fees = compute_fees(wage * INR * wi.days)
+        db.add(Payment(assignment_id=a.id, amount_paise=fees.customer_pays_paise, platform_fee_paise=fees.platform_fee_paise,
+                       worker_payout_paise=fees.worker_payout_paise, escrow_state=EscrowState.held,
+                       razorpay_ref=f"order_mock_team{str(a.id)[:8]}", method="upi", paid_at=NOW - timedelta(days=3)))
+        a.journey_started_at = NOW - timedelta(days=2, minutes=25)
+        return a
+
+    # Site 1: in progress. 3 masons + 3 helpers wanted, 2 masons + 1 helper hired and on site, others applied.
+    t1, (t1m, t1h) = team_job("Hadapsar", JobStatus.in_progress, 4, [
+        (Trade.mason, 3, 5, 950, "Boundary wall and plaster for a new plot, 3 masons for 5 days. Bring your own tools; lunch provided."),
+        (Trade.helper, 3, 5, 800, "Three helpers to carry bricks, mix cement and clean the site for 5 days at the same plot."),
+    ], -2)
+    hired = [team_bid(t1, t1m, by_phone["9200000001"], 950, True), team_bid(t1, t1m, by_phone["9200000011"], 950, True),
+             team_bid(t1, t1h, by_phone["9200000021"], 800, True)]
+    team_bid(t1, t1m, by_phone["9200000002"], 1000)
+    team_bid(t1, t1h, by_phone["9200000022"], 800)
+    lat, lng = PUNE_LOCALITIES["Hadapsar"]
+    for ai, a in enumerate(hired):
+        for d in (2, 1, 0) if ai != 2 else (2, 1):
+            day = (NOW - timedelta(days=d)).astimezone(IST).replace(hour=9, minute=5 + ai * 6, second=0, microsecond=0)
+            db.add(Attendance(assignment_id=a.id, checkin_at=day, checkin_lat=lat + 0.0002, checkin_lng=lng - 0.0001,
+                              checkout_at=None if d == 0 else day + timedelta(hours=8, minutes=15), offline_synced=(ai == 1 and d == 1)))
+    # Site 2: open for applications (painters + carpenters), nobody hired yet.
+    t2, (t2p, t2c) = team_job("Baner", JobStatus.bidding, 1, [
+        (Trade.painter, 2, 4, 900, "Two painters for putty, primer and two coats on a 3 BHK flat, 4 days. Material is on site."),
+        (Trade.carpenter, 2, 3, 1300, "Two carpenters for modular wardrobes and door frames in a new flat, 3 days."),
+    ], 2)
+    team_bid(t2, t2p, by_phone["9200000009"], 900)
+    team_bid(t2, t2p, by_phone["9200000019"], 950)
+    team_bid(t2, t2c, by_phone["9200000007"], 1300)
+    db.flush()
 
     # Past work for every experienced worker: completed, rated, paid. Feeds profile history,
     # parameter-wise ratings, earnings history and the badge logic.

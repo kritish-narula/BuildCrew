@@ -10,7 +10,7 @@ from .. import services
 from ..audit import audit
 from ..config import get_settings
 from ..db import get_db
-from ..enums import LANGUAGE_CODES, Role
+from ..enums import LANGUAGE_CODES, CustomerType, Role
 from ..errors import AppError
 from ..i18n import pick_lang, t
 from ..models import CustomerProfile, OtpCode, User, WorkerProfile
@@ -33,6 +33,8 @@ class OtpVerify(BaseModel):
     phone: str = Field(pattern=PHONE)
     code: str = Field(pattern=r"^\d{6}$")
     role: Role | None = None          # only used when the number is new
+    customer_type: str | None = Field(default=None, pattern="^(homeowner|contractor)$")  # new customers only
+    business_name: str | None = Field(default=None, max_length=160)
     language_code: str | None = None
 
 
@@ -106,7 +108,8 @@ def verify_otp(body: OtpVerify, request: Request, db: Session = Depends(get_db))
         if role == Role.worker:
             db.add(WorkerProfile(user_id=user.id, trades=[], badges=[]))
         else:
-            db.add(CustomerProfile(user_id=user.id))
+            ctype = CustomerType.contractor if body.customer_type == "contractor" else CustomerType.homeowner
+            db.add(CustomerProfile(user_id=user.id, type=ctype, org_name=(body.business_name or "").strip() or None))
         audit(db, actor_id=user.id, action="user.registered", entity="user", entity_id=user.id, role=role.value)
     audit(db, actor_id=user.id, action="user.login", entity="user", entity_id=user.id)
     db.commit()
@@ -118,6 +121,7 @@ def verify_otp(body: OtpVerify, request: Request, db: Session = Depends(get_db))
 class MePatch(BaseModel):
     language_code: str | None = None
     name: str | None = Field(default=None, max_length=120)
+    business_name: str | None = Field(default=None, max_length=160)  # contractors
 
 
 me_router = APIRouter(prefix="/me", tags=["me"])
@@ -138,6 +142,8 @@ def patch_me(body: MePatch, user: User = Depends(current_user), db: Session = De
         user.language_code = body.language_code
     if body.name is not None:
         user.name = body.name.strip()
+    if body.business_name is not None and user.customer_profile:
+        user.customer_profile.org_name = body.business_name.strip() or None
     db.add(user)
     db.commit()
     return user_out(user, self_view=True)

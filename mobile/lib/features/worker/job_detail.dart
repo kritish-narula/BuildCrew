@@ -11,6 +11,8 @@ import '../../widgets/common.dart';
 import '../../widgets/fair_price.dart';
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
+import '../../widgets/schedule.dart';
+import '../../widgets/team_widgets.dart';
 import '../common/chat.dart';
 import '../onboarding/onboarding.dart' show nativeName;
 
@@ -75,7 +77,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         builder: (ctx, job, reload) {
           final items = (job['work_items'] as List).cast<Json>();
           final myBid = job['my_bid'] as Json?;
-          final open = job['status'] == 'open' || job['status'] == 'bidding';
+          final isTeam = job['kind'] == 'team';
+          final open = job['status'] == 'open' || job['status'] == 'bidding' || (isTeam && job['open_for_team'] == true);
+          final myItem = job['my_item'] as Json?;
           if (myBid != null && !_prefilled && _price.text.isEmpty) {
             _prefilled = true;
             _price.text = '${(myBid['price_inr'] as num).round()}';
@@ -100,7 +104,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.event_rounded, color: BC.inkFaint, size: 18),
                       const SizedBox(width: 6),
-                      Flexible(child: Text(l.startsOn(job['start_date'] as String), maxLines: 1, overflow: TextOverflow.ellipsis, style: BC.subtle)),
+                      Flexible(
+                        child: Text(scheduleText(l, job['scheduled_for'] as String?, job['time_slot'] as String?) ?? l.startsOn(job['start_date'] as String),
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: BC.subtle),
+                      ),
                     ]),
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.gavel_rounded, color: BC.inkFaint, size: 18),
@@ -124,6 +131,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   : null,
             ),
             const SizedBox(height: 16),
+            if (isTeam) ...[
+              TeamNeedsBanner(team: job['team'] as Map?, trades: [if (myItem != null) myItem['trade'] as String], max: 6),
+              const SizedBox(height: 16),
+            ],
             for (final it in items) ...[
               WorkItemView(item: it, lang: lang),
               const SizedBox(height: 16),
@@ -141,9 +152,25 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 padding: const EdgeInsets.all(BC.padLg),
                 shadow: true,
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text(myBid == null ? l.yourPrice : l.updateYourPrice, style: context.tt.titleLarge),
+                  // Team job: one tap accepts the contractor's daily wage; or quote your own daily rate below.
+                  if (isTeam && myItem != null && myBid == null) ...[
+                    PrimaryButton(
+                      big: true,
+                      busy: _sending,
+                      icon: Icons.group_add_rounded,
+                      label: l.teamJoinAt(inr(myItem['daily_wage_inr'] as num)),
+                      onPressed: () {
+                        _price.text = '${(myItem['daily_wage_inr'] as num).round()}';
+                        _send();
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    Text(l.teamJoinSub(myItem['days'] as int, inr((myItem['daily_wage_inr'] as num) * (myItem['days'] as int))), style: BC.subtle),
+                    const Divider(height: 28),
+                  ],
+                  Text(isTeam ? l.teamYourDaily : (myBid == null ? l.yourPrice : l.updateYourPrice), style: context.tt.titleLarge),
                   const SizedBox(height: 2),
-                  Text(l.yourPriceSub, style: BC.subtle),
+                  Text(isTeam ? l.teamQuoteSub : l.yourPriceSub, style: BC.subtle),
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),

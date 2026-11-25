@@ -13,6 +13,7 @@ import 'package:buildcrew/features/common/update_ui.dart';
 import 'package:buildcrew/features/customer/customer_job.dart';
 import 'package:buildcrew/features/customer/customer_shell.dart';
 import 'package:buildcrew/features/customer/payment.dart';
+import 'package:buildcrew/features/customer/team_job.dart';
 import 'package:buildcrew/features/customer/post_job.dart';
 import 'package:buildcrew/features/customer/workers.dart';
 import 'package:buildcrew/features/onboarding/onboarding.dart';
@@ -39,6 +40,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///
 /// Personas: ONE AppState/DemoApi (the demo "database" is cached per instance) and the signed-in
 /// user is switched with `AppState.switchAccount` exactly like the in-app demo helper.
+const _anil = '9100000002'; // contractor: team sites t1 (running, 5/7 filled) and t2 (hiring)
 const _priya = '9100000001'; // customer: open job j1, assigned j3 (paid), bidding j6
 const _neha = '9100000003'; // customer: j2 with 3 quotes (one below min wage), j5 awaiting rating
 const _ramesh = '9200000001'; // mason: in-progress job a4, earnings history
@@ -379,6 +381,21 @@ List<_Screen> _extraScreens(String lang) => [
       _Screen('customer_messages_tab', _priya, () => CustomerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.chat_bubble_outline_rounded))),
       _Screen('worker_labour_card', _ramesh, () => LabourCardScreen(state: state), scrollBottom: true),
       _Screen('worker_kyc_level1', _selvam, () => KycLevel1Screen(state: state), scrollBottom: true),
+      // ---- contractor team hiring, scheduling and post-job rules
+      _Screen('contractor_home', _anil, () => CustomerShell(state: state), scrollBottom: true),
+      _Screen('contractor_team_tab', _anil, () => CustomerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.groups_outlined)), scrollBottom: true),
+      _Screen('contractor_team_post', _anil, () => PostJobScreen(state: state, team: true), act: (t) => _tap(t, find.byType(InkWell))),
+      _Screen('contractor_team_roster', _anil, () => TeamJobScreen(state: state, jobId: 't1'), scrollBottom: true),
+      _Screen('contractor_team_hiring', _anil, () => TeamJobScreen(state: state, jobId: 't2'), scrollBottom: true),
+      _Screen('worker_feed_team_job', _selvam, () => WorkerShell(state: state), scrollBottom: true),
+      _Screen('customer_scheduled_cards', _priya, () => CustomerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.assignment_outlined))),
+      _Screen('customer_post_job_rules', _priya, () => PostJobScreen(state: state), act: (t) async {
+        await _tap(t, find.byType(InkWell)); // pick the first trade
+        await _tap(t, find.byType(FilledButton)); // Continue -> work step
+        final f = find.byType(TextField);
+        if (f.evaluate().isNotEmpty) await t.enterText(f.first, 'Kitchen tap is leaking badly'); // short: counter + reason
+        await _pumpFor(t, 600);
+      }, scrollBottom: true),
     ];
 
 void main() {

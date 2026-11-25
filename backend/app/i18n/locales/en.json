@@ -48,5 +48,12 @@
  "err.already_resolved": "Already resolved.",
  "voice.balance": "Your balance is {amount} rupees.",
  "kyc.l1_prompt": "A customer chose you! Add your name, photo and UPI ID to get paid.",
- "err.payment_pending": "The customer has not paid yet. Work starts after payment."
+ "err.payment_pending": "The customer has not paid yet. Work starts after payment.",
+ "err.photos_required": "Add at least {min} photos of the work.",
+ "err.description_short": "Describe the work in at least {min} characters.",
+ "err.schedule_past": "The date or time you picked has already passed.",
+ "err.team_full": "All places for this trade are already filled.",
+ "err.contractor_only": "Only contractor accounts can hire a team.",
+ "err.wage_below_minimum": "The daily wage is below the minimum wage (₹{minimum}/day for {trade}). Please offer at least the minimum.",
+ "err.team_use_roster": "Pay and rate each worker from the Team roster."
 }

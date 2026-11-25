@@ -17,6 +17,8 @@ class UserOut(BaseModel):
     upi_id: str | None = None
     overall_rating: float | None = None
     rating_count: int | None = None
+    customer_type: str | None = None  # customers only: homeowner | contractor
+    org_name: str | None = None
 
 
 def user_out(user: User, self_view: bool = False) -> UserOut:
@@ -30,4 +32,6 @@ def user_out(user: User, self_view: bool = False) -> UserOut:
         upi_id=(wp.upi_id if self_view else mask_upi(wp.upi_id)) if wp else None,
         overall_rating=rating.overall_rating if rating else None,
         rating_count=rating.rating_count if rating else None,
+        customer_type=user.customer_profile.type.value if user.customer_profile else None,
+        org_name=user.customer_profile.org_name if user.customer_profile else None,
     )

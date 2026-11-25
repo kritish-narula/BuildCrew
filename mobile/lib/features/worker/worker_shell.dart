@@ -9,6 +9,8 @@ import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import '../../widgets/media.dart';
+import '../../widgets/schedule.dart';
+import '../../widgets/team_widgets.dart';
 import '../common/chat.dart';
 import '../common/profile.dart';
 import '../common/update_ui.dart';
@@ -275,12 +277,20 @@ class JobCard extends StatelessWidget {
                     label: '${mmss((audio['total_seconds'] as num).toInt())} · ${audio['total_kb']} KB',
                     color: BC.brandDark, bg: BC.brandSoft, icon: Icons.volume_up_rounded),
             ]),
+            if (job['kind'] == 'team') ...[
+              const SizedBox(height: 10),
+              TeamNeedsBanner(team: job['team'] as Map?),
+            ],
             const SizedBox(height: 12),
             Row(children: [
               const Icon(Icons.place_rounded, size: 18, color: BC.inkFaint),
               const SizedBox(width: 6),
               Expanded(child: Text(where, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.titleSmall)),
             ]),
+            if (job['scheduled_for'] != null) ...[
+              const SizedBox(height: 4),
+              ScheduleLine(iso: job['scheduled_for'] as String?, slot: job['time_slot'] as String?),
+            ],
             const SizedBox(height: 4),
             Row(children: [
               const Icon(Icons.schedule_rounded, size: 18, color: BC.inkFaint),
@@ -302,7 +312,11 @@ class JobCard extends StatelessWidget {
                   return StatusPill(label: '${l.alreadyQuoted} · ${inr(job['my_price_inr'] as num?)}', color: BC.pendingInk,
                       bg: BC.pendingSoft, icon: Icons.hourglass_top_rounded);
                 }
-                return PrimaryButton(big: true, onPressed: onTap, icon: Icons.currency_rupee_rounded, label: l.quotePrice);
+                return PrimaryButton(
+                    big: true,
+                    onPressed: onTap,
+                    icon: job['kind'] == 'team' ? Icons.group_add_rounded : Icons.currency_rupee_rounded,
+                    label: job['kind'] == 'team' ? l.teamSeeAndJoin : l.quotePrice);
               },
             ),
           ]),

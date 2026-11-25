@@ -12,6 +12,7 @@ import '../../widgets/fair_price.dart';
 import 'customer_home.dart' show customerRoute;
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
+import '../../widgets/schedule.dart';
 import '../common/chat.dart';
 import '../worker/assignment_screen.dart' show EscrowLine;
 import '../worker/job_detail.dart' show WorkItemView;
@@ -135,7 +136,8 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
     return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
       Wrap(spacing: 8, runSpacing: 8, children: [for (final t in (job['trades'] as List).toSet()) TradeChip(t as String)]),
       const SizedBox(height: 8),
-      Text('📍 ${job['locality']} · ${l.startsOn(job['start_date'] as String)}', style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
+      Text('📍 ${job['locality']} · ${scheduleText(l, job['scheduled_for'] as String?, job['time_slot'] as String?) ?? l.startsOn(job['start_date'] as String)}',
+          style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
       const SizedBox(height: 14),
       if (a != null) ...[
         _Tracker(status: status, assignment: a),

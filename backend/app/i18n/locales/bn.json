@@ -48,5 +48,12 @@
  "err.already_resolved": null,
  "voice.balance": null,
  "kyc.l1_prompt": null,
- "err.payment_pending": null
+ "err.payment_pending": null,
+ "err.photos_required": null,
+ "err.description_short": null,
+ "err.schedule_past": null,
+ "err.team_full": null,
+ "err.contractor_only": null,
+ "err.wage_below_minimum": null,
+ "err.team_use_roster": null
 }

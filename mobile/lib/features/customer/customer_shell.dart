@@ -9,8 +9,10 @@ import '../common/chat.dart';
 import '../common/profile.dart';
 import '../common/update_ui.dart';
 import 'customer_home.dart';
+import 'contractor.dart';
 import 'customer_job.dart';
 import 'post_job.dart';
+import 'team_job.dart';
 import 'workers.dart';
 
 /// Customer app: Home · Bookings · Messages · Profile. The shell owns the bookings list (one
@@ -51,7 +53,11 @@ class _CustomerShellState extends State<CustomerShell> {
   }
 
   void _onState() {
-    if (!mounted || _s.user?.id == _uid) return;
+    if (!mounted) return;
+    if (_s.user?.id == _uid) {
+      setState(() {}); // same account, profile data (e.g. business name) changed
+      return;
+    }
     // Different account on the same device → drop everything that belonged to the old one.
     setState(() {
       _uid = _s.user?.id;
@@ -102,18 +108,50 @@ class _CustomerShellState extends State<CustomerShell> {
     if (mounted) _reload();
   }
 
-  Future<void> _post() async {
-    final posted = await Navigator.of(context).push<bool>(customerRoute<bool>(builder: (_) => PostJobScreen(state: _s)));
+  bool get _contractor => _s.user?.isContractor == true;
+
+  Future<void> _post({bool team = false}) async {
+    final posted = await Navigator.of(context).push<bool>(customerRoute<bool>(builder: (_) => PostJobScreen(state: _s, team: team)));
     if (!mounted) return;
-    if (posted == true) setState(() => _tab = 1);
+    // contractors: Team tab (1) for team jobs, Bookings (2) for single jobs; everyone else: Bookings (1)
+    if (posted == true) setState(() => _tab = _contractor ? (team ? 1 : 2) : 1);
     _reload();
   }
 
-  void _openJob(String id) => _push(CustomerJobScreen(state: _s, jobId: id));
+  /// Team jobs have their own screen (applicants per trade, roster, pay the team).
+  void _openJob(String id) {
+    final j = _jobs?.where((x) => x['id'] == id).firstOrNull;
+    _push(j != null && isTeamJob(j) ? TeamJobScreen(state: _s, jobId: id) : CustomerJobScreen(state: _s, jobId: id));
+  }
+
+  Future<void> _addBusiness() async {
+    final l = L.of(context);
+    final c = TextEditingController(text: _s.user?.orgName ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.bizNameTitle),
+        content: TextField(controller: c, autofocus: true, maxLength: 80, decoration: InputDecoration(hintText: l.bizNameHint)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: Text(l.save)),
+        ],
+      ),
+    );
+    c.dispose();
+    if (name == null || name.isEmpty || !mounted) return;
+    try {
+      await _s.api.setBusinessName(name);
+      await _s.updateUser(orgName: name);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
+    final contractor = _contractor;
     return UpdateAware(
       state: _s,
       child: CompactButtons(
@@ -127,9 +165,20 @@ class _CustomerShellState extends State<CustomerShell> {
             onReload: _reload,
             onOpenJob: _openJob,
             onPost: _post,
+            onPostTeam: contractor ? () => _post(team: true) : null,
+            onAddBusiness: contractor ? _addBusiness : null,
             onBrowse: () => _push(BrowseWorkersScreen(state: _s)),
-            onSeeBookings: () => setState(() => _tab = 1),
+            onSeeBookings: () => setState(() => _tab = contractor ? 2 : 1),
           ),
+          if (contractor)
+            ContractorTeamTab(
+              key: ValueKey('team$_gen'),
+              jobs: _jobs,
+              failed: _failed,
+              onReload: _reload,
+              onOpenJob: _openJob,
+              onPostTeam: () => _post(team: true),
+            ),
           CustomerBookingsTab(
             key: ValueKey('bookings$_gen'),
             jobs: _jobs,
@@ -168,6 +217,7 @@ class _CustomerShellState extends State<CustomerShell> {
           onDestinationSelected: (i) => setState(() => _tab = i),
           destinations: [
             NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home_rounded), label: l.navHome),
+            if (contractor) NavigationDestination(icon: const Icon(Icons.groups_outlined), selectedIcon: const Icon(Icons.groups_rounded), label: l.navTeam),
             NavigationDestination(icon: const Icon(Icons.assignment_outlined), selectedIcon: const Icon(Icons.assignment_rounded), label: l.navBookings),
             NavigationDestination(
               icon: Badge(isLabelVisible: _unread > 0, label: Text(_unread > 99 ? '99+' : '$_unread'), child: const Icon(Icons.chat_bubble_outline_rounded)),

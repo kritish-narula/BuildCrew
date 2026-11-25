@@ -41,9 +41,9 @@ def test_full_lifecycle_with_mandatory_rating():
     assert est["items"][0]["low_inr"] <= est["items"][0]["high_inr"]
     job = client.post("/customer/jobs", headers=cust, json={
         "location_lat": 18.5986, "location_lng": 73.7604, "address_text": "B-402 Wakad", "start_date": str(date.today() + timedelta(days=1)),
-        "work_items": [{"trade": "plumber", "text_description": "Kitchen sink leak", "transcript": "edited transcript",
+        "work_items": [{"trade": "plumber", "text_description": "Kitchen sink leaks under the basin and the water pipe joint is dripping all day.", "transcript": "edited transcript",
                         "description_language": "en", "audio_key": audio, "audio_duration_sec": 24,
-                        "audio_size_bytes": 60_000, "photo_keys": [photo]}]}).json()
+                        "audio_size_bytes": 60_000, "photo_keys": [photo, photo]}]}).json()
     jid = job["id"]
 
     # S4/S5: worker sees it, detail is translated into Hindi (worker's language) with signed audio
