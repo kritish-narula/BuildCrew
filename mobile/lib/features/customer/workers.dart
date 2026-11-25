@@ -32,7 +32,7 @@ class _BrowseWorkersScreenState extends State<BrowseWorkersScreen> {
           child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(selected: _trade == null, label: Text(l.all), onSelected: (_) => setState(() => _trade = null)),
+              child: ChoiceChip(selected: _trade == null, label: BtnLabel(l.all), onSelected: (_) => setState(() => _trade = null)),
             ),
             for (final t in trades)
               Padding(

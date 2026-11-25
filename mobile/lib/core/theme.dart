@@ -93,13 +93,13 @@ ThemeData buildTheme() {
     bodyMedium: TextStyle(fontSize: 15, fontWeight: FontWeight.w400, height: 1.45),
     bodySmall: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, height: 1.4),
     labelLarge: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.35),
-    labelMedium: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, height: 1.35),
-    labelSmall: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, height: 1.35),
+    labelMedium: TextStyle(fontFamily: BC.fontFamily, fontSize: 13, fontWeight: FontWeight.w500, height: 1.35),
+    labelSmall: TextStyle(fontFamily: BC.fontFamily, fontSize: 12, fontWeight: FontWeight.w500, height: 1.35),
   );
   final text = base.apply(bodyColor: BC.ink, displayColor: BC.ink, fontFamily: BC.fontFamily);
 
-  const buttonLabel = TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.3);
-  const buttonLabelSecondary = TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.3);
+  const buttonLabel = TextStyle(fontFamily: BC.fontFamily, fontSize: 16, fontWeight: FontWeight.w700, height: 1.3);
+  const buttonLabelSecondary = TextStyle(fontFamily: BC.fontFamily, fontSize: 15, fontWeight: FontWeight.w600, height: 1.3);
   final btnShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
   const btnPad = EdgeInsets.symmetric(horizontal: 20);
 
@@ -164,8 +164,8 @@ ThemeData buildTheme() {
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      labelStyle: const TextStyle(color: BC.inkSoft, fontSize: 15),
-      hintStyle: const TextStyle(color: BC.inkFaint),
+      labelStyle: const TextStyle(fontFamily: BC.fontFamily, color: BC.inkSoft, fontSize: 15),
+      hintStyle: const TextStyle(fontFamily: BC.fontFamily, color: BC.inkFaint),
       border: border(BC.line),
       enabledBorder: border(BC.line),
       focusedBorder: border(BC.brand, 1.8),
@@ -184,7 +184,7 @@ ThemeData buildTheme() {
       selectedColor: BC.brandSoft,
       side: const BorderSide(color: BC.line),
       shape: const StadiumBorder(),
-      labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: BC.ink),
+      labelStyle: const TextStyle(fontFamily: BC.fontFamily, fontSize: 14, fontWeight: FontWeight.w600, color: BC.ink),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
     ),
     listTileTheme: const ListTileThemeData(

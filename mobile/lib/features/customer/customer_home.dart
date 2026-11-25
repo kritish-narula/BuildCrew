@@ -402,7 +402,7 @@ class CustomerBookingsTab extends StatelessWidget {
                     onPressed: onPost,
                     style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
                     icon: const Icon(Icons.add_rounded),
-                    label: Text(l.postJob),
+                    label: BtnLabel(l.postJob),
                   ),
                 ),
             ])

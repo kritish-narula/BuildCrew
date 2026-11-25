@@ -268,7 +268,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
                 : FilledButton.icon(
                     onPressed: _posting ? null : _post,
                     icon: _posting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white)) : const Icon(Icons.send_rounded),
-                    label: Text(l.postJobNow),
+                    label: BtnLabel(l.postJobNow),
                   ),
           ),
         ),
@@ -338,7 +338,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
             if (t != null) setState(() => _works.add(WorkDraft(t)));
           },
           icon: const Icon(Icons.add_rounded),
-          label: Text(l.addWorkItem),
+          label: BtnLabel(l.addWorkItem),
         ),
       ]);
 
@@ -398,7 +398,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
             }),
           ActionChip(
             avatar: const Icon(Icons.calendar_month_rounded),
-            label: Text(l.pickDate),
+            label: BtnLabel(l.pickDate),
             onPressed: () async {
               final d = await showDatePicker(context: context, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 90)), initialDate: _start);
               if (d != null) setState(() => _start = d);
@@ -545,7 +545,7 @@ class _WorkCardEditor extends StatelessWidget {
               onPressed: onRecord,
               style: FilledButton.styleFrom(backgroundColor: BC.ink),
               icon: const Icon(Icons.mic_rounded, size: 28),
-              label: Text(l.recordVoiceNote),
+              label: BtnLabel(l.recordVoiceNote),
             )
           else ...[
             AudioPlayerCard(url: a.path, durationSec: a.seconds, sizeKb: a.bytes ~/ 1024, label: l.voiceNoteRecorded(mmss(a.seconds))),
@@ -561,7 +561,7 @@ class _WorkCardEditor extends StatelessWidget {
               else
                 StatusPill(label: l.uploaded, color: BC.money, bg: BC.moneySoft, icon: Icons.cloud_done_rounded),
               const Spacer(),
-              TextButton.icon(onPressed: onRecord, icon: const Icon(Icons.replay_rounded), label: Text(l.recordAgain)),
+              TextButton.icon(onPressed: onRecord, icon: const Icon(Icons.replay_rounded), label: BtnLabel(l.recordAgain)),
             ]),
             if (draft.transcript.text.isNotEmpty || draft.transcribing) ...[
               const SizedBox(height: 8),

@@ -25,12 +25,17 @@ class AppImage extends StatelessWidget {
   final String? url;
   final BoxFit fit;
   final double? width, height;
+
+  /// Tests switch this off so screenshots never wait on (or fail from) the network.
+  static bool allowNetwork = true;
+
   @override
   Widget build(BuildContext context) {
     final u = url;
     Widget ph() => Container(width: width, height: height, color: BC.closedSoft, child: const Icon(Icons.image_outlined, color: BC.inkFaint));
     if (u == null || u.isEmpty) return ph();
     if (u.startsWith('http')) {
+      if (!allowNetwork) return ph();
       return Image.network(u, fit: fit, width: width, height: height, errorBuilder: (_, __, ___) => ph(),
           loadingBuilder: (_, c, p) => p == null ? c : Container(width: width, height: height, color: BC.closedSoft));
     }

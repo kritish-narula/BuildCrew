@@ -21,6 +21,7 @@ import 'package:buildcrew/features/worker/job_detail.dart';
 import 'package:buildcrew/features/worker/kyc_screens.dart';
 import 'package:buildcrew/features/worker/worker_shell.dart';
 import 'package:buildcrew/l10n/gen/app_localizations.dart';
+import 'package:buildcrew/widgets/media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -384,6 +385,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
+    AppImage.allowNetwork = false;
     SharedPreferences.setMockInitialValues({});
     _installMocks();
     await _loadFonts();

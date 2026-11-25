@@ -147,7 +147,7 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
           if (bids.length > 1)
             SegmentedButton<bool>(
               showSelectedIcon: false,
-              segments: [ButtonSegment(value: false, label: Text(l.sortPrice)), ButtonSegment(value: true, label: Text(l.sortRating))],
+              segments: [ButtonSegment(value: false, label: BtnLabel(l.sortPrice)), ButtonSegment(value: true, label: BtnLabel(l.sortRating))],
               selected: {_byRating},
               onSelectionChanged: (s) => setState(() => _byRating = s.first),
             ),
@@ -300,7 +300,7 @@ class _NextStep extends StatelessWidget {
         title: l.payToConfirm(name),
         sub: l.payToConfirmSub,
         child: workerRow,
-        action: FilledButton.icon(onPressed: onPay, style: FilledButton.styleFrom(backgroundColor: BC.money), icon: const Icon(Icons.lock_rounded), label: Text(l.payNow)),
+        action: FilledButton.icon(onPressed: onPay, style: FilledButton.styleFrom(backgroundColor: BC.money), icon: const Icon(Icons.lock_rounded), label: BtnLabel(l.payNow)),
       );
     } else if (status == 'assigned' && tr == null) {
       main = hero(icon: Icons.schedule_rounded, color: BC.info, title: l.workerWillStart(name), sub: l.workerWillStartSub, child: workerRow);
@@ -333,7 +333,7 @@ class _NextStep extends StatelessWidget {
           onPressed: () => _confirmDone(context),
           style: FilledButton.styleFrom(backgroundColor: BC.money),
           icon: const Icon(Icons.task_alt_rounded),
-          label: Text(l.workIsDone),
+          label: BtnLabel(l.workIsDone),
         ),
       );
     } else if (status == 'completed' && !rated && escrow == 'held') {
@@ -343,7 +343,7 @@ class _NextStep extends StatelessWidget {
         title: l.rateToRelease,
         sub: l.ratingRequiredExplain(inr(pay?['worker_payout_inr'] as num?)),
         child: workerRow,
-        action: FilledButton.icon(onPressed: () => _rate(context), icon: const Icon(Icons.star_rounded), label: Text(l.rateNow)),
+        action: FilledButton.icon(onPressed: () => _rate(context), icon: const Icon(Icons.star_rounded), label: BtnLabel(l.rateNow)),
       );
     } else {
       main = hero(
@@ -358,7 +358,7 @@ class _NextStep extends StatelessWidget {
                 onPressed: () => Navigator.of(context).push(customerRoute<void>(
                     builder: (_) => ReceiptScreen(payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>()))),
                 icon: const Icon(Icons.receipt_long_rounded),
-                label: Text(l.viewReceipt),
+                label: BtnLabel(l.viewReceipt),
               ),
       );
     }
@@ -384,7 +384,7 @@ class _NextStep extends StatelessWidget {
       OutlinedButton.icon(
         onPressed: () => openChat(context, state, jobId: job['id'] as String, withUser: w['id'] as String, title: name),
         icon: const Icon(Icons.chat_bubble_outline_rounded),
-        label: Text(l.chatWithWorker),
+        label: BtnLabel(l.chatWithWorker),
       ),
       if (status != 'disputed' && escrow == 'held') ...[
         const SizedBox(height: 4),
@@ -499,17 +499,23 @@ class _BidCard extends StatelessWidget {
           ],
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(
-              child: OutlinedButton.icon(onPressed: onChat, icon: const Icon(Icons.chat_bubble_outline_rounded), label: Text(l.chat)),
+            SizedBox(
+              width: 52,
+              height: 52,
+              child: IconButton.outlined(
+                onPressed: onChat,
+                tooltip: l.chat,
+                style: IconButton.styleFrom(side: const BorderSide(color: BC.line), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r))),
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              flex: 2,
               child: FilledButton.icon(
                 onPressed: bid['status'] == 'pending' ? onAccept : null,
                 style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
                 icon: const Icon(Icons.handshake_rounded),
-                label: Text(l.accept),
+                label: Text(l.accept, maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
             ),
           ]),
@@ -618,7 +624,7 @@ class _RateWorkerScreenState extends State<RateWorkerScreen> {
                   }
                 },
           icon: const Icon(Icons.lock_open_rounded),
-          label: Text(l.submitAndRelease),
+          label: BtnLabel(l.submitAndRelease),
         ),
       ]),
     );

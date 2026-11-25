@@ -660,7 +660,7 @@ class _WorkerProfileTabState extends State<WorkerProfileTab> {
               CircleAvatar(
                 radius: 36,
                 backgroundColor: BC.brand,
-                foregroundImage: selfie != null && selfie.startsWith('http') ? NetworkImage(selfie) : null,
+                foregroundImage: selfie != null && selfie.startsWith('http') && AppImage.allowNetwork ? NetworkImage(selfie) : null,
                 child: Text(initials(p['name'] as String? ?? ''), style: context.tt.headlineMedium!.copyWith(color: Colors.white)),
               ),
               const SizedBox(width: 16),

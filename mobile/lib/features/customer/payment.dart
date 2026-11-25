@@ -264,7 +264,7 @@ class ReceiptScreen extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: () => Share.share([for (final (a, b) in rows) '$a: $b'].join('\n')),
           icon: const Icon(Icons.share_rounded),
-          label: Text(l.shareReceipt),
+          label: BtnLabel(l.shareReceipt),
         ),
       ]),
     );
