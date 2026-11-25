@@ -11,7 +11,7 @@ from .. import services
 from ..audit import audit
 from ..config import get_settings
 from ..db import get_db
-from ..domain import flows
+from ..domain import flows, pricing
 from ..domain.state import transition
 from ..enums import AudioUploadState, BidStatus, JobStatus, Role, Trade
 from ..errors import AppError
@@ -70,7 +70,7 @@ class JobIn(BaseModel):
     location_lat: float
     location_lng: float
     address_text: str = Field(min_length=3, max_length=300)
-    city: str = "Pune"
+    city: str = ""
     locality: str | None = None
     start_date: date
     work_items: list[WorkItemIn]
@@ -109,31 +109,43 @@ def create_job(body: JobIn, user: User = Depends(C), db: Session = Depends(get_d
 
 
 @router.get("/price-estimate")
-def price_estimate(trades: str = Query(..., description="comma-separated"), locality: str | None = None,
-                   city: str = "Pune", user: User = Depends(C), db: Session = Depends(get_db)):
-    """C2 step 4: fair price from completed jobs of the same trade, same locality first,
-    falling back to the whole city when the locality has too few data points."""
-    out, low_sum, high_sum = [], 0, 0
-    for code in dict.fromkeys(trades.split(",")):
-        try:
-            trade = Trade(code.strip())
-        except ValueError:
-            continue
-        q = select(PriceHistory.price_paise).where(PriceHistory.trade == trade, PriceHistory.city == city)
+def price_estimate(trades: str | None = None, locality: str | None = None, city: str | None = None,
+                   texts: str | None = Query(None, description="work-card texts, '|'-separated, aligned with `trades`"),
+                   job_id: uuid.UUID | None = None, user: User = Depends(C), db: Session = Depends(get_db)):
+    """C2 step 4: fair price = unit-rate model (domain/pricing.py: trade rate x quantity parsed from the
+    text, x city-tier multiplier), blended with completed-job PriceHistory when it has >= 5 samples.
+    The city comes from the job / request; nothing assumes a default city."""
+    pairs: list[tuple[str, str | None]] = []
+    if job_id:
+        job = _own(db, user, job_id)
+        city = city or job.city
+        locality = locality or job.locality
+        pairs = [(wi.trade.value, wi.text_description or wi.transcript) for wi in job.work_items]
+    elif trades:
+        codes = [c.strip() for c in trades.split(",") if c.strip()]
+        tx = texts.split("|") if texts is not None else []
+        if texts is None:
+            codes = list(dict.fromkeys(codes))
+        pairs = [(c, (tx[i].strip() or None) if i < len(tx) else None) for i, c in enumerate(codes)]
+    out, low_sum, med_sum, high_sum = [], 0, 0, 0
+    est = pricing.estimate_items([(c, t) for c, t in pairs if c in Trade._value2member_map_], city)
+    for item in est["items"]:
+        trade = Trade(item["trade"])
+        q = select(PriceHistory.price_paise).where(PriceHistory.trade == trade)
+        if city:
+            q = q.where(PriceHistory.city == city)
         prices = db.scalars(q.where(PriceHistory.locality == locality)).all() if locality else []
         scope = "locality"
         if len(prices) < 5:
-            prices, scope = db.scalars(q).all(), "city"
-        if len(prices) < 5:  # new city with no history yet → national data
+            prices, scope = db.scalars(q).all(), "city" if city else "all"
+        if len(prices) < 5 and city:  # new city with no history yet -> national data
             prices, scope = db.scalars(select(PriceHistory.price_paise).where(PriceHistory.trade == trade)).all(), "all"
-        if not prices:
-            continue
-        qs = statistics.quantiles(sorted(prices), n=4) if len(prices) >= 4 else [min(prices), statistics.median(prices), max(prices)]
-        lo, med, hi = round(qs[0] / 100 / 50) * 50, round(qs[1] / 100 / 50) * 50, round(qs[2] / 100 / 50) * 50
-        low_sum, high_sum = low_sum + lo, high_sum + hi
-        out.append({"trade": trade.value, "low_inr": lo, "median_inr": med, "high_inr": hi, "samples": len(prices), "scope": scope})
-    return {"items": out, "total_low_inr": low_sum, "total_high_inr": high_sum,
-            "platform_fee_inr": get_settings().platform_fee_flat_inr}
+        item = pricing.blend_with_history(item, [p / 100 for p in prices])
+        low_sum, med_sum, high_sum = low_sum + item["low_inr"], med_sum + item["median_inr"], high_sum + item["high_inr"]
+        out.append({**item, "samples": len(prices), "scope": scope if len(prices) >= 5 else "model", "city": city,
+                    "city_multiplier": pricing.city_multiplier(city)})
+    return {"items": out, "total_low_inr": low_sum, "total_median_inr": med_sum, "total_high_inr": high_sum,
+            "city": city, "platform_fee_inr": get_settings().platform_fee_flat_inr}
 
 
 @router.get("/jobs/{job_id}")
@@ -146,7 +158,8 @@ def job_detail(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends
     out = {**job_card(db, job, user.language_code),
            "work_items": [work_item_view(db, wi, user.language_code, include_audio=True) for wi in job.work_items],
            "bids": [{"id": str(b.id), "price_inr": b.quoted_price_paise / 100, "status": b.status.value,
-                     "created_at": b.created_at.isoformat(), "worker": worker_summary(db, b.worker)} for b in bids],
+                     "created_at": b.created_at.isoformat(), "worker": worker_summary(db, b.worker),
+                     "fair": pricing.fair_check(b.quoted_price_paise / 100, job, b.worker.worker_profile.trades)} for b in bids],
            "assignment": assignment_view(db, a, user.language_code),
            "fee_inr": get_settings().platform_fee_flat_inr}
     db.commit()

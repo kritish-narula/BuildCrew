@@ -11,7 +11,7 @@ from ..audit import audit
 from ..config import get_settings
 from ..crypto import mask_upi
 from ..db import get_db
-from ..domain import flows
+from ..domain import flows, pricing
 from ..domain.policies import can_access_job_media
 from ..enums import JobStatus, Role, Trade
 from ..errors import AppError
@@ -87,7 +87,8 @@ def job_detail(job_id: uuid.UUID, user: User = Depends(W), db: Session = Depends
            "distance_km": round(dist, 1) if dist is not None else None,
            "work_items": [work_item_view(db, wi, user.language_code, include_audio=allowed) for wi in job.work_items],
            "my_bid": {"id": str(mine.id), "price_inr": mine.quoted_price_paise / 100, "status": mine.status.value} if mine else None,
-           "bid_count": len(job.bids)}
+           "bid_count": len(job.bids),
+           "fair_range": pricing.fair_range(job, wp.trades)}
     db.commit()  # persist any freshly cached translations
     return out
 

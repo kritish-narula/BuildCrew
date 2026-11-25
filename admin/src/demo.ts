@@ -14,13 +14,21 @@ const ph = (s: string) => {
 const AUDIO = "./sample.ogg";
 const now = Date.now();
 const ago = (h: number) => new Date(now - h * 3600_000).toISOString();
+// Sample marketplace spread across India (locality -> [lat, lng] and its city) so the live map is India-wide.
 const LL: Record<string, [number, number]> = {
-  Kothrud: [18.5074, 73.8077], Baner: [18.559, 73.7868], Hadapsar: [18.5089, 73.926], Wakad: [18.5986, 73.7604],
-  "Viman Nagar": [18.5679, 73.9143], Aundh: [18.558, 73.8075], Kharadi: [18.5515, 73.9348], Shivajinagar: [18.5308, 73.8475],
+  Kothrud: [18.5074, 73.8077], Hadapsar: [18.5089, 73.926], Wakad: [18.5986, 73.7604],
+  Indiranagar: [12.9784, 77.6408], Koramangala: [12.9352, 77.6245], "Model Town": [31.311, 75.572], "Adarsh Nagar": [31.3406, 75.5878],
+  "Malviya Nagar": [26.853, 75.805], "Vaishali Nagar": [26.9122, 75.7397], Dwarka: [28.5921, 77.046], Rohini: [28.7383, 77.0822],
+  "Salt Lake": [22.58, 88.415], Garia: [22.4647, 88.3841], Andheri: [19.1136, 72.8697],
+};
+const CITY: Record<string, string> = {
+  Kothrud: "Pune", Hadapsar: "Pune", Wakad: "Pune", Indiranagar: "Bengaluru", Koramangala: "Bengaluru", "Model Town": "Jalandhar",
+  "Adarsh Nagar": "Jalandhar", "Malviya Nagar": "Jaipur", "Vaishali Nagar": "Jaipur", Dwarka: "Delhi", Rohini: "Delhi",
+  "Salt Lake": "Kolkata", Garia: "Kolkata", Andheri: "Mumbai",
 };
 
 const W = (id: string, name: string, phone: string, trades: string[], rating: number, count: number, kyc: number, city: string, extra: J = {}) => ({
-  id, name, phone, trades, rating, rating_count: count, completed_jobs: count, badges: extra.badges ?? [], kyc_level: kyc, city: "Pune", locality: city,
+  id, name, phone, trades, rating, rating_count: count, completed_jobs: count, badges: extra.badges ?? [], kyc_level: kyc, city: CITY[city] ?? "", locality: city,
   suspended: false, strikes: 0, online: extra.online ?? true, aadhaar: kyc === 2 ? "approved" : (extra.aadhaar ?? "not_submitted"),
   pan: kyc === 2 ? "approved" : "not_submitted", eshram: kyc === 2, earned_inr: extra.earned ?? count * 2600, selfie: ph(`selfie${id}`), verified: kyc >= 1,
   doc_url: extra.doc ?? null, doc_type: extra.doc ? "aadhaar" : undefined,
@@ -29,15 +37,15 @@ const W = (id: string, name: string, phone: string, trades: string[], rating: nu
 const db: J = {
   workers: [
     W("w1", "Ramesh Pawar", "9200000001", ["mason"], 4.6, 24, 2, "Kothrud", { badges: ["trusted_mason"] }),
-    W("w2", "Sunil Yadav", "9200000002", ["mason", "helper"], 4.1, 9, 1, "Hadapsar"),
-    W("w3", "Imran Shaikh", "9200000003", ["plumber"], 4.7, 31, 2, "Wakad", { badges: ["trusted_plumber"] }),
-    W("w4", "Gopal Das", "9200000004", ["plumber", "helper"], 3.9, 6, 1, "Kharadi", { online: false }),
-    W("w5", "Venkat Rao", "9200000005", ["electrician"], 4.8, 42, 2, "Baner", { badges: ["trusted_electrician", "fast_responder"] }),
-    W("w6", "Ajay Kumar", "9200000006", ["electrician"], 4.2, 12, 1, "Viman Nagar", { online: false }),
-    W("w7", "Harpreet Singh", "9200000007", ["carpenter"], 4.5, 19, 1, "Aundh", { aadhaar: "pending", doc: ph("kyc-doc-7"), earned: 44000 }),
-    W("w8", "Mohan Jadhav", "9200000008", ["carpenter", "helper"], 0, 0, 0, "Shivajinagar"),
-    W("w9", "Selvam K", "9200000009", ["painter"], 4.4, 15, 1, "Kothrud"),
-    W("w10", "Deepak Gupta", "9200000010", ["painter", "helper"], 4.0, 8, 1, "Hadapsar", { online: false }),
+    W("w2", "Sunil Yadav", "9200000002", ["mason", "helper"], 4.1, 9, 1, "Vaishali Nagar"),
+    W("w3", "Imran Shaikh", "9200000003", ["plumber"], 4.7, 31, 2, "Salt Lake", { badges: ["trusted_plumber"] }),
+    W("w4", "Gopal Das", "9200000004", ["plumber", "helper"], 3.9, 6, 1, "Garia", { online: false }),
+    W("w5", "Venkat Rao", "9200000005", ["electrician"], 4.8, 42, 2, "Indiranagar", { badges: ["trusted_electrician", "fast_responder"] }),
+    W("w6", "Ajay Kumar", "9200000006", ["electrician"], 4.2, 12, 1, "Koramangala", { online: false }),
+    W("w7", "Harpreet Singh", "9200000007", ["carpenter"], 4.5, 19, 1, "Model Town", { aadhaar: "pending", doc: ph("kyc-doc-7"), earned: 44000 }),
+    W("w8", "Mohan Jadhav", "9200000008", ["carpenter", "helper"], 0, 0, 0, "Adarsh Nagar"),
+    W("w9", "Selvam K", "9200000009", ["painter"], 4.4, 15, 1, "Dwarka"),
+    W("w10", "Deepak Gupta", "9200000010", ["painter", "helper"], 4.0, 8, 1, "Rohini", { online: false }),
   ],
   customers: { c1: "Priya Sharma", c2: "Anil Deshmukh", c3: "Neha Kulkarni" },
   jobs: [] as J[],
@@ -54,7 +62,7 @@ const item = (id: string, idx: number, trade: string, text: string, audio = fals
   transcript: audio ? transcript ?? text : null, audio: audio ? { url: AUDIO, duration_sec: secs, size_kb: 18, flagged: false, muted: false } : null,
 });
 const job = (id: string, cust: string, loc: string, status: string, h: number, items: J[], bids: J[] = [], extra: J = {}): J => ({
-  id, customer_id: cust, customer: db.customers[cust], status, locality: loc, city: "Pune", address: `Flat 302, ${loc}, Pune`, start_date: ago(-48).slice(0, 10),
+  id, customer_id: cust, customer: db.customers[cust], status, locality: loc, city: CITY[loc], address: `Flat 302, ${loc}, ${CITY[loc]}`, start_date: ago(-48).slice(0, 10),
   created_at: ago(h), trades: items.map((i) => i.trade), thumbnail: items[0].photos[0], lat: LL[loc][0] + 0.002, lng: LL[loc][1] - 0.001,
   work_items: items, bids, bid_count: bids.length, assignment: null, audit: [{ action: "job.posted", at: ago(h), meta: {} }], ...extra,
 });
@@ -64,31 +72,33 @@ const pay = (id: string, price: number, state: string, released: string | null =
 
 db.jobs = [
   job("j1", "c1", "Kothrud", "open", 0.7, [item("j1w1", 1, "plumber", "बाथरूम का नल टपक रहा है, पाइप बदलना है।", true, "बाथरूम में नल से पानी टपक रहा है। पाइप बदलना पड़ेगा।"), item("j1w2", 2, "mason", "दीवार में सीलन, प्लास्टर ठीक करना है।")]),
-  job("j2", "c3", "Baner", "bidding", 5, [item("j2w1", 1, "electrician", "Rewire the kitchen, add 4 new 16A sockets and a chimney point.", true, undefined, 37), item("j2w2", 2, "painter", "Paint the kitchen after wiring."), item("j2w3", 3, "helper", "Move appliances out and clean up.")],
-    [bid("b1", "w5", 6800), bid("b2", "w6", 6200), bid("b3", "w9", 7400)]),
-  job("j3", "c1", "Aundh", "assigned", 72, [item("j3w1", 1, "carpenter", "बेडरूम की अलमारी का दरवाज़ा टूट गया है।", true)], [bid("b4", "w7", 1800, "accepted", 70)]),
-  job("j4", "c2", "Hadapsar", "in_progress", 144, [item("j4w1", 1, "mason", "Compound wall 40 ft, 5 ft high, 9-inch brick.", true, undefined, 52), item("j4w2", 2, "helper", "Material shifting, 3 days.")], [bid("b6", "w1", 14000, "accepted", 140)]),
-  job("j5", "c3", "Kothrud", "completed", 216, [item("j5w1", 1, "painter", "Repaint living room and hall (~900 sq ft).")], [bid("b7", "w9", 9000, "accepted", 210)]),
-  job("j6", "c2", "Wakad", "disputed", 288, [item("j6w1", 1, "plumber", "पूरे फ्लैट की पाइपलाइन बदलनी है, लीकेज टेस्ट के साथ।", true, "पूरे फ्लैट की पाइपलाइन बदलनी है और लीकेज टेस्ट करना है। मास्टर बाथरूम पर ध्यान दें।", 18), item("j6w2", 2, "mason", "Bathroom floor tiling, 60 sq ft."), item("j6w3", 3, "helper", "Debris removal.")],
-    [bid("b8", "w3", 22000, "accepted", 280), bid("b9", "w4", 19800, "rejected", 279)]),
+  job("j2", "c3", "Indiranagar", "bidding", 5, [item("j2w1", 1, "electrician", "Rewire the kitchen, add 4 new 16A sockets and a chimney point.", true, undefined, 37), item("j2w2", 2, "painter", "Paint the kitchen after wiring."), item("j2w3", 3, "helper", "Move appliances out and clean up.")],
+    [bid("b1", "w5", 1950), bid("b2", "w6", 700), bid("b3", "w9", 7900)]),
+  job("j3", "c1", "Model Town", "assigned", 72, [item("j3w1", 1, "carpenter", "बेडरूम की अलमारी का दरवाज़ा टूट गया है।", true)], [bid("b4", "w7", 1100, "accepted", 70)]),
+  job("j4", "c2", "Malviya Nagar", "in_progress", 144, [item("j4w1", 1, "mason", "Compound wall 40 ft, 5 ft high, 9-inch brick.", true, undefined, 52), item("j4w2", 2, "helper", "Material shifting, 3 days.")], [bid("b6", "w1", 12750, "accepted", 140)]),
+  job("j5", "c3", "Dwarka", "completed", 216, [item("j5w1", 1, "painter", "Repaint living room and hall (~900 sq ft).")], [bid("b7", "w9", 9000, "accepted", 210)]),
+  job("j6", "c2", "Salt Lake", "disputed", 288, [item("j6w1", 1, "plumber", "पूरे फ्लैट की पाइपलाइन बदलनी है, लीकेज टेस्ट के साथ।", true, "पूरे फ्लैट की पाइपलाइन बदलनी है और लीकेज टेस्ट करना है। मास्टर बाथरूम पर ध्यान दें।", 18), item("j6w2", 2, "mason", "Bathroom floor tiling, 60 sq ft."), item("j6w3", 3, "helper", "Debris removal.")],
+    [bid("b8", "w3", 2400, "accepted", 280), bid("b9", "w4", 2300, "rejected", 279)]),
+  job("j7", "c1", "Andheri", "open", 2, [item("j7w1", 1, "painter", "Repaint 2BHK flat, approx. 1,100 sq ft.")]),
+  job("j8", "c3", "Kothrud", "bidding", 9, [item("j8w1", 1, "mason", "Plaster damaged bathroom wall, 2 days.")], [bid("b10", "w2", 1700)]),
 ];
 const assign = (j: J, wid: string, price: number, state: string, extra: J = {}) => {
   j.payment = pay(`p${j.id}`, price, state);
   j.assignment = { id: `a${j.id}`, worker: wsum(wid), price_inr: price, payment: j.payment, ratings: {}, attendance: [], started_at: extra.started ?? null, completed_at: extra.completed ?? null, ...extra };
   db.payments.push({ ...j.payment, job_id: j.id, locality: j.locality, worker: wsum(wid).name, customer: j.customer, job_status: j.status });
 };
-assign(db.jobs[2], "w7", 1800, "held");
-assign(db.jobs[3], "w1", 14000, "held", { started: ago(48), attendance: [
+assign(db.jobs[2], "w7", 1100, "held");
+assign(db.jobs[3], "w1", 12750, "held", { started: ago(48), attendance: [
   { in: ago(49), out: ago(41), offline: false, geofence_ok: true, selfie: ph("att1") },
   { in: ago(25), out: ago(17), offline: true, geofence_ok: true, selfie: ph("att2") }] });
 assign(db.jobs[4], "w9", 9000, "held", { started: ago(190), completed: ago(24) });
-assign(db.jobs[5], "w3", 22000, "held", { started: ago(240), completed: ago(96), attendance: [{ in: ago(240), out: ago(232), offline: false, geofence_ok: true, selfie: ph("att3") }, { in: ago(216), out: ago(214), offline: false, geofence_ok: false, selfie: ph("att4") }] });
+assign(db.jobs[5], "w3", 2400, "held", { started: ago(240), completed: ago(96), attendance: [{ in: ago(240), out: ago(232), offline: false, geofence_ok: true, selfie: ph("att3") }, { in: ago(216), out: ago(214), offline: false, geofence_ok: false, selfie: ph("att4") }] });
 for (const [i, w] of db.workers.filter((x: J) => x.rating_count > 0).entries()) {
-  db.payments.push({ ...pay(`ph${i}`, 1800 + i * 450, "released", ago(400 + i * 30)), job_id: `hist${i}`, locality: "Kothrud", worker: w.name, customer: "Priya Sharma", job_status: "completed" });
+  db.payments.push({ ...pay(`ph${i}`, 1500 + i * 350, "released", ago(400 + i * 30)), job_id: `hist${i}`, locality: "Kothrud", worker: w.name, customer: "Priya Sharma", job_status: "completed" });
 }
 db.disputes = [{
   id: "d1", status: "open", reason: "Leak returned in master bathroom 2 days after completion; worker not answering calls.", created_at: ago(48),
-  raised_by: "Anil Deshmukh", job_id: "j6", locality: "Wakad", worker: "Imran Shaikh", customer: "Anil Deshmukh", amount_inr: 22030, resolution: null,
+  raised_by: "Anil Deshmukh", job_id: "j6", locality: "Salt Lake", worker: "Imran Shaikh", customer: "Anil Deshmukh", amount_inr: 2430, resolution: null,
   chat: [
     { from: "customer", body: "Bathroom mein phir se leak ho raha hai.", at: ago(50) },
     { from: "worker", body: "Sir kal aata hoon check karne.", at: ago(49) },
@@ -205,7 +215,7 @@ export async function demoHandle(path: string, init: RequestInit): Promise<unkno
       history: db.payouts };
   }
   if (p === "/admin/compliance") {
-    const rows = db.workers.map((w: J) => ({ card_id: `BC-${w.id.toUpperCase().padStart(8, "0")}`, name: w.name, trades: w.trades.join(","), city: "Pune", kyc_level: w.kyc_level,
+    const rows = db.workers.map((w: J) => ({ card_id: `BC-${w.id.toUpperCase().padStart(8, "0")}`, name: w.name, trades: w.trades.join(","), city: w.city, kyc_level: w.kyc_level,
       eshram_registered: w.eshram, aadhaar: w.aadhaar, pan: w.pan, earned_inr: w.earned_inr, jobs: w.completed_jobs }));
     return { rows, eshram_registered: rows.filter((r: J) => r.eshram_registered).length, total: rows.length };
   }

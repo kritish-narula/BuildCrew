@@ -1,4 +1,4 @@
-"""Demo seed for Pune. Run: `python -m app.seed` (add `--reset` to wipe first).
+"""Demo seed (sample marketplace placed in Pune; prices come from domain/pricing.py, so any city works). Run: `python -m app.seed` (add `--reset` to wipe first).
 
 Logins (dev OTP is always 123456):
   admin       9000000001
@@ -14,6 +14,7 @@ from sqlalchemy import select, text
 from . import services
 from .audit import audit
 from .db import SessionLocal
+from .domain import pricing
 from .domain.fees import compute_fees
 from .enums import (
     RatingDirection,
@@ -174,10 +175,14 @@ def run(do_reset: bool = False):
         jobs.append(job)
     db.flush()
 
-    def bids_for(job, trade, n, base):
+    def bids_for(job, trade, n, factors=None):
+        """Realistic quotes: each worker prices the work items in their own trades (domain/pricing.py
+        model for the job's city) within +/-12%; `factors` pins deliberate under/over-quotes."""
         out = []
-        for w in by_trade[trade][:n]:
-            b = Bid(job_id=job.id, worker_id=w.id, quoted_price_paise=(base + random.randint(-4, 6) * 100) * INR,
+        for i, w in enumerate(by_trade[trade][:n]):
+            med = pricing.fair_range(job, w.worker_profile.trades)["median"]
+            f = factors[i] if factors else random.uniform(0.88, 1.12)
+            b = Bid(job_id=job.id, worker_id=w.id, quoted_price_paise=int(round(med * f / 50.0)) * 50 * INR,
                     status=BidStatus.pending, created_at=job.created_at + timedelta(hours=random.randint(1, 20)))
             db.add(b)
             out.append(b)
@@ -204,13 +209,13 @@ def run(do_reset: bool = False):
         return a
 
     j1, j2, j3, j4, j5, j6 = jobs
-    bids_for(j2, Trade.electrician, 2, 6500)
-    bids_for(j2, Trade.painter, 1, 6500)                       # → "3 workers have quoted"
-    assign(j3, bids_for(j3, Trade.carpenter, 2, 1800)[0], EscrowState.held)
-    a4 = assign(j4, bids_for(j4, Trade.mason, 2, 14000)[0], EscrowState.held, started=NOW - timedelta(days=2))
-    assign(j5, bids_for(j5, Trade.painter, 2, 9000)[0], EscrowState.held,     # completed, rating PENDING
+    bids_for(j2, Trade.electrician, 2, [0.95, 0.35])  # 2nd quote is deliberately below minimum wage (Fair Wage Shield demo)
+    bids_for(j2, Trade.painter, 1, [1.05])                       # → "3 workers have quoted"
+    assign(j3, bids_for(j3, Trade.carpenter, 2)[0], EscrowState.held)
+    a4 = assign(j4, bids_for(j4, Trade.mason, 2)[0], EscrowState.held, started=NOW - timedelta(days=2))
+    assign(j5, bids_for(j5, Trade.painter, 2)[0], EscrowState.held,     # completed, rating PENDING
                 started=NOW - timedelta(days=8), completed=NOW - timedelta(days=1))
-    a6 = assign(j6, bids_for(j6, Trade.plumber, 2, 22000)[0], EscrowState.held,
+    a6 = assign(j6, bids_for(j6, Trade.plumber, 2)[0], EscrowState.held,
                 started=NOW - timedelta(days=10), completed=NOW - timedelta(days=4))
 
     # Attendance for the multi-day contractor job; day 2 was captured offline and synced later.
@@ -253,11 +258,12 @@ def run(do_reset: bool = False):
                      created_at=done - timedelta(days=4))
             db.add(hj)
             db.flush()
-            hwi = WorkItem(job_id=hj.id, sort_order=0, trade=trade, text_description=f"{trade.value.title()} work", description_language="en")
+            sample = random.choice(pricing.SAMPLE_JOBS[trade.value])
+            hwi = WorkItem(job_id=hj.id, sort_order=0, trade=trade, text_description=sample, description_language="en")
             db.add(hwi)
             db.flush()
             db.add(WorkItemPhoto(work_item_id=hwi.id, photo_url=trade_photo(trade.value, h), sort_order=0))
-            price = random.randint(12, 60) * 100 * INR
+            price = int(round(pricing.estimate_item(trade.value, sample, "Pune")["median_inr"] * random.uniform(0.88, 1.12) / 50.0)) * 50 * INR
             hb = Bid(job_id=hj.id, worker_id=w.id, quoted_price_paise=price, status=BidStatus.accepted,
                      created_at=hj.created_at + timedelta(hours=2))
             db.add(hb)
@@ -284,15 +290,20 @@ def run(do_reset: bool = False):
     hp.kyc_doc_type, hp.kyc_doc_key = "aadhaar", photo("kyc-doc-7")
     hp.lifetime_earnings_paise = 44_000 * INR  # near the ₹50k cap → app nudges for Level 2
 
-    # Historical prices for the Fair Price Estimate (C2 step 4).
-    base = {Trade.mason: 1200, Trade.plumber: 900, Trade.electrician: 1100, Trade.carpenter: 1000,
-            Trade.painter: 950, Trade.helper: 600}
-    for tr, b in base.items():
-        for loc in PUNE_LOCALITIES:
-            for _ in range(random.randint(6, 12)):
-                db.add(PriceHistory(trade=tr, city="Pune", locality=loc,
-                                    price_paise=int(b * random.uniform(0.8, 3.5)) * INR,
-                                    completed_on=date.today() - timedelta(days=random.randint(5, 180))))
+    # Historical prices for the Fair Price Estimate (C2 step 4): the pricing model +/- noise, for the sample
+    # Pune marketplace and a few other cities so tier-2 / other-metro estimates have local history too.
+    city_localities = {"Pune": list(PUNE_LOCALITIES), "Delhi": ["Dwarka", "Rohini"], "Bengaluru": ["Whitefield", "Indiranagar"],
+                       "Jalandhar": ["Model Town", "Adarsh Nagar"], "Jaipur": ["Malviya Nagar", "Vaishali Nagar"],
+                       "Chandigarh": ["Sector 22", "Sector 35"]}
+    for city, locs in city_localities.items():
+        for tr in Trade:
+            for loc in locs:
+                for _ in range(random.randint(6, 10)):
+                    sample = random.choice(pricing.SAMPLE_JOBS[tr.value])
+                    med = pricing.estimate_item(tr.value, sample, city)["median_inr"]
+                    db.add(PriceHistory(trade=tr, city=city, locality=loc, work_summary=sample[:200],
+                                        price_paise=int(round(med * random.uniform(0.8, 1.2) / 50.0)) * 50 * INR,
+                                        completed_on=date.today() - timedelta(days=random.randint(5, 180))))
     db.commit()
     print(f"Seeded: 1 admin, {len(customers)} customers, {len(workers)} workers, {len(jobs)} jobs.")
 

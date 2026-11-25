@@ -1,0 +1,40 @@
+{
+  "fairRangeTitle": {
+    "en": "Fair price for this job",
+    "hi": "इस काम का सही दाम"
+  },
+  "fairRangeText": {
+    "en": "{range} for about {days} days of work",
+    "hi": "लगभग {days} दिन के काम के लिए {range}",
+    "placeholders": {"range": "String", "days": "String"}
+  },
+  "fairBelowMinWage": {
+    "en": "Your price is below the minimum wage for ~{days} days of work ({amount}). Don't undersell yourself.",
+    "hi": "आपका दाम ~{days} दिन के काम की न्यूनतम मज़दूरी ({amount}) से कम है। अपनी मेहनत को कम न आँकें।",
+    "placeholders": {"days": "String", "amount": "String"}
+  },
+  "fairYourPriceOk": {
+    "en": "Your price is in the fair range.",
+    "hi": "आपका दाम सही दायरे में है।"
+  },
+  "fairYourPriceHigh": {
+    "en": "Your price is higher than usual. The customer may pick a cheaper quote.",
+    "hi": "आपका दाम सामान्य से ज़्यादा है। ग्राहक सस्ता कोट चुन सकता है।"
+  },
+  "fairBadgeFair": {
+    "en": "Fair price ✓",
+    "hi": "सही दाम ✓"
+  },
+  "fairBadgeBelow": {
+    "en": "Below minimum wage ⚠",
+    "hi": "न्यूनतम मज़दूरी से कम ⚠"
+  },
+  "fairBadgeHigh": {
+    "en": "Higher than usual",
+    "hi": "सामान्य से ज़्यादा"
+  },
+  "fairBelowNote": {
+    "en": "This quote is below the legal minimum wage — consider paying fairly.",
+    "hi": "यह कोट कानूनी न्यूनतम मज़दूरी से कम है — कृपया उचित दाम देने पर विचार करें।"
+  }
+}
