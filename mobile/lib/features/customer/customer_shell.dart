@@ -4,6 +4,7 @@ import '../../core/api.dart';
 import '../../core/app_state.dart';
 import '../../core/poller.dart';
 import '../../l10n/gen/app_localizations.dart';
+import '../../widgets/common.dart' show showError;
 import '../common/chat.dart';
 import '../common/profile.dart';
 import '../common/update_ui.dart';

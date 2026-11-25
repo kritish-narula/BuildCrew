@@ -411,9 +411,7 @@ void main() {
     });
   });
 
-  // =============================================================================================    });
-  });
-
+  // ====================================================================================================
   // Completion disagreement flow, auto-confirm, hire release / refund rules, lifecycle edge cases.
   // Time is faked with DemoApi.demoSkipTime (it moves the stored timestamps back, like the backend tests do).
   // ====================================================================================================
@@ -785,7 +783,9 @@ void main() {
       await signInAs(_ramesh);
       final e = await api.earnings();
       expect(((e['history'] as List).cast<Map>().where((r) => r['kind'] == 'job' && r['state'] == 'released').length) >= 1, true);
-=======
+    });
+  });
+
   // ================================================================ contractor team hiring, rules, scheduling
   group('post-job rules', () {
     test('needs two photos and a 50+ character description (server error codes)', () async {
