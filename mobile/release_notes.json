@@ -1,7 +1,7 @@
 {
   "minSupportedBuild": 0,
   "notes": {
-    "en": "Fixes: buttons no longer hide behind the phone's back/home bar. Voice notes are sent as audio only (no wrong auto-text). Plus the v0.4 redesign, two-way chat, bookings tabs, realistic prices and Fair Wage Shield.",
-    "hi": "सुधार: बटन अब फ़ोन के बैक/होम बार के पीछे नहीं छिपते। आवाज़ संदेश सिर्फ़ आवाज़ के रूप में जाते हैं (कोई गलत अपने-आप लिखा टेक्स्ट नहीं)। साथ में v0.4 का नया डिज़ाइन, दोनों तरफ़ चैट, बुकिंग टैब, सही दाम और फ़ेयर वेज शील्ड।"
+    "en": "New: Contractor mode — hire a whole team (e.g. 3 masons + 4 helpers), pay in one checkout, daily attendance roster, pay each worker for days worked. Start code: the worker starts only after you tell him your 4-digit code. Share live trip with family. Police-verified badge. Free re-fix warranty (30 days plumbing/electrical). Same-day pay to UPI for workers. Skill levels and streaks. Hire again your favourite workers. If the work isn't done you can send it back with photos; disputes go to support; payment auto-releases after 48 h of no reply. Jobs need 2 photos and a clear description, and you can pick a time. Faster refresh, more sample workers for every trade.",
+    "hi": "नया: ठेकेदार मोड — पूरी टीम रखें (जैसे 3 मिस्त्री + 4 मज़दूर), एक बार में भुगतान, रोज़ की हाज़िरी, हर कारीगर को काम किए दिनों का पैसा। स्टार्ट कोड: आपका 4 अंकों का कोड बताने पर ही काम शुरू। परिवार के साथ लाइव ट्रिप शेयर करें। पुलिस वेरिफ़ाइड बैज। मुफ़्त री-फ़िक्स गारंटी (प्लंबिंग/बिजली 30 दिन)। कारीगरों को उसी दिन UPI में पैसा। हुनर के स्तर और लगातार काम का रिकॉर्ड। अपने पसंदीदा कारीगर को फिर बुलाएँ। काम पूरा न हो तो फ़ोटो के साथ वापस भेजें; विवाद पर सहायता टीम; 48 घंटे जवाब न देने पर भुगतान अपने-आप। काम डालने के लिए 2 फ़ोटो और साफ़ विवरण ज़रूरी, समय भी चुनें। तेज़ रिफ़्रेश, हर काम के लिए ज़्यादा कारीगर।"
   }
 }
