@@ -1,0 +1,105 @@
+name: Android build & release
+
+on:
+  push:
+    branches: [main]
+    paths: ["mobile/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      HAS_KEY: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.KEYSTORE_PASSWORD != '' }}
+      TAG: v0-b${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate + harden Android project
+        run: |
+          flutter --version
+          python3 tool/prepare_android.py
+
+      - name: Dependencies & localisation
+        run: |
+          flutter pub get
+          flutter gen-l10n
+
+      - name: Analyze & test
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test
+
+      - name: Install release signing key
+        if: env.HAS_KEY == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=buildcrew"
+            echo "keyPassword=$KEYSTORE_PASSWORD"
+          } > android/key.properties
+
+      - name: Build APKs (split per CPU type — ~half the download size)
+        run: |
+          VERSION=$(grep -E '^version:' pubspec.yaml | sed -E 's/version: *([0-9.]+).*/\1/')
+          echo "TAG=v${VERSION}-b${{ github.run_number }}" >> "$GITHUB_ENV"
+          flutter build apk --release --split-per-abi \
+            --build-name="$VERSION" --build-number=${{ github.run_number }} \
+            --obfuscate --split-debug-info=build/symbols \
+            --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }} \
+            --dart-define=UPDATE_MANIFEST_URL=https://github.com/${{ github.repository }}/releases/latest/download/update.json
+
+      - name: Verify signature is the permanent release key
+        if: env.HAS_KEY == 'true'
+        run: |
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-arm64-v8a-release.apk | tee /tmp/cert.txt
+          grep -qi "e0c41cb01d086d1b08ce6bf48ffb1c22a4676a1131008bd6e7f5789ef969cfb1" /tmp/cert.txt \
+            || (echo "::error::APK not signed with the BuildCrew release key — updates would fail" && exit 1)
+
+      - name: Package release + update manifest
+        run: python3 tool/make_release.py "${{ github.repository }}" "${{ github.run_number }}" "$TAG"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BuildCrew-apks
+          path: mobile/dist/
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (app picks this up as an update)
+        if: env.HAS_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" dist/BuildCrew.apk dist/BuildCrew-*.apk dist/update.json \
+            --target "$GITHUB_SHA" --title "BuildCrew ${TAG#v}" --notes-file dist/notes.md --latest
+
+      - name: Signing key missing
+        if: env.HAS_KEY != 'true'
+        run: echo "::warning::KEYSTORE_BASE64 / KEYSTORE_PASSWORD secrets not set — built APKs as an artifact only, no release published."

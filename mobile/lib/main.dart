@@ -1,0 +1,113 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:go_router/go_router.dart';
+
+import 'core/app_state.dart';
+import 'core/theme.dart';
+import 'core/updater.dart';
+import 'features/auth/auth_screens.dart';
+import 'features/customer/customer_home.dart';
+import 'features/onboarding/onboarding.dart';
+import 'features/worker/worker_shell.dart';
+import 'l10n/gen/app_localizations.dart';
+import 'widgets/common.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final state = await AppState.load();
+  await Updater.instance.init();
+  runApp(BuildCrewApp(state: state));
+}
+
+/// Role routing. The redirect is the single gate: no language → S1; not signed in → role/phone/
+/// OTP; signed in → home for the role the SERVER assigned (never what the client claims).
+GoRouter buildRouter(AppState s) {
+  const onboarding = {'/role', '/phone', '/otp'};
+  String home() => switch (s.user?.role) { 'worker' => '/worker', 'customer' => '/customer', _ => '/admin' };
+
+  return GoRouter(
+    initialLocation: '/',
+    refreshListenable: s,
+    redirect: (ctx, st) {
+      final loc = st.matchedLocation;
+      if (s.language == null) return loc == '/language' ? null : '/language';
+      if (!s.loggedIn) {
+        if (loc == '/language' || onboarding.contains(loc)) return null;
+        return '/role';
+      }
+      if (loc == '/' || onboarding.contains(loc)) return home();
+      return null;
+    },
+    routes: [
+      GoRoute(path: '/', builder: (_, __) => const SizedBox.shrink()),
+      GoRoute(
+          path: '/language',
+          builder: (_, st) => LanguageScreen(state: s, fromSettings: st.uri.queryParameters['settings'] == '1')),
+      GoRoute(path: '/role', builder: (_, __) => RoleScreen(state: s)),
+      GoRoute(path: '/phone', builder: (_, __) => PhoneScreen(state: s)),
+      GoRoute(path: '/otp', builder: (_, __) => OtpScreen(state: s)),
+      GoRoute(path: '/worker', builder: (_, __) => WorkerShell(state: s)),
+      GoRoute(path: '/customer', builder: (_, __) => CustomerHome(state: s)),
+      GoRoute(path: '/admin', builder: (_, __) => AdminOnMobile(state: s)),
+    ],
+  );
+}
+
+class BuildCrewApp extends StatefulWidget {
+  const BuildCrewApp({super.key, required this.state});
+  final AppState state;
+  @override
+  State<BuildCrewApp> createState() => _BuildCrewAppState();
+}
+
+class _BuildCrewAppState extends State<BuildCrewApp> {
+  late final GoRouter _router = buildRouter(widget.state);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.state,
+      builder: (ctx, _) => MaterialApp.router(
+        title: 'BuildCrew',
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(),
+        // Design rule #1: the chosen language drives EVERY string, from the first tap.
+        locale: Locale(widget.state.language ?? 'hi'),
+        supportedLocales: L.supportedLocales,
+        localizationsDelegates: const [
+          L.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        routerConfig: _router,
+      ),
+    );
+  }
+}
+
+/// Admins sign in on the web panel; the phone app just says so in their language.
+class AdminOnMobile extends StatelessWidget {
+  const AdminOnMobile({super.key, required this.state});
+  final AppState state;
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(Icons.desktop_windows_rounded, size: 72, color: BC.brand),
+            const SizedBox(height: 16),
+            Text(l.adminUseWeb, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 24),
+            OutlinedButton(onPressed: state.signOut, child: Text(l.profileLogout)),
+            const SizedBox(height: 8),
+            if (state.isDemo) const DemoChip(),
+          ]),
+        ),
+      ),
+    );
+  }
+}

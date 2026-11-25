@@ -1,0 +1,34 @@
+name: buildcrew
+description: BuildCrew — hyperlocal construction labour marketplace (worker + customer app).
+publish_to: "none"
+# versionName comes from here; versionCode (build number) is set by CI from the run number,
+# so every release is strictly higher and installs as an UPDATE over the previous one.
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+  go_router: ^14.6.2
+  dio: ^5.7.0
+  shared_preferences: ^2.3.3
+  flutter_secure_storage: ^9.2.2
+  flutter_tts: ^4.2.0
+  flutter_local_notifications: ^18.0.1
+  package_info_plus: ^8.1.2
+  path_provider: ^2.1.5
+  crypto: ^3.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  generate: true

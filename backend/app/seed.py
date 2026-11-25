@@ -1,0 +1,227 @@
+"""Demo seed for Pune. Run: `python -m app.seed` (add `--reset` to wipe first).
+
+Logins (dev OTP is always 123456):
+  admin       9000000001
+  customers   9100000001 (homeowner, Hindi) · 9100000002 (contractor, Marathi) · 9100000003 (homeowner, English)
+  workers     9200000001 … 9200000010
+"""
+import random
+import sys
+from datetime import date, datetime, timedelta, timezone
+
+from sqlalchemy import select, text
+
+from . import services
+from .audit import audit
+from .db import SessionLocal
+from .domain.fees import compute_fees
+from .enums import (
+    AudioUploadState, BidStatus, CustomerType, DisputeStatus, DocStatus, EscrowState, JobStatus, Role,
+    SupportChannel, Trade,
+)
+from .models import (
+    Assignment, Attendance, Bid, ChatMessage, CustomerProfile, Dispute, Job, Payment, PriceHistory,
+    SupportTicket, User, WorkerProfile, WorkItem, WorkItemPhoto,
+)
+from .services.infra import PUNE_LOCALITIES
+from .services.language import SAMPLE_AUDIO
+
+random.seed(42)
+NOW = datetime.now(timezone.utc)
+INR = 100  # paise
+
+
+def photo(seed: str) -> str:
+    return f"https://picsum.photos/seed/bc-{seed}/800/600"
+
+
+WORKERS = [  # phone, name, lang, trades, locality, rating, count, kyc, badges, online
+    ("9200000001", "Ramesh Pawar", "mr", ["mason"], "Kothrud", 4.6, 24, 2, ["trusted_mason"], True),
+    ("9200000002", "Sunil Yadav", "hi", ["mason", "helper"], "Hadapsar", 4.1, 9, 1, [], True),
+    ("9200000003", "Imran Shaikh", "hi", ["plumber"], "Wakad", 4.7, 31, 2, ["trusted_plumber"], True),
+    ("9200000004", "Gopal Das", "bn", ["plumber", "helper"], "Kharadi", 3.9, 6, 1, [], False),
+    ("9200000005", "Venkat Rao", "te", ["electrician"], "Baner", 4.8, 42, 2, ["trusted_electrician", "fast_responder"], True),
+    ("9200000006", "Ajay Kumar", "hi", ["electrician"], "Viman Nagar", 4.2, 12, 1, [], False),
+    ("9200000007", "Harpreet Singh", "pa", ["carpenter"], "Aundh", 4.5, 19, 1, [], True),
+    ("9200000008", "Mohan Jadhav", "mr", ["carpenter", "helper"], "Shivajinagar", 0.0, 0, 0, [], True),  # new, KYC L0
+    ("9200000009", "Selvam K", "ta", ["painter"], "Kothrud", 4.4, 15, 1, [], True),
+    ("9200000010", "Deepak Gupta", "hi", ["painter", "helper"], "Hadapsar", 4.0, 8, 1, [], False),
+]
+CUSTOMERS = [
+    ("9100000001", "Priya Sharma", "hi", CustomerType.homeowner, None),
+    ("9100000002", "Anil Deshmukh", "mr", CustomerType.contractor, "Deshmukh Constructions"),
+    ("9100000003", "Neha Kulkarni", "en", CustomerType.homeowner, None),
+]
+
+# Each job: (customer idx, locality, status, days_ago, [work items: (trade, text, lang, has_audio)])
+JOBS = [
+    (0, "Kothrud", JobStatus.open, 0, [
+        (Trade.plumber, "बाथरूम का नल टपक रहा है, पाइप बदलना है।", "hi", True),
+        (Trade.mason, "दीवार में सीलन, प्लास्टर ठीक करना है।", "hi", False)]),
+    (2, "Baner", JobStatus.bidding, 1, [
+        (Trade.electrician, "Rewire the kitchen, add 4 new 16A sockets and a chimney point.", "en", True),
+        (Trade.painter, "Paint the kitchen after wiring — 1 coat primer, 2 coats emulsion.", "en", False),
+        (Trade.helper, "Move appliances out and clean up debris.", "en", False)]),
+    (0, "Aundh", JobStatus.assigned, 3, [
+        (Trade.carpenter, "बेडरूम की अलमारी का दरवाज़ा टूट गया है, नया कब्ज़ा और हैंडल।", "hi", True),
+        (Trade.carpenter, "मॉड्यूलर किचन की दो दराज़ें ठीक करनी हैं।", "hi", False)]),
+    (1, "Hadapsar", JobStatus.in_progress, 6, [
+        (Trade.mason, "Compound wall 40 ft, 5 ft height, 9-inch brick. Multi-day work.", "mr", True),
+        (Trade.helper, "Material shifting for the wall, 3 days.", "mr", False)]),
+    (2, "Kothrud", JobStatus.completed, 9, [
+        (Trade.painter, "Repaint living room and hall (approx. 900 sq ft), Asian Paints Apcolite.", "en", False),
+        (Trade.painter, "Touch-up the main door grill with enamel.", "en", True)]),
+    (1, "Wakad", JobStatus.disputed, 12, [
+        (Trade.plumber, "पूरे फ्लैट की पाइपलाइन बदलनी है, लीकेज टेस्ट के साथ।", "hi", True),
+        (Trade.mason, "Bathroom floor tiling after plumbing, 60 sq ft.", "en", False),
+        (Trade.helper, "Debris removal.", "hi", False)]),
+]
+
+
+def reset(db):
+    db.execute(text("TRUNCATE users, otp_codes, worker_profiles, customer_profiles, jobs, work_items, "
+                    "work_item_photos, bids, assignments, attendance, ratings, payments, disputes, "
+                    "chat_messages, support_tickets, price_history, audit_logs CASCADE"))
+    db.commit()
+
+
+def run(do_reset: bool = False):
+    db = SessionLocal()
+    if do_reset:
+        reset(db)
+    if db.scalar(select(User).where(User.phone == "9000000001")):
+        print("Seed already present (use --reset to recreate).")
+        return
+
+    store = services.storage()
+    audio_bytes = SAMPLE_AUDIO.read_bytes()
+
+    admin = User(phone="9000000001", role=Role.admin, name="Ops Admin", language_code="en", kyc_level=2)
+    db.add(admin)
+
+    customers = []
+    for phone, name, lang, ctype, org in CUSTOMERS:
+        u = User(phone=phone, role=Role.customer, name=name, language_code=lang, kyc_level=1)
+        db.add(u)
+        db.flush()
+        db.add(CustomerProfile(user_id=u.id, type=ctype, org_name=org,
+                               overall_rating=round(random.uniform(4.2, 4.9), 1), rating_count=random.randint(2, 9)))
+        customers.append(u)
+
+    workers = []
+    for i, (phone, name, lang, trades, loc, rating, count, kyc, badges, online) in enumerate(WORKERS, 1):
+        u = User(phone=phone, role=Role.worker, name=name, language_code=lang, kyc_level=kyc)
+        db.add(u)
+        db.flush()
+        lat, lng = PUNE_LOCALITIES[loc]
+        db.add(WorkerProfile(
+            user_id=u.id, trades=trades, selfie_url=photo(f"selfie{i}") if kyc >= 1 else None,
+            upi_id=f"{name.split()[0].lower()}{i}@okaxis" if kyc >= 1 else None,
+            aadhaar_status=DocStatus.approved if kyc == 2 else (DocStatus.pending if i == 7 else DocStatus.not_submitted),
+            pan_status=DocStatus.approved if kyc == 2 else DocStatus.not_submitted,
+            eshram_id=f"UAN{100000000000 + i}" if kyc == 2 else None,
+            badges=badges, overall_rating=rating, rating_count=count, completed_jobs=count,
+            home_lat=lat + random.uniform(-0.01, 0.01), home_lng=lng + random.uniform(-0.01, 0.01),
+            city="Pune", is_online=online,
+            lifetime_earnings_paise=count * random.randint(1500, 4000) * INR))
+        workers.append(u)
+    db.flush()
+    by_trade = {tr: [w for w, spec in zip(workers, WORKERS) if tr.value in spec[3]] for tr in Trade}
+
+    jobs = []
+    for j, (ci, loc, status, days, items) in enumerate(JOBS, 1):
+        lat, lng = PUNE_LOCALITIES[loc]
+        job = Job(customer_id=customers[ci].id, location_lat=lat, location_lng=lng,
+                  address_text=f"Flat {random.randint(101, 904)}, {loc}, Pune", city="Pune", locality=loc,
+                  start_date=date.today() + timedelta(days=2 - days), status=status,
+                  created_at=NOW - timedelta(days=days, hours=random.randint(1, 8)))
+        db.add(job)
+        db.flush()
+        for k, (trade, txt, lang, has_audio) in enumerate(items):
+            wi = WorkItem(job_id=job.id, sort_order=k, trade=trade, text_description=txt, description_language=lang)
+            if has_audio:
+                key = store.put(audio_bytes, prefix="audio", ext="ogg", content_type="audio/ogg")
+                wi.audio_url, wi.audio_duration_sec, wi.audio_size_bytes = key, random.choice([18, 24, 37, 52]), len(audio_bytes)
+                wi.audio_upload_state = AudioUploadState.uploaded
+                wi.transcript = services.speech().transcribe(audio_bytes, lang)
+            db.add(wi)
+            db.flush()
+            for p in range(random.randint(1, 3)):
+                db.add(WorkItemPhoto(work_item_id=wi.id, photo_url=photo(f"j{j}w{k}p{p}"), sort_order=p))
+        audit(db, actor_id=job.customer_id, action="job.posted", entity="job", entity_id=job.id, seed=True)
+        jobs.append(job)
+    db.flush()
+
+    def bids_for(job, trade, n, base):
+        out = []
+        for w in by_trade[trade][:n]:
+            b = Bid(job_id=job.id, worker_id=w.id, quoted_price_paise=(base + random.randint(-4, 6) * 100) * INR,
+                    status=BidStatus.pending, created_at=job.created_at + timedelta(hours=random.randint(1, 20)))
+            db.add(b)
+            out.append(b)
+        db.flush()
+        return out
+
+    def assign(job, bid, escrow: EscrowState, started=None, completed=None):
+        for other in db.scalars(select(Bid).where(Bid.job_id == job.id, Bid.id != bid.id)):
+            other.status = BidStatus.rejected
+        bid.status = BidStatus.accepted
+        a = Assignment(job_id=job.id, worker_id=bid.worker_id, accepted_bid_id=bid.id, escrow_status=escrow,
+                       started_at=started, completed_at=completed)
+        db.add(a)
+        db.flush()
+        fees = compute_fees(bid.quoted_price_paise)
+        db.add(Payment(assignment_id=a.id, amount_paise=fees.customer_pays_paise, platform_fee_paise=fees.platform_fee_paise,
+                       worker_payout_paise=fees.worker_payout_paise, escrow_state=escrow,
+                       razorpay_ref=f"order_mock_seed{str(a.id)[:8]}"))
+        audit(db, actor_id=job.customer_id, action="bid.accepted", entity="bid", entity_id=bid.id, seed=True)
+        return a
+
+    j1, j2, j3, j4, j5, j6 = jobs
+    bids_for(j2, Trade.electrician, 2, 6500)
+    bids_for(j2, Trade.painter, 1, 6500)                       # → "3 workers have quoted"
+    a3 = assign(j3, bids_for(j3, Trade.carpenter, 2, 1800)[0], EscrowState.held)
+    a4 = assign(j4, bids_for(j4, Trade.mason, 2, 14000)[0], EscrowState.held, started=NOW - timedelta(days=2))
+    a5 = assign(j5, bids_for(j5, Trade.painter, 2, 9000)[0], EscrowState.held,     # completed, rating PENDING
+                started=NOW - timedelta(days=8), completed=NOW - timedelta(days=1))
+    a6 = assign(j6, bids_for(j6, Trade.plumber, 2, 22000)[0], EscrowState.held,
+                started=NOW - timedelta(days=10), completed=NOW - timedelta(days=4))
+
+    # Attendance for the multi-day contractor job; day 2 was captured offline and synced later.
+    lat, lng = PUNE_LOCALITIES["Hadapsar"]
+    for d, offline in ((2, False), (1, True)):
+        day = (NOW - timedelta(days=d)).replace(hour=3, minute=40)  # 09:10 IST
+        db.add(Attendance(assignment_id=a4.id, checkin_at=day, checkin_lat=lat + 0.0002, checkin_lng=lng - 0.0001,
+                          checkin_selfie_url=photo(f"att{d}"), checkout_at=day + timedelta(hours=8, minutes=20),
+                          offline_synced=offline))
+
+    # Dispute with the customer's audio note as evidence.
+    plumb_item = next(wi for wi in j6.work_items if wi.trade == Trade.plumber)
+    db.add(Dispute(assignment_id=a6.id, raised_by=j6.customer_id,
+                   reason="Leak returned in master bathroom 2 days after completion; worker not answering calls.",
+                   evidence_refs=[plumb_item.audio_url, photo("dispute1"), photo("dispute2")],
+                   status=DisputeStatus.open, created_at=NOW - timedelta(days=2)))
+    for who, body, h in ((j6.customer_id, "Bathroom mein phir se leak ho raha hai.", 50),
+                         (a6.worker_id, "Sir kal aata hoon check karne.", 49),
+                         (j6.customer_id, "Aap aaye nahi. Main complaint kar raha hoon.", 26)):
+        db.add(ChatMessage(job_id=j6.id, sender_id=who,
+                           recipient_id=a6.worker_id if who == j6.customer_id else j6.customer_id,
+                           body=body, created_at=NOW - timedelta(hours=h)))
+    db.add(SupportTicket(user_id=workers[1].id, channel=SupportChannel.voice, subject="Payment kab aayega?",
+                         transcript="mera paisa kab aayega?"))
+
+    # Historical prices for the Fair Price Estimate (C2 step 4).
+    base = {Trade.mason: 1200, Trade.plumber: 900, Trade.electrician: 1100, Trade.carpenter: 1000,
+            Trade.painter: 950, Trade.helper: 600}
+    for tr, b in base.items():
+        for loc in PUNE_LOCALITIES:
+            for _ in range(random.randint(6, 12)):
+                db.add(PriceHistory(trade=tr, city="Pune", locality=loc,
+                                    price_paise=int(b * random.uniform(0.8, 3.5)) * INR,
+                                    completed_on=date.today() - timedelta(days=random.randint(5, 180))))
+    db.commit()
+    print(f"Seeded: 1 admin, {len(customers)} customers, {len(workers)} workers, {len(jobs)} jobs.")
+
+
+if __name__ == "__main__":
+    run(do_reset="--reset" in sys.argv)

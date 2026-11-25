@@ -1,0 +1,196 @@
+{
+  "@@locale": "en",
+  "appName": "BuildCrew",
+  "chooseLanguage": "Choose your language",
+  "chooseLanguageHint": "Tap your language. Tap 🔊 to listen.",
+  "continueBtn": "Continue",
+  "roleQuestion": "What do you want to do?",
+  "roleWorker": "I want work",
+  "roleWorkerSub": "Mason, plumber, electrician, carpenter, painter, helper",
+  "roleCustomer": "I need workers",
+  "roleCustomerSub": "Post your work, compare prices, pay safely",
+  "phoneTitle": "Your mobile number",
+  "phoneSub": "We will send a 6-digit code by SMS",
+  "getOtp": "Send code",
+  "otpTitle": "Enter the 6-digit code",
+  "otpSentTo": "Sent to +91 {phone}",
+  "@otpSentTo": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "otpResendIn": "Resend in {seconds}s",
+  "@otpResendIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "otpResend": "Resend code",
+  "verify": "Confirm",
+  "changeNumber": "Change number",
+  "demoBanner": "Demo mode · code is 123456",
+  "tabJobs": "Jobs",
+  "tabBids": "My Bids",
+  "tabEarnings": "Earnings",
+  "tabProfile": "Profile",
+  "jobsNear": "Work near you",
+  "jobsNearSub": "{count} jobs match your skills",
+  "@jobsNearSub": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quotePrice": "Quote Price",
+  "kmAway": "{km} km",
+  "@kmAway": {
+    "placeholders": {
+      "km": {
+        "type": "String"
+      }
+    }
+  },
+  "workCount": "{count, plural, =1{1 work} other{{count} works}}",
+  "@workCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alreadyQuoted": "Quoted",
+  "audioBadgeHint": "Voice note · {kb} KB",
+  "@audioBadgeHint": {
+    "placeholders": {
+      "kb": {
+        "type": "int"
+      }
+    }
+  },
+  "comingSoon": "Coming in the next update",
+  "comingSoonSub": "This screen arrives in Phase 2. Your app will update itself.",
+  "hello": "Namaste, {name}",
+  "@hello": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "postJob": "Post a Job",
+  "postJobSub": "Photos, voice note, get prices",
+  "browseWorkers": "Browse workers nearby",
+  "activeJobs": "Your jobs",
+  "workersQuoted": "{count, plural, =0{No quotes yet} =1{1 worker has quoted} other{{count} workers have quoted}}",
+  "@workersQuoted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noJobsYet": "No jobs yet. Post your first job — it takes 2 minutes.",
+  "statusOpen": "Open",
+  "statusBidding": "Getting quotes",
+  "statusAssigned": "Assigned",
+  "statusInProgress": "In progress",
+  "statusCompleted": "Rate to release payment",
+  "statusDisputed": "Under review",
+  "statusCancelled": "Cancelled",
+  "tradeMason": "Mason",
+  "tradePlumber": "Plumber",
+  "tradeElectrician": "Electrician",
+  "tradeCarpenter": "Carpenter",
+  "tradePainter": "Painter",
+  "tradeHelper": "Helper",
+  "profileLanguage": "Language",
+  "profileUpdates": "App updates",
+  "profileSupport": "Call support",
+  "profileLogout": "Log out",
+  "versionLabel": "Version {version}",
+  "@versionLabel": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "updateAvailableTitle": "New update ready",
+  "updateAvailableBody": "A better, safer BuildCrew. Download size {size}. Your data stays as it is.",
+  "@updateAvailableBody": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "updateNow": "Update now",
+  "updateLater": "Later",
+  "updateDownloading": "Downloading… {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "updateVerifying": "Checking the download is genuine…",
+  "updateInstalling": "Tap 'Update' on the next screen",
+  "updatePermissionTitle": "One-time permission",
+  "updatePermissionBody": "Android asks once: allow BuildCrew to install its own updates. Turn on 'Allow from this source', then come back.",
+  "openSettings": "Open settings",
+  "updateUpToDate": "You have the latest version",
+  "updateFailed": "Update failed. Please try again.",
+  "updateTampered": "Download was damaged or not genuine. It was deleted. Please try again.",
+  "updateRequired": "This update is required to keep using BuildCrew safely.",
+  "checkUpdates": "Check for updates",
+  "notifUpdateTitle": "BuildCrew update ready",
+  "notifUpdateBody": "Tap to update. No need to reinstall.",
+  "errorNetwork": "No internet. Please try again.",
+  "errorGeneric": "Something went wrong. Please try again.",
+  "adminUseWeb": "Admin accounts use the web panel.",
+  "listen": "Listen",
+  "retry": "Try again",
+  "agoMinutes": "{n} min ago",
+  "@agoMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "agoHours": "{n} hr ago",
+  "@agoHours": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "agoDays": "{n, plural, =1{yesterday} other{{n} days ago}}",
+  "@agoDays": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "supportTitle": "BuildCrew support",
+  "supportBody": "Call us any time, in your language: {phone}",
+  "@supportBody": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "close": "Close",
+  "workerSince": "Phone verified",
+  "role_worker": "Worker",
+  "role_customer": "Customer"
+}
