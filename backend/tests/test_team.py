@@ -1,4 +1,5 @@
 """Post-job rules, scheduling, fair-range spread, sample people and contractor team hiring (HTTP level)."""
+from app.domain.flows import today_ist
 import random
 from datetime import date, datetime, timedelta, timezone
 
@@ -42,7 +43,7 @@ def item(trade="mason", **kw):
 
 def body(items, **kw):
     return {"location_lat": 18.5089, "location_lng": 73.9260, "address_text": "Plot 9, Hadapsar", "city": "Pune",
-            "start_date": str(date.today() + timedelta(days=1)), "work_items": items, **kw}
+            "start_date": str(today_ist() + timedelta(days=1)), "work_items": items, **kw}
 
 
 # ------------------------------------------------------------------ pricing spread
@@ -115,9 +116,9 @@ def test_schedule_stored_validated_and_shown():
     past = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
     r = client.post("/customer/jobs", headers=h, json=body([item()], scheduled_for=past, time_slot="exact"))
     assert r.json()["error"]["code"] == "err.schedule_past"
-    r = client.post("/customer/jobs", headers=h, json=body([item()], start_date=str(date.today() - timedelta(days=1))))
+    r = client.post("/customer/jobs", headers=h, json=body([item()], start_date=str(today_ist() - timedelta(days=1))))
     assert r.json()["error"]["code"] == "err.date_in_past"
-    tomorrow9 = datetime.combine(date.today() + timedelta(days=1), datetime.min.time()).replace(hour=9, minute=30, tzinfo=IST)
+    tomorrow9 = datetime.combine(today_ist() + timedelta(days=1), datetime.min.time()).replace(hour=9, minute=30, tzinfo=IST)
     r = client.post("/customer/jobs", headers=h, json=body([item()], scheduled_for=tomorrow9.isoformat(), time_slot="exact"))
     assert r.status_code == 200, r.text
     d = client.get(f"/customer/jobs/{r.json()['id']}", headers=h).json()

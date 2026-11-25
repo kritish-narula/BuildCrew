@@ -1,4 +1,5 @@
 """Two-way job chat, inbox and read receipts. Requires the seed."""
+from app.domain.flows import today_ist
 from datetime import date, timedelta
 
 import pytest
@@ -32,7 +33,7 @@ def test_chat_flows_both_ways_with_inbox_and_read_state():
     oh, oid = login("9200000004")  # never quoted
     job = client.post("/customer/jobs", headers=ch, json={
         "location_lat": 18.5986, "location_lng": 73.7604, "address_text": "B-402 Wakad",
-        "start_date": str(date.today() + timedelta(days=1)),
+        "start_date": str(today_ist() + timedelta(days=1)),
         "work_items": [{"trade": "plumber", "text_description": "Kitchen sink leaks under the basin and the water pipe joint is dripping all day.",
                         "description_language": "en", "photo_keys": ["https://picsum.photos/seed/a/800/600", "https://picsum.photos/seed/b/800/600"]}]}).json()
     jid = job["id"]

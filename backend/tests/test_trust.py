@@ -1,5 +1,6 @@
 """Trust & worker-growth features: start-work code, share trip, police verification, work warranty (free
 re-fix), same-day pay, skill ladder + streak, hire-again direct requests. Requires the seed."""
+from app.domain.flows import today_ist
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -79,7 +80,7 @@ class Hire:
     def __init__(self, worker=MURUGAN, cust=PRIYA, trade="plumber", price=1500, pay=True, direct=None):
         self.c, self.w, self.phone = tok(cust), tok(worker), worker
         body = {"location_lat": SITE[0], "location_lng": SITE[1], "address_text": "B-402 Wakad",
-                "start_date": str(date.today() + timedelta(days=1)),
+                "start_date": str(today_ist() + timedelta(days=1)),
                 "work_items": [{"trade": trade, "text_description": LONG, "description_language": "en",
                                 "photo_keys": [photo(self.c, "b1.jpg"), photo(self.c, "b2.jpg")]}]}
         if direct:
@@ -211,7 +212,7 @@ def test_team_code_is_per_worker_per_day_on_the_roster():
     c, w1 = tok(ANIL), tok(RAMESH)
     r = client.post("/customer/jobs", headers=c, json={
         "location_lat": 18.5089, "location_lng": 73.9260, "address_text": "Plot 9, Hadapsar", "city": "Pune", "kind": "team",
-        "start_date": str(date.today() + timedelta(days=1)),
+        "start_date": str(today_ist() + timedelta(days=1)),
         "work_items": [{"trade": "mason", "text_description": "Boundary wall and plaster for a new plot, bring tools.", "description_language": "en",
                         "photo_keys": [photo(c), photo(c)], "headcount": 1, "days": 2, "daily_wage_inr": 1000}]})
     jid = r.json()["id"]
@@ -516,7 +517,7 @@ def test_direct_request_is_exclusive_for_two_hours_then_opens_to_everyone():
     ramesh = tok(RAMESH)
     rid = client.get("/worker/profile", headers=ramesh).json()["id"]
     c = tok(PRIYA)
-    body = {"location_lat": SITE[0], "location_lng": SITE[1], "address_text": "Flat 302, Kothrud", "start_date": str(date.today() + timedelta(days=1)),
+    body = {"location_lat": SITE[0], "location_lng": SITE[1], "address_text": "Flat 302, Kothrud", "start_date": str(today_ist() + timedelta(days=1)),
             "direct_worker_id": rid, "work_items": [{"trade": "mason", "text_description": LONG, "description_language": "en",
                                                      "photo_keys": [photo(c), photo(c)]}]}
     assert err(client.post("/customer/jobs", headers=c, json={**body, "direct_worker_id": client.get("/worker/profile", headers=tok(MURUGAN)).json()["id"]})) == "err.trade_mismatch"
