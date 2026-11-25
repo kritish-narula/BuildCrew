@@ -1,22 +1,21 @@
 """Meta, media, role-scoped read endpoints (Phase 1 proves role routing against seed data;
 Phases 2–5 add the write flows), and dev-only helpers."""
 import hashlib
-from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from .. import services
 from ..config import get_settings
 from ..db import get_db
-from ..enums import LANGUAGE_CODES, LANGUAGES, BidStatus, DisputeStatus, EscrowState, JobStatus, Role, Trade
+from ..enums import LANGUAGE_CODES, LANGUAGES, EscrowState, Role, SupportChannel, Trade
 from ..errors import AppError
 from ..i18n import t
-from ..models import Bid, Dispute, Job, Payment, User, WorkerProfile, WorkItem
-from ..security import client_ip, rate_limit, require
+from ..models import SupportTicket, User
+from ..security import client_ip, current_user, rate_limit, require
 from ..services.storage import LocalStorage
 
 meta = APIRouter(prefix="/meta", tags=["meta"])
@@ -88,88 +87,102 @@ def get_media(key: str, exp: int = Query(...), sig: str = Query(...)):
                     headers={"Cache-Control": "private, max-age=300", "X-Robots-Tag": "noindex"})
 
 
-# ------------------------------------------------------------------ worker
-worker = APIRouter(prefix="/worker", tags=["worker"])
+# ------------------------------------------------------------------ uploads / speech / support
+files = APIRouter(tags=["files"])
+LIMITS = {  # kind → (max bytes, allowed extensions)
+    "photo": (6 * 1024 * 1024, {"jpg", "jpeg", "png", "webp"}),
+    "selfie": (4 * 1024 * 1024, {"jpg", "jpeg", "png", "webp"}),
+    "kyc": (6 * 1024 * 1024, {"jpg", "jpeg", "png", "webp", "pdf"}),
+    # Voice notes: AAC/Opus @ ~24 kbps → 2 min ≈ 360 KB. 1.5 MB cap rejects un-compressed audio.
+    "audio": (1_500_000, {"m4a", "aac", "ogg", "opus", "webm", "mp3"}),
+}
 
 
-def _signed(key: str | None) -> str | None:
-    if not key:
-        return None
-    if key.startswith("http"):  # seed placeholder photos
-        return key
-    return services.storage().signed_url(key, get_settings().signed_url_ttl_seconds)
+@files.post("/media/upload")
+async def upload(kind: str = Form(...), file: UploadFile = File(...), user: User = Depends(current_user)):
+    if kind not in LIMITS:
+        raise AppError("err.file_type", 422)
+    max_bytes, exts = LIMITS[kind]
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in exts:
+        raise AppError("err.file_type", 422)
+    data = await file.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise AppError("err.file_too_large", 413)
+    key = services.storage().put(data, prefix=f"{kind}/{user.id.hex[:8]}", ext=ext,
+                                 content_type=file.content_type or "application/octet-stream")
+    return {"key": key, "url": services.storage().signed_url(key, get_settings().signed_url_ttl_seconds), "size": len(data)}
 
 
-@worker.get("/feed")
-def worker_feed(user: User = Depends(require(Role.worker)), db: Session = Depends(get_db)):
-    """S4 Jobs feed. Deliberately returns NO audio URL — the feed only shows the 🔊 badge with
-    duration and estimated size; audio is fetched on the detail screen when the worker taps play.
-    That keeps the feed tiny on 2G/3G and guarantees audio never auto-plays."""
-    wp: WorkerProfile = user.worker_profile
-    origin = (wp.home_lat, wp.home_lng) if wp and wp.home_lat else None
-    jobs = db.scalars(select(Job).where(Job.status.in_([JobStatus.open, JobStatus.bidding]))
-                      .options(selectinload(Job.work_items).selectinload(WorkItem.photos))
-                      .order_by(Job.created_at.desc())).all()
-    my_bids = set(db.scalars(select(Bid.job_id).where(Bid.worker_id == user.id)))
-    radius = get_settings().worker_feed_radius_km
-    out = []
-    for job in jobs:
-        trades = [wi.trade.value for wi in job.work_items]
-        if wp and wp.trades and not set(trades) & set(wp.trades):
-            continue
-        dist = services.maps().distance_km(origin, (job.location_lat, job.location_lng)) if origin else None
-        if dist is not None and dist > radius:
-            continue
-        audio_items = [wi for wi in job.work_items if wi.audio_url and not wi.audio_muted]
-        out.append({
-            "id": str(job.id), "locality": job.locality,
-            "trades": [{"code": tr, "label": t(f"trade.{tr}", user.language_code)} for tr in dict.fromkeys(trades)],
-            "thumbnails": [_signed(p.photo_url) for wi in job.work_items for p in wi.photos][:4],
-            "audio": {"count": len(audio_items),
-                      "total_seconds": sum(wi.audio_duration_sec or 0 for wi in audio_items),
-                      "total_kb": round(sum(wi.audio_size_bytes or 0 for wi in audio_items) / 1024)} if audio_items else None,
-            "work_count": len(job.work_items),
-            "distance_km": round(dist, 1) if dist is not None else None,
-            "posted_at": job.created_at.isoformat(), "start_date": job.start_date.isoformat(),
-            "already_bid": job.id in my_bids,
-        })
-    return out
+class TranscribeIn(BaseModel):
+    key: str
+    lang: str
 
 
-# ------------------------------------------------------------------ customer
-customer = APIRouter(prefix="/customer", tags=["customer"])
+@files.post("/media/transcribe")
+def transcribe(body: TranscribeIn, user: User = Depends(require(Role.customer, Role.worker))):
+    """Auto-transcript for review/edit before posting (C2). Only the uploader's own keys."""
+    if f"/{user.id.hex[:8]}/" not in f"/{body.key}":
+        raise AppError("err.media_forbidden", 403)
+    if body.lang not in LANGUAGE_CODES:
+        raise AppError("err.language_unsupported", 422)
+    return {"transcript": services.speech().transcribe(services.storage().get(body.key), body.lang)}
 
 
-@customer.get("/jobs")
-def customer_jobs(user: User = Depends(require(Role.customer)), db: Session = Depends(get_db)):
-    jobs = db.scalars(select(Job).where(Job.customer_id == user.id).options(selectinload(Job.work_items))
-                      .order_by(Job.created_at.desc())).all()
-    counts = dict(db.execute(select(Bid.job_id, func.count()).where(Bid.job_id.in_([j.id for j in jobs]))
-                             .group_by(Bid.job_id)).all()) if jobs else {}
-    return [{"id": str(j.id), "status": j.status.value, "locality": j.locality, "bid_count": counts.get(j.id, 0),
-             "trades": [wi.trade.value for wi in j.work_items], "start_date": j.start_date.isoformat()} for j in jobs]
+class VoiceQueryIn(BaseModel):
+    text: str = Field(max_length=300)
 
 
-# ------------------------------------------------------------------ admin
-admin = APIRouter(prefix="/admin", tags=["admin"])
+@files.post("/voice/query")
+def voice_query(body: VoiceQueryIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Stub intent matcher for 'mera paisa kab aayega?', 'kaam kaise milega?' etc. Answers in
+    the user's language; the app reads the answer aloud."""
+    q = body.text.lower()
+    lang = user.language_code
+    if any(w in q for w in ("paisa", "payment", "पैसा", "पैसे", "money", "kab")):
+        key = "voice.when_payment"
+    elif any(w in q for w in ("kaam", "काम", "work", "job")):
+        key = "voice.how_get_work"
+    elif any(w in q for w in ("balance", "बैलेंस", "kitna")) and user.role == Role.worker:
+        from ..domain.flows import worker_balance
+        return {"answer": t("voice.balance", lang, amount=worker_balance(db, user.id)["available_paise"] // 100)}
+    else:
+        key = "voice.not_understood"
+    return {"answer": t(key, lang)}
 
 
-@admin.get("/kpis")
-def kpis(user: User = Depends(require(Role.admin)), db: Session = Depends(get_db)):
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    active = [JobStatus.open, JobStatus.bidding, JobStatus.assigned, JobStatus.in_progress]
-    released = [EscrowState.released, EscrowState.split]
-    return {
-        "active_jobs": db.scalar(select(func.count()).select_from(Job).where(Job.status.in_(active))),
-        "workers_online": db.scalar(select(func.count()).select_from(WorkerProfile).where(WorkerProfile.is_online)),
-        "bids_today": db.scalar(select(func.count()).select_from(Bid).where(Bid.created_at >= today)),
-        "gmv_inr": (db.scalar(select(func.coalesce(func.sum(Payment.amount_paise), 0))
-                              .where(Payment.escrow_state != EscrowState.created)) or 0) / 100,
-        "platform_revenue_inr": (db.scalar(select(func.coalesce(func.sum(Payment.platform_fee_paise), 0))
-                                           .where(Payment.escrow_state.in_(released))) or 0) / 100,
-        "open_disputes": db.scalar(select(func.count()).select_from(Dispute).where(Dispute.status != DisputeStatus.resolved)),
-        "pending_bids": db.scalar(select(func.count()).select_from(Bid).where(Bid.status == BidStatus.pending)),
-    }
+class TicketIn(BaseModel):
+    channel: SupportChannel = SupportChannel.app
+    subject: str = Field(min_length=2, max_length=200)
+    transcript: str | None = Field(default=None, max_length=4000)
+
+
+@files.post("/support/tickets")
+def support_ticket(body: TicketIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    tk = SupportTicket(user_id=user.id, channel=body.channel, subject=body.subject, transcript=body.transcript)
+    db.add(tk)
+    db.commit()
+    return {"id": str(tk.id), "reply": t("support.auto_reply", user.language_code)}
+
+
+@files.post("/payments/webhook")
+async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
+    """Razorpay → us. Signature verified BEFORE parsing; only `payment.captured` moves escrow
+    to HELD. Replays are harmless (state machine ignores same-state transitions)."""
+    raw = await request.body()
+    if not services.payment().verify_webhook(raw, request.headers.get("x-razorpay-signature", "")):
+        raise AppError("err.forbidden", 403)
+    import json
+    from ..domain.flows import mark_held
+    from ..models import Assignment, Payment
+    event = json.loads(raw)
+    if event.get("event") == "payment.captured":
+        order_id = event["payload"]["payment"]["entity"]["order_id"]
+        p = db.scalar(select(Payment).where(Payment.razorpay_ref == order_id))
+        if p and p.escrow_state == EscrowState.created:
+            mark_held(db, p, db.get(Assignment, p.assignment_id), actor_id=None)
+            db.commit()
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------ dev only

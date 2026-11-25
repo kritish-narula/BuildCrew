@@ -16,10 +16,12 @@ from .audit import audit
 from .db import SessionLocal
 from .domain.fees import compute_fees
 from .enums import (
+    RatingDirection,
     AudioUploadState, BidStatus, CustomerType, DisputeStatus, DocStatus, EscrowState, JobStatus, Role,
     SupportChannel, Trade,
 )
 from .models import (
+    Payout, Rating,
     Assignment, Attendance, Bid, ChatMessage, CustomerProfile, Dispute, Job, Payment, PriceHistory,
     SupportTicket, User, WorkerProfile, WorkItem, WorkItemPhoto,
 )
@@ -180,9 +182,9 @@ def run(do_reset: bool = False):
     j1, j2, j3, j4, j5, j6 = jobs
     bids_for(j2, Trade.electrician, 2, 6500)
     bids_for(j2, Trade.painter, 1, 6500)                       # → "3 workers have quoted"
-    a3 = assign(j3, bids_for(j3, Trade.carpenter, 2, 1800)[0], EscrowState.held)
+    assign(j3, bids_for(j3, Trade.carpenter, 2, 1800)[0], EscrowState.held)
     a4 = assign(j4, bids_for(j4, Trade.mason, 2, 14000)[0], EscrowState.held, started=NOW - timedelta(days=2))
-    a5 = assign(j5, bids_for(j5, Trade.painter, 2, 9000)[0], EscrowState.held,     # completed, rating PENDING
+    assign(j5, bids_for(j5, Trade.painter, 2, 9000)[0], EscrowState.held,     # completed, rating PENDING
                 started=NOW - timedelta(days=8), completed=NOW - timedelta(days=1))
     a6 = assign(j6, bids_for(j6, Trade.plumber, 2, 22000)[0], EscrowState.held,
                 started=NOW - timedelta(days=10), completed=NOW - timedelta(days=4))
@@ -209,6 +211,54 @@ def run(do_reset: bool = False):
                            body=body, created_at=NOW - timedelta(hours=h)))
     db.add(SupportTicket(user_id=workers[1].id, channel=SupportChannel.voice, subject="Payment kab aayega?",
                          transcript="mera paisa kab aayega?"))
+
+    # Past work for every experienced worker: completed, rated, paid. Feeds profile history,
+    # parameter-wise ratings, earnings history and the badge logic.
+    comments = ["Very neat work", "Came on time, finished fast", "Good behaviour, fair price",
+                 "Bahut accha kaam", "Clean finish, will hire again", None]
+    for w, spec in zip(workers, WORKERS):
+        n = min(spec[6], 4)
+        for h in range(n):
+            trade = Trade(spec[3][0])
+            cust = customers[h % 3]
+            loc = random.choice(list(PUNE_LOCALITIES))
+            lat, lng = PUNE_LOCALITIES[loc]
+            done = NOW - timedelta(days=15 + h * 9)
+            hj = Job(customer_id=cust.id, location_lat=lat, location_lng=lng, address_text=f"{loc}, Pune", city="Pune",
+                     locality=loc, start_date=(done - timedelta(days=2)).date(), status=JobStatus.completed,
+                     created_at=done - timedelta(days=4))
+            db.add(hj)
+            db.flush()
+            hwi = WorkItem(job_id=hj.id, sort_order=0, trade=trade, text_description=f"{trade.value.title()} work", description_language="en")
+            db.add(hwi)
+            db.flush()
+            db.add(WorkItemPhoto(work_item_id=hwi.id, photo_url=photo(f"hist-{w.phone}-{h}"), sort_order=0))
+            price = random.randint(12, 60) * 100 * INR
+            hb = Bid(job_id=hj.id, worker_id=w.id, quoted_price_paise=price, status=BidStatus.accepted,
+                     created_at=hj.created_at + timedelta(hours=2))
+            db.add(hb)
+            db.flush()
+            ha = Assignment(job_id=hj.id, worker_id=w.id, accepted_bid_id=hb.id, escrow_status=EscrowState.released,
+                            started_at=done - timedelta(days=2), completed_at=done)
+            db.add(ha)
+            db.flush()
+            fees = compute_fees(price)
+            db.add(Payment(assignment_id=ha.id, amount_paise=fees.customer_pays_paise, platform_fee_paise=fees.platform_fee_paise,
+                           worker_payout_paise=fees.worker_payout_paise, escrow_state=EscrowState.released,
+                           razorpay_ref=f"order_mock_hist{h}{w.phone[-2:]}", released_at=done + timedelta(hours=3)))
+            base = spec[5]
+            q, t_, b, v = (max(1, min(5, round(base + random.uniform(-0.6, 0.5)))) for _ in range(4))
+            db.add(Rating(assignment_id=ha.id, direction=RatingDirection.customer_to_worker, rater_id=cust.id, ratee_id=w.id,
+                          quality=q, timeliness=t_, behaviour=b, value_for_money=v, overall=round((q + t_ + b + v) / 4, 2),
+                          comment=random.choice(comments), created_at=done + timedelta(hours=3)))
+        if n >= 2:  # some already withdrawn to UPI
+            db.add(Payout(worker_id=w.id, amount_paise=random.randint(10, 25) * 100 * INR,
+                          upi_masked=f"{spec[1][:2].lower()}****@okaxis", provider_ref=f"payout_mock_seed{w.phone[-2:]}",
+                          created_at=NOW - timedelta(days=12)))
+    # One worker waiting for Level-2 KYC review (admin KYC queue).
+    hp = db.get(WorkerProfile, workers[6].id)
+    hp.kyc_doc_type, hp.kyc_doc_key = "aadhaar", photo("kyc-doc-7")
+    hp.lifetime_earnings_paise = 44_000 * INR  # near the ₹50k cap → app nudges for Level 2
 
     # Historical prices for the Fair Price Estimate (C2 step 4).
     base = {Trade.mason: 1200, Trade.plumber: 900, Trade.electrician: 1100, Trade.carpenter: 1000,

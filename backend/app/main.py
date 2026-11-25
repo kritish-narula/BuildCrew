@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .errors import AppError, app_error_handler, unhandled_handler, validation_handler
-from .routers import auth, core
+from .routers import admin, auth, core, customer, worker
 
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
@@ -40,7 +40,8 @@ app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(RequestValidationError, validation_handler)
 app.add_exception_handler(Exception, unhandled_handler)
 
-for r in (auth.router, auth.me_router, core.meta, core.media, core.worker, core.customer, core.admin, core.dev):
+for r in (auth.router, auth.me_router, core.meta, core.media, core.files, core.dev,
+          worker.router, customer.router, admin.router):
     app.include_router(r)
 
 

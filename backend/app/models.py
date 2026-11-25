@@ -79,6 +79,11 @@ class WorkerProfile(Base):
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
     completed_jobs: Mapped[int] = mapped_column(Integer, default=0)
     lifetime_earnings_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    # Level-2 KYC document (image key in private storage; the NUMBER is never stored)
+    kyc_doc_type: Mapped[str | None] = mapped_column(String(10))  # aadhaar | pan
+    kyc_doc_key: Mapped[str | None] = mapped_column(String(500))
+    kyc_note: Mapped[str | None] = mapped_column(String(300))  # rejection reason shown to worker
+    strikes: Mapped[int] = mapped_column(SmallInteger, default=0)  # no-shows / penalties
 
     user: Mapped[User] = relationship(back_populates="worker_profile")
 
@@ -181,6 +186,9 @@ class Attendance(Base):
     checkin_lng: Mapped[float] = mapped_column(Float)
     checkin_selfie_url: Mapped[str | None] = mapped_column(String(500))
     checkout_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checkout_lat: Mapped[float | None] = mapped_column(Float)
+    checkout_lng: Mapped[float | None] = mapped_column(Float)
+    geofence_ok: Mapped[bool] = mapped_column(Boolean, default=True)  # within radius of the job site
     offline_synced: Mapped[bool] = mapped_column(Boolean, default=False)  # True = captured offline, synced later
     client_ref: Mapped[str | None] = mapped_column(String(64), unique=True)  # idempotent offline replay
 
@@ -214,9 +222,21 @@ class Payment(Base):
     platform_fee_paise: Mapped[int] = mapped_column(BigInteger)    # flat fee + take-rate
     worker_payout_paise: Mapped[int] = mapped_column(BigInteger)
     escrow_state: Mapped[EscrowState] = mapped_column(_enum(EscrowState), default=EscrowState.created)
-    razorpay_ref: Mapped[str | None] = mapped_column(String(80))
+    razorpay_ref: Mapped[str | None] = mapped_column(String(80))       # order id
+    transfer_ref: Mapped[str | None] = mapped_column(String(80))       # Route on-hold transfer id
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     refund_paise: Mapped[int] = mapped_column(BigInteger, default=0)  # used by refund/split
+
+
+class Payout(Base):  # addition: worker withdrawals of released earnings to UPI
+    __tablename__ = "payouts"
+    id: Mapped[uuid.UUID] = _pk()
+    worker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    upi_masked: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(20), default="processed")  # processed | failed
+    provider_ref: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = _created()
 
 
 class Dispute(Base):
