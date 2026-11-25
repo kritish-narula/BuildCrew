@@ -1,19 +1,20 @@
+import { useEffect, useRef } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { api, inr, type Kpis } from "../api";
 import { Card, ErrorBox, Loading, PageHead, Pill, Stat, tradeLabel, useData } from "../ui";
 
 type Pin = { id: string; lat: number; lng: number; status: string; locality: string; trades: string[] };
 const COLORS: Record<string, string> = { open: "#0284c7", bidding: "#d97706", assigned: "#059669", in_progress: "#2563eb", disputed: "#dc2626" };
-const AREAS: Record<string, [number, number]> = {
-  Kothrud: [18.5074, 73.8077], Baner: [18.559, 73.7868], Hadapsar: [18.5089, 73.926], Wakad: [18.5986, 73.7604],
-  "Viman Nagar": [18.5679, 73.9143], Aundh: [18.558, 73.8075], Kharadi: [18.5515, 73.9348], Shivajinagar: [18.5308, 73.8475],
-};
+const INDIA_CENTER: L.LatLngExpression = [22.5, 79];
+const INDIA_ZOOM = 4;
 
 export default function Dashboard() {
   const k = useData(() => api<Kpis>("/admin/kpis"));
   const m = useData(() => api<{ pins: Pin[]; by_locality: { locality: string; count: number }[] }>("/admin/map"));
   return (
     <div>
-      <PageHead title="Dashboard" sub="Pune · live operations" />
+      <PageHead title="Dashboard" sub="India · live operations" />
       <ErrorBox msg={k.error || m.error} />
       {!k.data ? <Loading /> : (
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
@@ -29,7 +30,7 @@ export default function Dashboard() {
       )}
       <div className="grid lg:grid-cols-3 gap-4 mt-4">
         <Card title="Live job map" className="lg:col-span-2" action={<div className="flex gap-3 text-xs font-semibold text-stone-500">{Object.entries(COLORS).map(([s, c]) => <span key={s} className="flex items-center gap-1"><i className="size-2.5 rounded-full" style={{ background: c }} />{s.replace("_", " ")}</span>)}</div>}>
-          {m.data ? <PuneMap pins={m.data.pins} /> : <Loading />}
+          {m.data ? <LiveMap pins={m.data.pins} /> : <Loading />}
         </Card>
         <Card title="Jobs by locality">
           {m.data?.by_locality.map((r) => (
@@ -51,28 +52,33 @@ export default function Dashboard() {
   );
 }
 
-/** Schematic map (no API key needed): localities placed by real lat/lng, job pins on top.
- *  Swap for Google Maps JS when GOOGLE_MAPS_API_KEY is configured. */
-function PuneMap({ pins }: { pins: Pin[] }) {
-  const lats = Object.values(AREAS).map((a) => a[0]), lngs = Object.values(AREAS).map((a) => a[1]);
-  const [la0, la1, lo0, lo1] = [Math.min(...lats) - 0.02, Math.max(...lats) + 0.02, Math.min(...lngs) - 0.03, Math.max(...lngs) + 0.03];
-  const x = (lng: number) => ((lng - lo0) / (lo1 - lo0)) * 640;
-  const y = (lat: number) => 340 - ((lat - la0) / (la1 - la0)) * 340;
-  return (
-    <svg viewBox="0 0 640 340" className="w-full rounded-xl bg-stone-50 border border-stone-100">
-      <path d={`M0 ${y(18.535)} C 200 ${y(18.545)}, 380 ${y(18.52)}, 640 ${y(18.545)}`} stroke="#bae6fd" strokeWidth="10" fill="none" />
-      {Object.entries(AREAS).map(([n, [la, lo]]) => (
-        <g key={n}>
-          <circle cx={x(lo)} cy={y(la)} r="34" fill="#f5f5f4" stroke="#e7e5e4" />
-          <text x={x(lo)} y={y(la) + 48} textAnchor="middle" className="fill-stone-500" fontSize="12" fontWeight="600">{n}</text>
-        </g>
-      ))}
-      {pins.map((p, i) => (
-        <g key={p.id} transform={`translate(${x(p.lng) + ((i % 3) - 1) * 9}, ${y(p.lat) + ((i % 2) - 0.5) * 9})`}>
-          <title>{`${p.locality} · ${p.status} · ${p.trades.map(tradeLabel).join(", ")}`}</title>
-          <circle r="9" fill={COLORS[p.status] ?? "#78716c"} stroke="white" strokeWidth="2.5" />
-        </g>
-      ))}
-    </svg>
-  );
+/** Real interactive map (Leaflet + OpenStreetMap). Pins are L.circleMarker (vector, no image icons), so they
+ *  still render when tiles are blocked (sandbox / offline); the grey background stands in for missing tiles. */
+function LiveMap({ pins }: { pins: Pin[] }) {
+  const el = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!el.current) return;
+    const map = L.map(el.current, { scrollWheelZoom: false }).setView(INDIA_CENTER, INDIA_ZOOM);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+    const pts: L.LatLngExpression[] = [];
+    for (const p of pins) {
+      if (typeof p.lat !== "number" || typeof p.lng !== "number") continue;
+      const color = COLORS[p.status] ?? "#78716c";
+      const m = L.circleMarker([p.lat, p.lng], { radius: 9, color: "#ffffff", weight: 2.5, fillColor: color, fillOpacity: 0.95 }).addTo(map);
+      const pop = document.createElement("div"); // textContent: no HTML injection from job data
+      const b = document.createElement("b");
+      b.textContent = p.locality;
+      pop.append(b, document.createElement("br"), `${p.status.replace("_", " ")} · ${p.trades.map(tradeLabel).join(", ")}`);
+      m.bindPopup(pop);
+      m.bindTooltip(p.locality);
+      pts.push([p.lat, p.lng]);
+    }
+    if (pts.length > 1) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 12 });
+    else if (pts.length === 1) map.setView(pts[0], 12);
+    const fix = window.setTimeout(() => map.invalidateSize(), 200);
+    return () => { window.clearTimeout(fix); map.remove(); };
+  }, [pins]);
+  return <div ref={el} className="h-[380px] w-full rounded-xl border border-stone-100 bg-stone-100 z-0" />;
 }

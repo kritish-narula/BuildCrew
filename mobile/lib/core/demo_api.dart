@@ -99,7 +99,7 @@ class DemoApi implements Api {
   }
 
   Json _jobCard(Json j) => {
-        'id': j['id'], 'customer_id': j['customer_id'], 'status': j['status'], 'locality': j['locality'], 'city': 'Pune', 'address': j['address'],
+        'id': j['id'], 'customer_id': j['customer_id'], 'status': j['status'], 'locality': j['locality'], 'city': (j['city'] as String?) ?? '', 'address': j['address'],
         'lat': j['lat'], 'lng': j['lng'], 'start_date': j['start_date'], 'created_at': j['created_at'],
         'trades': [for (final it in j['items'] as List) (it as Map)['trade']],
         'thumbnail': [for (final it in j['items'] as List) ...((it as Map)['photos'] as List)].cast<String?>().firstOrNull,
@@ -172,6 +172,20 @@ class DemoApi implements Api {
     return 2 * 6371 * asin(sqrt(h));
   }
 
+  // ---------------------------------------------------------------- pricing helpers (see DemoPricing)
+  String? _pricingText(Json it) {
+    final t = _text(it, 'en');
+    if (t != null && t.isNotEmpty) return t;
+    final tr = (it['transcript'] as Map?)?.cast<String, dynamic>();
+    return tr == null || tr.isEmpty ? null : (tr['en'] ?? tr.values.first) as String?;
+  }
+
+  List<(String, String?)> _pricingItems(Json j) => [
+        for (final it in (j['items'] as List).cast<Map>()) (it['trade'] as String, _pricingText(it.cast<String, dynamic>()))
+      ];
+
+  String _cityOf(Json d, Json j) => (j['city'] as String?) ?? (d['city'] as String?) ?? '';
+
   // ---------------------------------------------------------------- marketplace simulation
   /// Workers quote on a customer's new job ~15 s after posting; a customer accepts a worker's
   /// lowest pending quote ~30 s after it was placed. Lazy: evaluated whenever data is read.
@@ -184,10 +198,13 @@ class DemoApi implements Api {
       final have = _all(d, 'bids').where((b) => b['job_id'] == j['id']).length;
       if (have > 0) continue;
       final pool = _all(d, 'users').where((u) => u['role'] == 'worker' && (u['trades'] as List).any(trades.contains)).take(3).toList();
-      final base = 600 * (j['items'] as List).length + 400;
+      final items = _pricingItems(j), city = _cityOf(d, j);
       for (final w in pool) {
+        // Quotes land around the fair-price model, +/-15%.
+        final median = DemoPricing.fairRange(items, city, w['trades'] as List)['median'] as num;
+        final price = max(100, (median * (0.85 + _rnd.nextDouble() * 0.3) / 50).round() * 50);
         final id = _id('b');
-        _t(d, 'bids')[id] = {'id': id, 'job_id': j['id'], 'worker_id': w['id'], 'price': base + _rnd.nextInt(12) * 100, 'status': 'pending', 'created_at': _now()};
+        _t(d, 'bids')[id] = {'id': id, 'job_id': j['id'], 'worker_id': w['id'], 'price': price, 'status': 'pending', 'created_at': _now()};
       }
       if (pool.isNotEmpty) j['status'] = 'bidding';
     }
@@ -233,7 +250,7 @@ class DemoApi implements Api {
       final r = role == 'customer' ? 'customer' : 'worker';
       final id = _id(r[0]);
       u = {'id': id, 'phone': phone, 'role': r, 'name': null, 'lang': lang, 'kyc': 0, 'trades': <String>[], 'rating': 0.0,
-        'rating_count': 0, 'completed': 0, 'badges': <String>[], 'lat': 18.52, 'lng': 73.85, 'online': true, 'earned': 0};
+        'rating_count': 0, 'completed': 0, 'badges': <String>[], 'lat': (d['anchor'] as Map?)?['lat'] ?? 18.52, 'lng': (d['anchor'] as Map?)?['lng'] ?? 73.85, 'online': true, 'earned': 0};
       _t(d, 'users')[id] = u;
       await _save();
     }
@@ -294,6 +311,7 @@ class DemoApi implements Api {
       'work_items': [for (var i = 0; i < items.length; i++) _item((items[i] as Map).cast<String, dynamic>(), i, _lang)],
       'my_bid': mine == null ? null : {'id': mine['id'], 'price_inr': mine['price'], 'status': mine['status']},
       'bid_count': _all(d, 'bids').where((b) => b['job_id'] == id).length,
+      'fair_range': DemoPricing.fairRange(_pricingItems(j), _cityOf(d, j), me['trades'] as List),
     };
   }
 
@@ -531,7 +549,7 @@ class DemoApi implements Api {
     final u = _user(d);
     final b = _breakdown(d, _me!);
     return {'name': u['name'], 'trades': u['trades'], 'rating': b['overall'], 'rating_count': b['count'], 'completed_jobs': u['completed'],
-      'badges': u['badges'], 'breakdown': b, 'verified_level': u['kyc'], 'eshram_registered': u['eshram'] == true, 'city': 'Pune',
+      'badges': u['badges'], 'breakdown': b, 'verified_level': u['kyc'], 'eshram_registered': u['eshram'] == true, 'city': (d['city'] as String?) ?? '',
       'member_since': '2026-06-01', 'card_id': 'BC-${(_me!.hashCode & 0xFFFFFFF).toRadixString(16).toUpperCase().padLeft(8, '0')}'};
   }
 
@@ -563,7 +581,7 @@ class DemoApi implements Api {
     await _save();
   }
 
-  /// The sample data is seeded in Pune. The first time we learn where the user really is, we
+  /// The sample data is seeded around Pune (any Indian city works as the target). The first time we learn where the user really is, we
   /// move the whole sample marketplace there (keeping the shape of the city), put jobs that are
   /// already assigned ~100 m away (so check-in passes the 300 m geofence), and rename areas
   /// with the phone's geocoder. Re-anchors if the user travels > 50 km.
@@ -597,13 +615,24 @@ class DemoApi implements Api {
         j['lng'] = lng + 0.0005 - 0.0004 * k++;
       }
       d['anchor'] = {'lat': lat, 'lng': lng};
+      // City drives the price tier: nearest known city now, the phone's geocoder refines it below.
+      final city = DemoPricing.cityNear(lat, lng) ?? '';
+      d['city'] = city;
+      for (final j in _all(d, 'jobs').where((j) => j['sim'] != true)) {
+        j['city'] = city;
+      }
       await _save();
       // Rename sample areas to real nearby place names (best effort, in the background).
       () async {
         final seen = <String, String>{};
         for (final j in _all(d, 'jobs').where((j) => j['sim'] != true && !(j['id'] as String).startsWith('hj')).toList()) {
           final a = await LocationService.address((j['lat'] as num).toDouble(), (j['lng'] as num).toDouble());
-          if (a == null || a.area.isEmpty) continue;
+          if (a == null) continue;
+          if (a.city.isNotEmpty) {
+            d['city'] = a.city;
+            j['city'] = a.city;
+          }
+          if (a.area.isEmpty) continue;
           final old = j['locality'] as String;
           j['locality'] = seen.putIfAbsent(old, () => a.area);
           j['address'] = a.line.isEmpty ? j['address'] : a.line;
@@ -635,18 +664,24 @@ class DemoApi implements Api {
     return out;
   }
 
-  static const _basePrice = {'mason': 1200, 'plumber': 900, 'electrician': 1100, 'carpenter': 1000, 'painter': 950, 'helper': 600};
-
+  /// Same model as the backend. Extra optional [texts] (aligned with [trades]) and [city] improve the
+  /// estimate; without a city the sample marketplace's current city is used.
   @override
-  Future<Json> priceEstimate(List<String> trades, String? locality) async {
+  Future<Json> priceEstimate(List<String> trades, String? locality, {List<String?>? texts, String? city}) async {
     await _lag();
-    final items = [
-      for (final t in trades.toSet())
-        {'trade': t, 'low_inr': (_basePrice[t]! * 1.2 / 50).round() * 50, 'median_inr': (_basePrice[t]! * 1.9 / 50).round() * 50,
-          'high_inr': (_basePrice[t]! * 2.8 / 50).round() * 50, 'samples': 9 + _rnd.nextInt(6), 'scope': 'locality'}
+    final d = await _d;
+    final c = city ?? (d['city'] as String?) ?? '';
+    final pairs = <(String, String?)>[
+      for (var i = 0; i < trades.length; i++)
+        if (DemoPricing.tradeSkill.containsKey(trades[i])) (trades[i], texts != null && i < texts.length ? texts[i] : null)
     ];
-    return {'items': items, 'total_low_inr': items.fold<int>(0, (s, i) => s + (i['low_inr'] as int)),
-      'total_high_inr': items.fold<int>(0, (s, i) => s + (i['high_inr'] as int)), 'platform_fee_inr': fee};
+    final est = DemoPricing.estimateItems(pairs, c);
+    final items = [
+      for (final it in (est['items'] as List).cast<Map<String, dynamic>>())
+        {...it, 'samples': 9 + _rnd.nextInt(6), 'scope': 'locality', 'city': c, 'city_multiplier': DemoPricing.cityMultiplier(c)}
+    ];
+    return {'items': items, 'total_low_inr': est['total_low_inr'], 'total_median_inr': est['total_median_inr'],
+      'total_high_inr': est['total_high_inr'], 'city': c, 'platform_fee_inr': fee};
   }
 
   @override
@@ -656,9 +691,13 @@ class DemoApi implements Api {
     if (items.isEmpty) _err('err.no_work_items');
     final d = await _d;
     final id = _id('j');
+    final bodyCity = (body['city'] as String?)?.trim() ?? '';
+    final jobCity = bodyCity.isNotEmpty
+        ? bodyCity
+        : DemoPricing.cityNear((body['location_lat'] as num).toDouble(), (body['location_lng'] as num).toDouble()) ?? (d['city'] as String?) ?? '';
     _t(d, 'jobs')[id] = {
       'id': id, 'customer_id': _me, 'lat': body['location_lat'], 'lng': body['location_lng'], 'address': body['address_text'],
-      'locality': body['locality'] ?? 'Pune', 'start_date': body['start_date'], 'status': 'open', 'created_at': _now(), 'sim': true,
+      'city': jobCity, 'locality': body['locality'] ?? jobCity, 'start_date': body['start_date'], 'status': 'open', 'created_at': _now(), 'sim': true,
       'items': [
         for (final w in items.cast<Map>())
           {
@@ -688,7 +727,11 @@ class DemoApi implements Api {
     return {
       ..._jobCard(j),
       'work_items': [for (var i = 0; i < items.length; i++) _item((items[i] as Map).cast<String, dynamic>(), i, _lang)],
-      'bids': [for (final b in bids) {'id': b['id'], 'price_inr': b['price'], 'status': b['status'], 'created_at': b['created_at'], 'worker': _workerSummary(d, b['worker_id'] as String)}],
+      'bids': [
+        for (final b in bids)
+          {'id': b['id'], 'price_inr': b['price'], 'status': b['status'], 'created_at': b['created_at'], 'worker': _workerSummary(d, b['worker_id'] as String),
+            'fair': DemoPricing.fairCheck(b['price'] as num, _pricingItems(j), _cityOf(d, j), _user(d, b['worker_id'] as String)['trades'] as List)}
+      ],
       'assignment': a == null ? null : _assignmentView(d, a), 'fee_inr': fee,
     };
   }
@@ -964,7 +1007,7 @@ class DemoApi implements Api {
     void job(String id, String cust, String loc, String status, Duration age, List<Json> items, {String? address}) {
       final u = users['c1'] as Json;
       const ll = {'Kothrud': [18.5074, 73.8077], 'Baner': [18.559, 73.7868], 'Hadapsar': [18.5089, 73.926], 'Wakad': [18.5986, 73.7604], 'Aundh': [18.558, 73.8075]};
-      jobs[id] = {'id': id, 'customer_id': cust, 'lat': ll[loc]![0] + 0.002, 'lng': ll[loc]![1] - 0.001, 'address': address ?? 'Flat 302, Sai Residency, $loc, Pune',
+      jobs[id] = {'id': id, 'city': 'Pune', 'customer_id': cust, 'lat': ll[loc]![0] + 0.002, 'lng': ll[loc]![1] - 0.001, 'address': address ?? 'Flat 302, Sai Residency, $loc, Pune',
         'locality': loc, 'start_date': now.add(const Duration(days: 2)).toIso8601String().substring(0, 10), 'status': status, 'created_at': ago(age),
         'sim_customer': true, 'owner_lang': u['lang']};
       jobs[id]['items'] = items;
@@ -995,17 +1038,29 @@ class DemoApi implements Api {
     ]);
 
     final bids = <String, dynamic>{};
-    void bid(String id, String job, String w, int price, String status, Duration age) =>
-        bids[id] = {'id': id, 'job_id': job, 'worker_id': w, 'price': price, 'status': status, 'created_at': ago(age)};
-    bid('b1', 'j2', 'w5', 6800, 'pending', const Duration(hours: 4));
-    bid('b2', 'j2', 'w6', 6200, 'pending', const Duration(hours: 3));
-    bid('b3', 'j2', 'w9', 7400, 'pending', const Duration(hours: 2));
-    bid('b4', 'j3', 'w7', 1800, 'accepted', const Duration(days: 3));
-    bid('b5', 'j3', 'w8', 2100, 'rejected', const Duration(days: 3));
-    bid('b6', 'j4', 'w1', 14000, 'accepted', const Duration(days: 6));
-    bid('b7', 'j5', 'w9', 9000, 'accepted', const Duration(days: 8));
-    bid('b8', 'j6', 'w3', 21500, 'pending', const Duration(hours: 18));
-    bid('b9', 'j6', 'w4', 19800, 'pending', const Duration(hours: 10));
+    // Seed quotes come from the pricing model (what that worker's trades would fairly charge), x factor.
+    int quote(String job, String w, double f) {
+      final jj = jobs[job] as Map;
+      final pairs = <(String, String?)>[
+        for (final it in (jj['items'] as List).cast<Map>())
+          (it['trade'] as String, (it['text'] as Map)['en'] as String? ?? (it['text'] as Map).values.first as String?)
+      ];
+      final median = DemoPricing.fairRange(pairs, 'Pune', (users[w] as Map)['trades'] as List)['median'] as num;
+      return (median * f / 50).round() * 50;
+    }
+
+    void bid(String id, String job, String w, double f, String status, Duration age) =>
+        bids[id] = {'id': id, 'job_id': job, 'worker_id': w, 'price': quote(job, w, f), 'status': status, 'created_at': ago(age)};
+    bid('b1', 'j2', 'w5', 0.95, 'pending', const Duration(hours: 4));
+    bid('b2', 'j2', 'w6', 0.35, 'pending', const Duration(hours: 3)); // deliberately below minimum wage (Fair Wage Shield demo)
+    bid('b3', 'j2', 'w9', 1.05, 'pending', const Duration(hours: 2));
+    bid('b4', 'j3', 'w7', 1.0, 'accepted', const Duration(days: 3));
+    bid('b5', 'j3', 'w8', 1.1, 'rejected', const Duration(days: 3));
+    bid('b6', 'j4', 'w1', 1.0, 'accepted', const Duration(days: 6));
+    bid('b7', 'j5', 'w9', 1.0, 'accepted', const Duration(days: 8));
+    bid('b8', 'j6', 'w3', 1.05, 'pending', const Duration(hours: 18));
+    bid('b9', 'j6', 'w4', 0.92, 'pending', const Duration(hours: 10));
+    int pr(String id) => (bids[id] as Map)['price'] as int;
 
     final assignments = <String, dynamic>{
       'a3': {'id': 'a3', 'job_id': 'j3', 'worker_id': 'w7', 'bid_id': 'b4'},
@@ -1014,9 +1069,9 @@ class DemoApi implements Api {
       'a5': {'id': 'a5', 'job_id': 'j5', 'worker_id': 'w9', 'bid_id': 'b7', 'started_at': ago(const Duration(days: 8)), 'completed_at': ago(const Duration(days: 1))},
     };
     final payments = <String, dynamic>{
-      'p3': {'id': 'p3', 'assignment_id': 'a3', 'amount': 1830, 'fee': fee, 'payout': 1800, 'state': 'held', 'method': 'upi', 'paid_at': ago(const Duration(days: 3))},
-      'p4': {'id': 'p4', 'assignment_id': 'a4', 'amount': 14030, 'fee': fee, 'payout': 14000, 'state': 'held', 'method': 'upi', 'paid_at': ago(const Duration(days: 6))},
-      'p5': {'id': 'p5', 'assignment_id': 'a5', 'amount': 9030, 'fee': fee, 'payout': 9000, 'state': 'held', 'method': 'card', 'paid_at': ago(const Duration(days: 8))}, // awaiting rating
+      'p3': {'id': 'p3', 'assignment_id': 'a3', 'amount': pr('b4') + fee, 'fee': fee, 'payout': pr('b4'), 'state': 'held', 'method': 'upi', 'paid_at': ago(const Duration(days: 3))},
+      'p4': {'id': 'p4', 'assignment_id': 'a4', 'amount': pr('b6') + fee, 'fee': fee, 'payout': pr('b6'), 'state': 'held', 'method': 'upi', 'paid_at': ago(const Duration(days: 6))},
+      'p5': {'id': 'p5', 'assignment_id': 'a5', 'amount': pr('b7') + fee, 'fee': fee, 'payout': pr('b7'), 'state': 'held', 'method': 'card', 'paid_at': ago(const Duration(days: 8))}, // awaiting rating
     };
     final ratings = <Json>[];
     // History: past rated + paid jobs for experienced workers (profile, breakdown, earnings).
@@ -1027,13 +1082,15 @@ class DemoApi implements Api {
         final jid = 'hj$h', aid = 'ha$h', bid0 = 'hb$h', pid = 'hp$h';
         final trade = (w['trades'] as List).first as String;
         final when = now.subtract(Duration(days: 14 + k * 10));
-        jobs[jid] = {'id': jid, 'customer_id': ['c1', 'c2', 'c3'][k % 3], 'lat': w['lat'], 'lng': w['lng'], 'address': 'Pune', 'locality': ['Kothrud', 'Baner', 'Aundh'][k],
+        final samples = DemoPricing.sampleJobs[trade]!;
+        final sample = samples[(h + k) % samples.length];
+        jobs[jid] = {'id': jid, 'city': 'Pune', 'customer_id': ['c1', 'c2', 'c3'][k % 3], 'lat': w['lat'], 'lng': w['lng'], 'address': 'Pune', 'locality': ['Kothrud', 'Baner', 'Aundh'][k],
           'start_date': when.toIso8601String().substring(0, 10), 'status': 'completed', 'created_at': when.subtract(const Duration(days: 3)).toIso8601String(),
           'items': [
-            {...item('${jid}w', trade, {'en': '${trade[0].toUpperCase()}${trade.substring(1)} work', 'hi': 'काम'}, 'en', photos: 1),
+            {...item('${jid}w', trade, {'en': sample, 'hi': 'काम'}, 'en', photos: 1),
               'photos': [demoPhotos[trade]![k % demoPhotos[trade]!.length]]}
           ]};
-        final price = 1500 + _rnd.nextInt(30) * 100;
+        final price = ((DemoPricing.estimateItem(trade, sample, 'Pune')['median_inr'] as int) * (0.88 + _rnd.nextDouble() * 0.24) / 50).round() * 50;
         bids[bid0] = {'id': bid0, 'job_id': jid, 'worker_id': w['id'], 'price': price, 'status': 'accepted', 'created_at': when.toIso8601String()};
         assignments[aid] = {'id': aid, 'job_id': jid, 'worker_id': w['id'], 'bid_id': bid0, 'started_at': when.toIso8601String(), 'completed_at': when.toIso8601String()};
         payments[pid] = {'id': pid, 'assignment_id': aid, 'amount': price + fee, 'fee': fee, 'payout': price, 'state': 'released', 'method': 'upi',
@@ -1047,7 +1104,7 @@ class DemoApi implements Api {
       }
     }
     return {
-      'users': users, 'jobs': jobs, 'bids': bids, 'assignments': assignments, 'payments': payments, 'ratings': ratings,
+      'city': 'Pune', 'users': users, 'jobs': jobs, 'bids': bids, 'assignments': assignments, 'payments': payments, 'ratings': ratings,
       'payouts': [
         {'worker_id': 'w1', 'amount': 2400, 'upi': 'ra****@okaxis', 'at': ago(const Duration(days: 12))},
       ],
@@ -1063,5 +1120,188 @@ class DemoApi implements Api {
       ],
       'chat': <Json>[],
     };
+  }
+}
+
+/// Mirror of backend/app/domain/pricing.py — keep both in sync (same rates, parsing and rounding).
+/// Tier-1 labour-only rupees from the 2025-26 analyst notes, times a city-tier multiplier.
+class DemoPricing {
+  static const _tier1 = {'mumbai', 'delhi', 'new delhi', 'bengaluru', 'bangalore', 'pune', 'hyderabad', 'chennai', 'kolkata', 'ahmedabad'};
+  static const _tier2 = {'jaipur', 'lucknow', 'chandigarh', 'ludhiana', 'jalandhar', 'amritsar', 'indore', 'nagpur', 'surat', 'kochi',
+    'bhopal', 'coimbatore', 'vadodara', 'patna', 'kanpur', 'nashik', 'visakhapatnam', 'thane', 'noida', 'gurugram', 'gurgaon',
+    'ghaziabad', 'faridabad', 'mohali', 'dehradun', 'ranchi', 'raipur', 'bhubaneswar', 'guwahati', 'thiruvananthapuram', 'madurai',
+    'mysuru', 'mysore', 'rajkot', 'agra', 'varanasi', 'meerut', 'patiala'};
+
+  static double cityMultiplier(String? city) {
+    final c = (city ?? '').trim().toLowerCase();
+    if (_tier1.contains(c)) return 1.0;
+    if (_tier2.contains(c)) return 0.85;
+    return 0.8;
+  }
+
+  /// Rough city centres so a phone with no working geocoder still gets the right price tier.
+  static const _centres = <String, List<double>>{
+    'Mumbai': [19.076, 72.8777], 'Delhi': [28.6139, 77.209], 'Bengaluru': [12.9716, 77.5946], 'Pune': [18.5204, 73.8567],
+    'Hyderabad': [17.385, 78.4867], 'Chennai': [13.0827, 80.2707], 'Kolkata': [22.5726, 88.3639], 'Ahmedabad': [23.0225, 72.5714],
+    'Jaipur': [26.9124, 75.7873], 'Lucknow': [26.8467, 80.9462], 'Chandigarh': [30.7333, 76.7794], 'Ludhiana': [30.901, 75.8573],
+    'Jalandhar': [31.326, 75.5762], 'Amritsar': [31.634, 74.8723], 'Indore': [22.7196, 75.8577], 'Nagpur': [21.1458, 79.0882],
+    'Surat': [21.1702, 72.8311], 'Kochi': [9.9312, 76.2673], 'Bhopal': [23.2599, 77.4126], 'Coimbatore': [11.0168, 76.9558],
+    'Vadodara': [22.3072, 73.1812], 'Patna': [25.5941, 85.1376], 'Kanpur': [26.4499, 80.3319], 'Nashik': [19.9975, 73.7898],
+    'Visakhapatnam': [17.6868, 83.2185], 'Dehradun': [30.3165, 78.0322], 'Ranchi': [23.3441, 85.3096], 'Raipur': [21.2514, 81.6296],
+    'Bhubaneswar': [20.2961, 85.8245], 'Guwahati': [26.1445, 91.7362], 'Thiruvananthapuram': [8.5241, 76.9366], 'Agra': [27.1767, 78.0081],
+    'Varanasi': [25.3176, 82.9739],
+  };
+
+  /// Nearest known city within 60 km, else null.
+  static String? cityNear(double lat, double lng) {
+    String? best;
+    var bestKm = 60.0;
+    _centres.forEach((name, c) {
+      final dLat = (c[0] - lat) * pi / 180, dLng = (c[1] - lng) * pi / 180;
+      final h = pow(sin(dLat / 2), 2) + cos(lat * pi / 180) * cos(c[0] * pi / 180) * pow(sin(dLng / 2), 2);
+      final km = 2 * 6371 * asin(sqrt(h));
+      if (km < bestKm) {
+        bestKm = km;
+        best = name;
+      }
+    });
+    return best;
+  }
+
+  // PLACEHOLDER minimum wages (approx. central-sphere construction, per 8-hour day).
+  // Must be verified against the current Chief Labour Commissioner / state notification before launch.
+  static const minWage = {'unskilled': 783, 'semi_skilled': 868, 'skilled': 954};
+  static const tradeSkill = {'helper': 'unskilled', 'painter': 'semi_skilled', 'mason': 'skilled', 'carpenter': 'skilled',
+    'plumber': 'skilled', 'electrician': 'skilled'};
+  static int minWagePerDay(String trade) => minWage[tradeSkill[trade] ?? 'skilled']!;
+
+  static const _dayRate = <String, List<num>>{'mason': [650, 850, 1000], 'carpenter': [900, 1300, 1800], 'plumber': [650, 800, 1000],
+    'electrician': [700, 900, 1200], 'painter': [700, 900, 1100], 'helper': [500, 600, 700]};
+  static const _wallSqft = <num>[60, 75, 90];
+  static const _tilingSqft = <num>[45, 60, 80];
+  static const _plasterSqft = <num>[25, 32, 40];
+  static const _paintSqft = <num>[8, 10, 12];
+  static const _plumbPoint = <num>[280, 360, 450];
+  static const _plumbSmall = <num>[400, 550, 700];
+  static const _plumbVisit = <num>[250, 320, 400];
+  static const _elecSocket = <num>[250, 320, 400];
+  static const _elecNew = <num>[800, 1050, 1300];
+  static const _elecRewire = <num>[375, 500, 625];
+  static const _elecVisit = <num>[200, 280, 350];
+
+  /// Typical jobs per trade (seed history).
+  static const sampleJobs = <String, List<String>>{
+    'mason': ['Compound wall 40 ft, 5 ft height', 'Plaster damaged wall, 1 day', 'Bathroom floor tiling 60 sq ft', 'Brick wall repair 2 days'],
+    'plumber': ['Bathroom tap leak', 'Fix leaking pipe', 'Install 3 plumbing points', 'Replace kitchen tap'],
+    'electrician': ['Rewire kitchen, 4 points', 'Install 3 sockets', 'Fix switchboard', 'Add 2 new points'],
+    'carpenter': ['Fix wardrobe door hinge', 'Repair 2 drawers', 'Door repair 2 days', 'Modular kitchen repair'],
+    'painter': ['Paint kitchen', 'Repaint living room 900 sq ft', 'Paint bedroom 400 sq ft', 'Touch-up door grill'],
+    'helper': ['Material shifting 2 days', 'Debris removal', 'Site cleaning 1 day', 'Helper for mason 3 days'],
+  };
+
+  static final _sqftRe = RegExp(r'(\d[\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft|square\s*f(?:ee|oo)t|वर्ग\s*फ)', caseSensitive: false);
+  static final _ftRe = RegExp(r'(\d[\d,]*(?:\.\d+)?)\s*(?:ft|feet|foot|फुट|फीट)(?![a-z])', caseSensitive: false);
+  static final _daysRe = RegExp(r'(\d+(?:\.\d+)?)\s*(?:days?|din|दिन)', caseSensitive: false);
+  static final _pointsRe = RegExp(r'(\d+)\s*(?:[\w\-]+\s+){0,2}?(?:sockets?|points?|switch(?:es)?|plugs?|लाइट|पॉइंट|सॉकेट)', caseSensitive: false);
+
+  static double _num(Match m) => double.parse(m.group(1)!.replaceAll(',', ''));
+  static int _r50(num x) => (x / 50).round() * 50;
+  static bool _has(String t, List<String> words) {
+    final s = t.toLowerCase();
+    return words.any(s.contains);
+  }
+
+  static List<num> _scale(List<num> r, num q) => [for (final x in r) x * q];
+
+  /// -> [rates(low, median, high), days, basis]
+  static (List<num>, double, String) _base(String trade, String text) {
+    final daysM = _daysRe.firstMatch(text);
+    final days = daysM == null ? null : min(_num(daysM), 60.0);
+    final sq = _sqftRe.firstMatch(text);
+    final sqft = sq == null ? null : _num(sq);
+    final ptsM = _pointsRe.firstMatch(text);
+    final pts = ptsM == null ? null : int.parse(ptsM.group(1)!);
+
+    if (trade == 'painter') {
+      final area = sqft ?? 750.0;
+      return (_scale(_paintSqft, area), max(1.0, (area / 250).ceilToDouble()), '${area.toInt()} sq ft');
+    }
+    if (trade == 'mason') {
+      final ft = _ftRe.firstMatch(text);
+      if (ft != null && _has(text, ['wall', 'दीवार']) && days == null) {
+        final length = _num(ft);
+        return (_scale(_wallSqft, length * 5), max(1.0, (length / 9).ceilToDouble()), '${length.toInt()} ft wall');
+      }
+      if (sqft != null && _has(text, ['til', 'टाइल'])) {
+        return (_scale(_tilingSqft, sqft), max(1.0, (sqft / 60).ceilToDouble()), '${sqft.toInt()} sq ft tiling');
+      }
+      if (sqft != null) {
+        return (_scale(_plasterSqft, sqft), max(1.0, (sqft / 120).ceilToDouble()), '${sqft.toInt()} sq ft plaster');
+      }
+      final d = days ?? 1.0;
+      return (_scale(_dayRate['mason']!, d), d, '$d day');
+    }
+    if (trade == 'electrician') {
+      if (pts != null) {
+        final rate = _has(text, ['rewir', 'वायरिंग']) ? _elecRewire : (_has(text, ['new point', 'नया पॉइंट']) ? _elecNew : _elecSocket);
+        return (_scale(rate, pts), max(0.5, pts * 0.25), '$pts points');
+      }
+      if (days != null) return (_scale(_dayRate['electrician']!, days), days, '$days day');
+      return (_elecVisit, 0.4, '1 visit');
+    }
+    if (trade == 'plumber') {
+      if (pts != null && !_has(text, ['leak', 'tap'])) return (_scale(_plumbPoint, pts), max(0.5, pts * 0.25), '$pts points');
+      if (_has(text, ['pipeline', 'पाइपलाइन', 'full flat', 'repip'])) {
+        final d = days ?? 3.0;
+        return (_scale(_dayRate['plumber']!, d), d, '$d day');
+      }
+      if (_has(text, ['tap', 'leak', 'टपक', 'नल', 'लीक', 'drip', 'seep'])) return (_plumbSmall, 0.4, 'small fix');
+      if (days != null) return (_scale(_dayRate['plumber']!, days), days, '$days day');
+      return (_plumbVisit, 0.4, '1 visit');
+    }
+    final d = days ?? 1.0; // carpenter, helper, anything else
+    return (_scale(_dayRate[trade] ?? _dayRate['helper']!, d), d, '$d day');
+  }
+
+  /// One work item. Low is floored at the minimum wage for the estimated days.
+  static Map<String, dynamic> estimateItem(String trade, String? text, String? city) {
+    final (rates, days, basis) = _base(trade, text ?? '');
+    final m = cityMultiplier(city);
+    final mw = minWagePerDay(trade) * days;
+    final floor = (mw / 50).ceil() * 50;
+    final lo = max(_r50(rates[0] * m), floor);
+    final med = max(_r50(rates[1] * m), lo);
+    final hi = max(_r50(rates[2] * m), lo);
+    return {'trade': trade, 'low_inr': lo, 'median_inr': med, 'high_inr': hi, 'est_days': double.parse(days.toStringAsFixed(1)),
+      'min_wage_total': mw.round(), 'basis': basis};
+  }
+
+  /// [items] = (trade, text) pairs. Returns the same shape as the backend `/customer/price-estimate`.
+  static Map<String, dynamic> estimateItems(List<(String, String?)> items, String? city) {
+    final out = [for (final i in items) estimateItem(i.$1, i.$2, city)];
+    int sum(String k) => out.fold<int>(0, (s, i) => s + (i[k] as int));
+    return {'items': out, 'total_low_inr': sum('low_inr'), 'total_median_inr': sum('median_inr'), 'total_high_inr': sum('high_inr')};
+  }
+
+  /// Fair range for a job; [trades] limits it to one worker's trades (falls back to the whole job).
+  static Map<String, dynamic> fairRange(List<(String, String?)> items, String? city, [List? trades]) {
+    var use = items;
+    if (trades != null && trades.isNotEmpty) {
+      final sub = items.where((i) => trades.contains(i.$1)).toList();
+      if (sub.isNotEmpty) use = sub;
+    }
+    final est = estimateItems(use, city);
+    final its = est['items'] as List;
+    final days = its.fold<double>(0, (s, i) => s + ((i as Map)['est_days'] as num).toDouble());
+    final mw = its.fold<int>(0, (s, i) => s + ((i as Map)['min_wage_total'] as int));
+    return {'low': est['total_low_inr'], 'median': est['total_median_inr'], 'high': est['total_high_inr'],
+      'min_wage_total': mw, 'est_days': double.parse(days.toStringAsFixed(1))};
+  }
+
+  /// Never blocks: fair | below_min_wage | high.
+  static Map<String, dynamic> fairCheck(num price, List<(String, String?)> items, String? city, [List? trades]) {
+    final r = fairRange(items, city, trades);
+    final verdict = price < (r['min_wage_total'] as num) ? 'below_min_wage' : (price > (r['high'] as num) * 1.2 ? 'high' : 'fair');
+    return {'verdict': verdict, 'low': r['low'], 'high': r['high'], 'min_wage_total': r['min_wage_total']};
   }
 }
