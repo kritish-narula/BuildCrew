@@ -792,10 +792,10 @@ class DemoApi implements Api {
     final j = _row(d, 'jobs', jobId);
     if (j['status'] != 'completed') _err('err.job_not_completed');
     final a = _assignmentFor(d, jobId) ?? _err('err.not_found');
-    final p = _paymentFor(d, a['id'] as String);
-    if (p == null || p['state'] != 'held') _err('err.payment_pending');
     final rs = d['ratings'] as List;
     if (rs.cast<Map>().any((r) => r['assignment_id'] == a['id'] && r['direction'] == 'customer_to_worker')) _err('err.already_rated');
+    final p = _paymentFor(d, a['id'] as String);
+    if (p == null || p['state'] != 'held') _err('err.payment_pending');
     final v = [stars['quality'], stars['timeliness'], stars['behaviour'], stars['value_for_money']].cast<int>();
     if (v.any((x) => x < 1 || x > 5)) _err('err.validation');
     final overall = v.reduce((a, b) => a + b) / 4; // average of the four operational parameters

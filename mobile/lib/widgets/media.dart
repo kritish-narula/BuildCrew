@@ -142,7 +142,9 @@ class AudioPlayerCard extends StatefulWidget {
 }
 
 class _AudioPlayerCardState extends State<AudioPlayerCard> {
-  final _p = AudioPlayer();
+  // Created on first tap: a feed full of voice notes shouldn't spin up a native player per card.
+  AudioPlayer? _player;
+  AudioPlayer get _p => _player ??= AudioPlayer();
   bool _loaded = false, _loading = false, _failed = false;
 
   Future<void> _toggle() async {
@@ -181,8 +183,11 @@ class _AudioPlayerCardState extends State<AudioPlayerCard> {
 
   @override
   void dispose() {
-    AudioHub.instance.release(_p);
-    _p.dispose();
+    final p = _player;
+    if (p != null) {
+      AudioHub.instance.release(p);
+      p.dispose();
+    }
     super.dispose();
   }
 
@@ -199,7 +204,7 @@ class _AudioPlayerCardState extends State<AudioPlayerCard> {
         border: dark ? null : Border.all(color: BC.brandSoft),
       ),
       child: StreamBuilder<PlayerState>(
-        stream: _p.playerStateStream,
+        stream: _player?.playerStateStream,
         builder: (ctx, st) {
           final playing = st.data?.playing == true && st.data?.processingState != ProcessingState.completed;
           return Row(children: [
@@ -221,9 +226,9 @@ class _AudioPlayerCardState extends State<AudioPlayerCard> {
             const SizedBox(width: 12),
             Expanded(
               child: StreamBuilder<Duration>(
-                stream: _p.positionStream,
+                stream: _player?.positionStream,
                 builder: (ctx, pos) {
-                  final total = _p.duration?.inMilliseconds ?? widget.durationSec * 1000;
+                  final total = _player?.duration?.inMilliseconds ?? widget.durationSec * 1000;
                   final at = pos.data?.inMilliseconds ?? 0;
                   final meta = '${mmss(at ~/ 1000)} / ${mmss(widget.durationSec)}${widget.sizeKb != null ? ' · ${widget.sizeKb} KB' : ''}';
                   return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
