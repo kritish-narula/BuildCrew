@@ -5,6 +5,9 @@ on:
     branches: [dev]
     paths: ["mobile/**", ".github/workflows/check.yml"]
 
+permissions:
+  contents: write # publish the screenshots to the `ci-screens` release
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -32,7 +35,7 @@ jobs:
       - name: Test
         run: |
           flutter test > /tmp/test.txt 2>&1 \
-            || { grep -E "Error|error:|Expected|Actual|FAILED|overflowed|Exception" /tmp/test.txt | head -60 | sed -E 's/^\s*/::error::/'; tail -80 /tmp/test.txt; exit 1; }
+            || { grep -E "Error|error:|Expected|Actual|FAILED|overflowed|Exception|RENDER OVERFLOW|OTHER FLUTTER ERRORS|COULD NOT BE CAPTURED" /tmp/test.txt | head -60 | sed -E 's/^\s*/::error::/'; tail -200 /tmp/test.txt; exit 1; }
           tail -3 /tmp/test.txt
       - name: Upload screenshots
         if: always()
@@ -41,3 +44,20 @@ jobs:
           name: screens
           path: mobile/test/screens_out/
           if-no-files-found: ignore
+      - name: Publish screenshots to release ci-screens
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          shopt -s nullglob
+          pngs=(test/screens_out/*.png)
+          if [ ${#pngs[@]} -eq 0 ]; then
+            echo "no screenshots produced, skipping release"
+            exit 0
+          fi
+          zip -q -j /tmp/screens.zip "${pngs[@]}"
+          gh release delete ci-screens --yes --cleanup-tag || true
+          gh release create ci-screens "${pngs[@]}" /tmp/screens.zip \
+            --target "${{ github.sha }}" --prerelease --latest=false \
+            --title "CI screenshots" --notes "auto"
