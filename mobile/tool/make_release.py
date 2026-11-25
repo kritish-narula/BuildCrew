@@ -15,6 +15,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 repo, build, tag = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+# Per-CPU APKs (small, for in-app updates) live on a hidden pre-release; the public release
+# shows ONE file: BuildCrew.apk (universal — installs on every phone).
+cpu_tag = f"{tag}-cpu"
 version = re.search(r"^version:\s*([\d.]+)", (ROOT / "pubspec.yaml").read_text(), re.M).group(1)
 cfg = json.loads((ROOT / "release_notes.json").read_text())
 out_dir = ROOT / "dist"
@@ -30,11 +33,14 @@ for abi, (short, code) in ABIS.items():
     name = f"BuildCrew-{short}.apk"
     shutil.copy(src, out_dir / name)
     data = (out_dir / name).read_bytes()
-    apks[abi] = {"url": f"https://github.com/{repo}/releases/download/{tag}/{name}",
+    apks[abi] = {"url": f"https://github.com/{repo}/releases/download/{cpu_tag}/{name}",
                  "sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "versionCode": code * 1000 + build}
 if "arm64-v8a" not in apks:
     sys.exit("arm64 APK missing")
-shutil.copy(out_dir / "BuildCrew-arm64.apk", out_dir / "BuildCrew.apk")  # simple first-install link
+universal = ROOT / "build/app/outputs/flutter-apk/app-release.apk"
+if not universal.exists():
+    sys.exit("universal APK missing")
+shutil.copy(universal, out_dir / "BuildCrew.apk")
 
 manifest = {"versionName": version, "build": build, "tag": tag, "minSupportedBuild": cfg.get("minSupportedBuild", 0),
             "notes": cfg["notes"], "apks": apks}
@@ -45,17 +51,8 @@ mb = lambda n: f"{n / 1048576:.1f} MB"
 
 {cfg['notes']['en']}
 
-### Install (first time)
-Download **BuildCrew.apk** below on your Android phone and open it. Android will ask once to allow installs from your browser.
+**Install:** download **BuildCrew.apk** below on your Android phone and open it ({mb((out_dir / 'BuildCrew.apk').stat().st_size)}, works on every phone).
 
-| Phone type | File | Size |
-|---|---|---|
-| Most phones (2017 and newer) | BuildCrew.apk / BuildCrew-arm64.apk | {mb(apks['arm64-v8a']['size'])} |
-| Older / very low-end phones | BuildCrew-armv7.apk | {mb(apks.get('armeabi-v7a', {}).get('size', 0))} |
-
-### Already installed?
-You don't need to download anything — the app shows **"New update ready"** and a notification, and updates itself in place. Your login and data are kept.
-
-<sub>SHA-256 (arm64): `{apks['arm64-v8a']['sha256']}` · signed with the BuildCrew release key</sub>
+**Already installed?** Nothing to download — the app shows "New update ready" and updates itself. Your login and data are kept.
 """)
 print(json.dumps(manifest, indent=1))
