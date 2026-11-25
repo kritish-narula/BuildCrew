@@ -53,6 +53,8 @@ def patch_gradle() -> None:
     g = f.read_text()
     if "BUILDCREW_PATCHED" in g:
         return
+    # Top-level import: inside android {} the name `java` resolves to Gradle's java extension.
+    g = "import java.util.Properties\n\n" + g
     g = sub_once(g, r'namespace\s*=\s*"[^"]+"', f'namespace = "{APP_ID}"', "namespace")
     g = sub_once(g, r'applicationId\s*=\s*"[^"]+"', f'applicationId = "{APP_ID}"', "applicationId")
     g = sub_once(g, r"compileOptions\s*\{", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true", "compileOptions")
@@ -61,7 +63,7 @@ def patch_gradle() -> None:
     // otherwise Android refuses to install it over the previous version (no in-place updates).
     signingConfigs {
         create("release") {
-            val keyProps = java.util.Properties()
+            val keyProps = Properties()
             val keyFile = rootProject.file("key.properties")
             if (keyFile.exists()) {
                 keyFile.inputStream().use { keyProps.load(it) }
