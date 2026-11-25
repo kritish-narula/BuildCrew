@@ -5,6 +5,7 @@ import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../core/updater.dart';
 import '../../l10n/gen/app_localizations.dart';
+import '../../widgets/common.dart';
 
 /// Wraps the signed-in shells. Checks for updates on open and on every return to the app,
 /// posts a system notification once per version, shows an in-app banner, and opens the
@@ -85,18 +86,22 @@ class _UpdateAwareState extends State<UpdateAware> with WidgetsBindingObserver {
             child: InkWell(
               onTap: _open,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+                padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
                 child: Row(children: [
-                  const Icon(Icons.system_update_rounded, color: BC.pending, size: 26),
+                  const Icon(Icons.system_update_rounded, color: BC.pending, size: 24),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text('${L.of(context).updateAvailableTitle} · ${info.sizeLabel}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.tt.labelLarge!.copyWith(color: Colors.white)),
                   ),
+                  const SizedBox(width: 8),
                   FilledButton(
                     onPressed: _open,
-                    style: FilledButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 16)),
-                    child: Text(L.of(context).updateNow, style: const TextStyle(fontSize: 14)),
+                    style: FilledButton.styleFrom(
+                        minimumSize: const Size(0, BC.btnXs), padding: const EdgeInsets.symmetric(horizontal: 16)),
+                    child: BtnLabel(L.of(context).updateNow),
                   ),
                 ]),
               ),
@@ -119,7 +124,7 @@ Future<void> showUpdateSheet(BuildContext context, String lang) {
     enableDrag: !info.required,
     showDragHandle: !info.required,
     backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(BC.rLg))),
     builder: (ctx) => PopScope(
       canPop: !info.required,
       child: ListenableBuilder(
@@ -143,8 +148,8 @@ class _UpdateSheetBody extends StatelessWidget {
     final busy = u.stage == UpdateStage.downloading || u.stage == UpdateStage.verifying || u.stage == UpdateStage.installing;
 
     Widget status() => switch (u.stage) {
-          UpdateStage.downloading => _progress(l.updateDownloading((u.progress * 100).round()), u.progress),
-          UpdateStage.verifying => _progress(l.updateVerifying, null),
+          UpdateStage.downloading => _progress(context, l.updateDownloading((u.progress * 100).round()), u.progress),
+          UpdateStage.verifying => _progress(context, l.updateVerifying, null),
           UpdateStage.installing => _note(Icons.touch_app_rounded, l.updateInstalling, BC.info),
           UpdateStage.failed => _note(Icons.wifi_off_rounded, l.updateFailed, BC.danger),
           UpdateStage.tampered => _note(Icons.gpp_bad_rounded, l.updateTampered, BC.danger),
@@ -157,52 +162,50 @@ class _UpdateSheetBody extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(24, info.required ? 28 : 4, 24, 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(color: BC.brandSoft, borderRadius: BorderRadius.circular(16)),
-              child: const Icon(Icons.rocket_launch_rounded, color: BC.brandDark, size: 30),
-            ),
-            const SizedBox(width: 16),
+            const IconBadge(Icons.rocket_launch_rounded, color: BC.brand, size: 52),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(l.updateAvailableTitle, style: Theme.of(context).textTheme.headlineSmall),
-                Text('v${u.currentVersion} → v${info.versionName}', style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
+                Text(l.updateAvailableTitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.headlineSmall),
+                Text('v${u.currentVersion} → v${info.versionName}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: BC.caption.copyWith(fontFeatures: BC.tabular)),
               ]),
             ),
           ]),
           const SizedBox(height: 16),
           if (info.required) _note(Icons.shield_rounded, l.updateRequired, BC.danger),
-          Text(l.updateAvailableBody(info.sizeLabel), style: const TextStyle(fontSize: 16, color: BC.inkSoft)),
+          Text(l.updateAvailableBody(info.sizeLabel), style: context.tt.bodyLarge!.copyWith(color: BC.inkSoft)),
           if (notes.isNotEmpty) ...[
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: BC.bg, borderRadius: BorderRadius.circular(BC.r)),
-              child: Text(notes, style: const TextStyle(fontSize: 15, height: 1.5)),
+              decoration: BoxDecoration(color: BC.bg, borderRadius: BorderRadius.circular(BC.r), border: Border.all(color: BC.line)),
+              child: Text(notes, style: context.tt.bodyMedium),
             ),
           ],
           const SizedBox(height: 16),
           status(),
           const SizedBox(height: 8),
           if (u.stage == UpdateStage.needsPermission)
-            FilledButton.icon(
+            PrimaryButton(
+              big: true,
               onPressed: u.openInstallPermissionSettings, // continues by itself when the user comes back
-              icon: const Icon(Icons.settings_rounded),
-              label: Text(l.openSettings),
+              icon: Icons.settings_rounded,
+              label: l.openSettings,
             )
           else
-            FilledButton.icon(
+            PrimaryButton(
+              big: true,
               onPressed: busy ? null : u.start,
-              icon: const Icon(Icons.download_rounded),
-              label: Text(u.stage == UpdateStage.failed || u.stage == UpdateStage.tampered ? l.retry : l.updateNow),
+              icon: Icons.download_rounded,
+              label: u.stage == UpdateStage.failed || u.stage == UpdateStage.tampered ? l.retry : l.updateNow,
             ),
           if (u.stage == UpdateStage.failed || u.stage == UpdateStage.tampered)
             TextButton.icon(
               onPressed: () => launchUrl(Uri.parse(Updater.releasePage), mode: LaunchMode.externalApplication),
               icon: const Icon(Icons.open_in_browser_rounded),
-              label: Text(L.of(context).downloadFromWebsite),
+              label: BtnLabel(L.of(context).downloadFromWebsite),
             ),
           if (!info.required) ...[
             const SizedBox(height: 8),
@@ -213,7 +216,8 @@ class _UpdateSheetBody extends StatelessWidget {
                   if (busy) u.cancel();
                   Navigator.of(context).pop();
                 },
-                child: Text(l.updateLater, style: const TextStyle(fontSize: 16, color: BC.inkSoft)),
+                style: TextButton.styleFrom(foregroundColor: BC.inkSoft),
+                child: BtnLabel(l.updateLater),
               ),
             ),
           ],
@@ -222,8 +226,8 @@ class _UpdateSheetBody extends StatelessWidget {
     );
   }
 
-  Widget _progress(String label, double? value) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+  Widget _progress(BuildContext context, String label, double? value) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: context.tt.labelLarge),
         const SizedBox(height: 8),
         ClipRRect(
           borderRadius: BorderRadius.circular(99),
@@ -239,7 +243,7 @@ class _UpdateSheetBody extends StatelessWidget {
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Icon(icon, color: color),
           const SizedBox(width: 10),
-          Expanded(child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 15, height: 1.4))),
+          Expanded(child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 14.5, height: 1.4))),
         ]),
       );
 }
