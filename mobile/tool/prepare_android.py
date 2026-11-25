@@ -98,6 +98,22 @@ dependencies {
         "-dontwarn com.google.errorprone.annotations.**\n")
 
 
+def patch_root_gradle() -> None:
+    """Release 'lintVital' crashes inside some plugins (seen: image_picker_android) and adds
+    minutes to every build; we lint Dart with `flutter analyze` instead."""
+    f = ANDROID / "build.gradle.kts"
+    g = f.read_text()
+    if "BUILDCREW_NO_LINTVITAL" in g:
+        return
+    g += """
+// BUILDCREW_NO_LINTVITAL
+subprojects {
+    tasks.matching { it.name.startsWith("lintVital") }.configureEach { enabled = false }
+}
+"""
+    f.write_text(g)
+
+
 def patch_manifest() -> None:
     f = ANDROID / "app" / "src" / "main" / "AndroidManifest.xml"
     m = f.read_text()
@@ -168,6 +184,7 @@ def apply_overlay() -> None:
 if __name__ == "__main__":
     ensure_project()
     patch_gradle()
+    patch_root_gradle()
     patch_manifest()
     apply_overlay()
     print("prepare_android: OK")
