@@ -7,6 +7,8 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import '../../widgets/media.dart';
 import '../../widgets/schedule.dart';
+import '../../widgets/trust_widgets.dart';
+import '../worker/worker_shell.dart' show initials;
 import 'contractor.dart';
 
 /// Caps primary/secondary buttons at 52dp for every customer screen, whatever the app theme
@@ -80,6 +82,7 @@ Json? _assignmentOf(Json j) => (j['detail'] as Json?)?['assignment'] as Json?;
   final tr = a?['tracking'] as Json?;
   if (j['needs_rating'] == true) return (l.rateNow, BC.brandDark);
   if ((status == 'open' || status == 'bidding') && ((j['bid_count'] as num?) ?? 0) > 0) return (l.viewQuotes, BC.money);
+  if ((status == 'open' || status == 'bidding') && j['direct_state'] == 'pending') return (l.directWaiting('${j['direct_worker'] ?? ''}'), BC.info);
   if (status == 'assigned' && j['payment_state'] == 'created') return (l.payToConfirm(name), BC.brandDark);
   if (a != null && a['worker_done_at'] != null && (status == 'assigned' || status == 'in_progress')) return (l.workerSaysDone(name), BC.money);
   if (status == 'assigned' && tr != null && tr['arrived'] != true) return (l.workerOnTheWay(name), BC.info);
@@ -89,9 +92,12 @@ Json? _assignmentOf(Json j) => (j['detail'] as Json?)?['assignment'] as Json?;
 /// One booking: trade icons, locality, status, next action, and either the quote count or
 /// the hired worker with the agreed price.
 class BookingCard extends StatelessWidget {
-  const BookingCard({super.key, required this.job, required this.onTap});
+  const BookingCard({super.key, required this.job, required this.onTap, this.onHireAgain});
   final Json job;
   final VoidCallback onTap;
+
+  /// Past, completed bookings: "Hire again" opens Post a Job prefilled for the same worker.
+  final VoidCallback? onHireAgain;
 
   @override
   Widget build(BuildContext context) {
@@ -148,6 +154,10 @@ class BookingCard extends StatelessWidget {
             ]),
             const SizedBox(height: 10),
             Row(children: [
+              if (job['refix'] == true) ...[
+                Flexible(child: StatusPill(label: l.refixBadge, color: BC.info, bg: BC.infoSoft, icon: Icons.build_circle_rounded)),
+                const SizedBox(width: 6),
+              ],
               Flexible(child: StatusPill(label: label, color: fg, bg: bg, icon: icon)),
               if (summary.isNotEmpty) ...[
                 const SizedBox(width: 10),
@@ -171,6 +181,10 @@ class BookingCard extends StatelessWidget {
                   Icon(Icons.arrow_forward_rounded, size: 18, color: next.$2),
                 ]),
               ),
+            ],
+            if (onHireAgain != null && status == 'completed' && job['hire_again_worker_id'] != null) ...[
+              const SizedBox(height: 10),
+              SecondaryButton(compact: true, icon: Icons.replay_circle_filled_rounded, label: l.hireAgain, onPressed: onHireAgain),
             ],
           ]),
         ),
@@ -225,7 +239,10 @@ class CustomerHomeTab extends StatelessWidget {
     required this.onSeeBookings,
     this.onPostTeam,
     this.onAddBusiness,
+    this.onHireAgain,
   });
+  /// "Hire again" with a favourite worker (worker id): opens Post a Job prefilled, offered to him first.
+  final ValueChanged<String>? onHireAgain;
   /// Contractors only: opens the team-job posting flow and switches the home to "sites".
   final VoidCallback? onPostTeam, onAddBusiness;
   final AppState state;
@@ -315,6 +332,7 @@ class CustomerHomeTab extends StatelessWidget {
               icon: const Icon(Icons.groups_rounded),
               label: Text(l.browseWorkers, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
+            if (onHireAgain != null) YourWorkersRow(state: state, jobs: jobs, onHireAgain: onHireAgain!),
             const SizedBox(height: 24),
             if (contractor && org.isEmpty && onAddBusiness != null) ...[
               InfoBanner(icon: Icons.business_rounded, color: BC.info, text: l.bizNameBanner, action: l.bizNameAdd, onTap: onAddBusiness),
@@ -426,12 +444,14 @@ class CustomerBookingsTab extends StatelessWidget {
     required this.onReload,
     required this.onOpenJob,
     required this.onPost,
+    this.onHireAgain,
   });
   final List<Json>? jobs;
   final bool failed;
   final Future<void> Function() onReload;
   final ValueChanged<String> onOpenJob;
   final VoidCallback onPost;
+  final ValueChanged<Json>? onHireAgain; // job -> prefilled Post a Job for the worker who did it
 
   Widget _list(BuildContext context, L l, BookingGroup g, String empty, {bool withPost = false}) {
     final all = jobs;
@@ -463,7 +483,11 @@ class CustomerBookingsTab extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               itemCount: items.length,
               separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (ctx, i) => BookingCard(job: items[i], onTap: () => onOpenJob(items[i]['id'] as String)),
+              itemBuilder: (ctx, i) => BookingCard(
+                job: items[i],
+                onTap: () => onOpenJob(items[i]['id'] as String),
+                onHireAgain: onHireAgain == null ? null : () => onHireAgain!(items[i]),
+              ),
             ),
     );
   }
@@ -500,5 +524,87 @@ class CustomerBookingsTab extends StatelessWidget {
         ]),
       ),
     );
+  }
+}
+
+
+/// Home: "Your workers" - people this customer rated 4 or more, each with a one-tap "Hire again".
+class YourWorkersRow extends StatefulWidget {
+  const YourWorkersRow({super.key, required this.state, required this.jobs, required this.onHireAgain});
+  final AppState state;
+  final List<Json>? jobs;
+  final ValueChanged<String> onHireAgain;
+  @override
+  State<YourWorkersRow> createState() => _YourWorkersRowState();
+}
+
+class _YourWorkersRowState extends State<YourWorkersRow> {
+  List<Json> _workers = const [];
+  String _sig = '';
+
+  /// Changes when a job gets rated / completed (the list of favourites can change), not on every 4 s refresh.
+  String get _signature =>
+      '${widget.state.user?.id}:${(widget.jobs ?? const <Json>[]).where((j) => j['status'] == 'completed' && j['needs_rating'] != true).length}';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(YourWorkersRow old) {
+    super.didUpdateWidget(old);
+    if (_signature != _sig) _load();
+  }
+
+  Future<void> _load() async {
+    _sig = _signature;
+    try {
+      final w = await widget.state.api.favourites();
+      if (mounted) setState(() => _workers = w);
+    } catch (_) {/* the row is a bonus: hidden when it cannot load */}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_workers.isEmpty) return const SizedBox.shrink();
+    final l = L.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const SizedBox(height: 20),
+      SectionHeader(l.yourWorkers, padding: const EdgeInsets.fromLTRB(2, 0, 2, 8)),
+      SizedBox(
+        height: 196,
+        child: ListView.separated(
+          key: const ValueKey('yourWorkers'),
+          scrollDirection: Axis.horizontal,
+          itemCount: _workers.length.clamp(0, 10),
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (ctx, i) {
+            final w = _workers[i];
+            return SizedBox(
+              width: 156,
+              child: AppCard(
+                padding: const EdgeInsets.all(12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  CircleAvatar(radius: 24, backgroundColor: BC.brand, child: Text(initials(w['name'] as String), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+                  const SizedBox(height: 8),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Flexible(child: Text(w['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: ctx.tt.titleSmall)),
+                    if (w['police_verified'] == true) const Padding(padding: EdgeInsets.only(left: 4), child: PoliceBadge(size: 16)),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text((w['trades'] as List).map((t) => tradeLabel(l, t as String)).join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: BC.caption),
+                  const SizedBox(height: 4),
+                  StarBadge(w['rating'] as num),
+                  const Spacer(),
+                  SecondaryButton(compact: true, icon: Icons.replay_circle_filled_rounded, label: l.hireAgain, onPressed: () => widget.onHireAgain(w['id'] as String)),
+                ]),
+              ),
+            );
+          },
+        ),
+      ),
+    ]);
   }
 }

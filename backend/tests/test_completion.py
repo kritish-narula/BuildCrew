@@ -93,7 +93,17 @@ class Hire:
     def a(self):
         return self.job()["assignment"]
 
+    def code(self):
+        """The customer's 4-digit start code (the worker only ever hears it from the customer)."""
+        return self.a()["start_code"]["code"]
+
+    def start(self):
+        r = client.post(f"/worker/assignments/{self.asg}/start", headers=self.w, json={"code": self.code()})
+        assert r.status_code == 200, r.text
+
     def done(self, note=None):
+        if self.a()["started_at"] is None:  # work "starts" with the code on arrival, then the worker finishes
+            self.start()
         r = client.post(f"/worker/assignments/{self.asg}/done", headers=self.w, json={"photos": [photo(self.w, "after.jpg")], "note": note})
         assert r.status_code == 200, r.text
 
@@ -299,7 +309,7 @@ def test_cancel_after_payment_before_start_refunds_in_full():
 
 def test_cancel_after_work_started_must_go_through_support():
     h = Hire()
-    client.post(f"/worker/assignments/{h.asg}/start", headers=h.w)
+    h.start()
     r = client.post(f"/customer/jobs/{h.jid}/cancel", headers=h.c)
     assert r.status_code == 409 and error(r) == "err.job_started_dispute"
     assert h.pay_state() == "held"
@@ -358,7 +368,7 @@ def test_no_show_needs_the_eta_plus_60_minutes():
 
 def test_no_show_refused_once_the_worker_checked_in():
     h = Hire()
-    client.post(f"/worker/attendance", headers=h.w, json={"assignment_id": h.asg, "kind": "in", "lat": 18.5987, "lng": 73.7605})
+    client.post(f"/worker/attendance", headers=h.w, json={"assignment_id": h.asg, "kind": "in", "lat": 18.5987, "lng": 73.7605, "start_code": h.code()})
     backdate(h.asg, expected_arrival_at=5)
     assert error(client.post(f"/customer/jobs/{h.jid}/no-show", headers=h.c)) == "err.job_started"
 

@@ -43,6 +43,26 @@ class Settings(BaseSettings):
     # to send him. Level 2 only near the earnings cap.
     kyc_l1_required_before_assignment: bool = True
 
+    # --- Trust & worker growth -------------------------------------------------------------
+    start_code_max_attempts: int = 5
+    start_code_lock_minutes: int = 10
+    trip_share_ttl_hours: int = 6
+    direct_request_hours: int = 2
+    max_refix_per_job: int = 2
+    public_trip_base_url: str = "https://buildcrew.app/t"
+    # Same-day pay: payouts go to UPI as soon as the escrow is released. "mock" settles after a few seconds;
+    # a real RazorpayX adapter replaces it (see services/payout.py).
+    payout_provider: str = "mock"          # mock | razorpayx
+    payout_mock_settle_seconds: int = 5
+    # Skill ladder (ordered). A worker is at the HIGHEST level whose rules all hold. `max_refix_rate` is
+    # re-fixes / completed jobs. `fair_multiplier` scales the fair-wage band suggested to that worker (never the legal minimum).
+    skill_levels: list[dict] = [
+        {"code": "helper", "min_jobs": 0, "min_rating": 0.0, "max_refix_rate": None, "fair_multiplier": 1.0},
+        {"code": "semi_skilled", "min_jobs": 5, "min_rating": 4.0, "max_refix_rate": None, "fair_multiplier": 1.0},
+        {"code": "skilled", "min_jobs": 20, "min_rating": 4.3, "max_refix_rate": None, "fair_multiplier": 1.1},
+        {"code": "master", "min_jobs": 60, "min_rating": 4.6, "max_refix_rate": 0.05, "fair_multiplier": 1.25},
+    ]
+
     # --- Audio ------------------------------------------------------------------------
     audio_max_seconds: int = 120
     audio_soft_prompt_seconds: int = 60

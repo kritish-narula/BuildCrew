@@ -8,8 +8,10 @@ import '../../widgets/common.dart';
 import 'customer_home.dart' show customerRoute;
 import '../../widgets/media.dart';
 import '../worker/assignment_screen.dart' show EscrowLine;
+import '../../widgets/trust_widgets.dart';
+import '../worker/growth_ui.dart' show LevelCard;
 import '../worker/worker_shell.dart' show badgeLabel, initials;
-import 'post_job.dart' show trades;
+import 'post_job.dart' show hireAgain, trades;
 
 /// "Browse workers nearby" — verified workers, best rated first, filter by trade.
 class BrowseWorkersScreen extends StatefulWidget {
@@ -69,8 +71,13 @@ class _BrowseWorkersScreenState extends State<BrowseWorkersScreen> {
                             if (w['online'] == true)
                               const Positioned(right: 0, bottom: 0, child: CircleAvatar(radius: 7, backgroundColor: Colors.white, child: CircleAvatar(radius: 5, backgroundColor: BC.money))),
                           ]),
-                          title: Text(w['name'] as String, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
-                          subtitle: Text((w['trades'] as List).map((t) => tradeLabel(l, t as String)).join(', ')),
+                          title: Row(children: [
+                            Flexible(child: Text(w['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17))),
+                            if (w['police_verified'] == true) const Padding(padding: EdgeInsets.only(left: 4), child: PoliceBadge()),
+                          ]),
+                          subtitle: Text(
+                              '${(w['trades'] as List).map((t) => tradeLabel(l, t as String)).join(', ')}${w['level'] != null && w['level'] != 'helper' ? ' · ${levelLabel(l, w['level'] as String)}' : ''}',
+                              maxLines: 2, overflow: TextOverflow.ellipsis),
                           trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
                             StarBadge(w['rating'] as num),
                             Text(l.jobsDone(w['completed_jobs'] as int), style: const TextStyle(color: BC.inkSoft, fontSize: 13)),
@@ -111,7 +118,10 @@ class WorkerProfileScreen extends StatelessWidget {
                     Flexible(child: Text(w['name'] as String, style: Theme.of(context).textTheme.headlineSmall)),
                     if (w['verified'] == true) const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.verified_rounded, color: BC.info)),
                   ]),
-                  Wrap(spacing: 6, runSpacing: 6, children: [for (final t in w['trades'] as List) TradeChip(t as String)]),
+                  Wrap(spacing: 6, runSpacing: 6, children: [
+                    for (final t in w['trades'] as List) TradeChip(t as String),
+                    if (w['police_verified'] == true) const PoliceBadge(label: true),
+                  ]),
                 ]),
               ),
             ]),
@@ -129,6 +139,23 @@ class WorkerProfileScreen extends StatelessWidget {
                   RatingBars(breakdown: b),
                 ]),
               ),
+            ),
+            if (w['level_card'] is Map) ...[
+              const SizedBox(height: 12),
+              LevelCard(
+                level: (w['level_card'] as Map).cast<String, dynamic>(),
+                streak: (w['streak'] as Map?)?.cast<String, dynamic>(),
+                record: (w['warranty_record'] as Map?)?.cast<String, dynamic>(),
+              ),
+            ],
+            const SizedBox(height: 12),
+            PrimaryButton(
+              icon: Icons.replay_circle_filled_rounded,
+              label: l.hireAgain,
+              onPressed: () async {
+                final posted = await hireAgain(context, state, workerId: workerId);
+                if (posted == true && context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+              },
             ),
             for (final bd in (w['badges'] as List).cast<String>())
               Padding(
@@ -192,6 +219,7 @@ class PaymentsScreen extends StatelessWidget {
                           Text(inr(p['amount_inr'] as num), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
                         ]),
                         if (p['worker_name'] != null) Text(p['worker_name'] as String, style: const TextStyle(color: BC.inkSoft)),
+                        if (((p['warranty_days'] as num?) ?? 0) > 0) Padding(padding: const EdgeInsets.only(top: 6), child: WarrantyChip((p['warranty_days'] as num).toInt())),
                         Text(l.feeIncluded(inr(p['platform_fee_inr'] as num)), style: const TextStyle(color: BC.inkSoft, fontSize: 13)),
                         EscrowLine(state: p['escrow_state'] as String, amount: p['escrow_state'] == 'held' ? p['amount_inr'] as num : p['worker_payout_inr'] as num),
                       ]),

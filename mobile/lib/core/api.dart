@@ -65,7 +65,8 @@ abstract class Api {
   Future<List<Json>> myBids();
   Future<void> withdrawBid(String bidId);
   Future<List<Json>> assignments();
-  Future<void> startWork(String assignmentId);
+  /// Start work needs the customer's 4-digit start code ([code]); wrong -> `err.start_code_invalid`, 5 misses -> `err.start_code_locked`.
+  Future<void> startWork(String assignmentId, {String? code});
   Future<Json> attendance(Json body);
   Future<void> rateCustomer(String assignmentId, int clarity, int timelyPayment, String? comment);
   /// "I'm on my way" → customer sees live distance + ETA. Then position updates while travelling.
@@ -78,8 +79,16 @@ abstract class Api {
   Future<void> workerDispute(String assignmentId, String reason);
   /// Worker can no longer do a job they were hired for (before starting): refund + job re-opens + strike if paid.
   Future<Json> withdrawHire(String assignmentId);
+  /// `{..., paid_today: {total_inr, items: [{amount_inr, upi, state: processing|paid, at}]}, nudge_add_upi}`.
   Future<Json> earnings();
   Future<Json> withdraw();
+  /// Optional police verification (admin decides): `{status: pending|verified|rejected}`.
+  Future<Json> requestPoliceVerification();
+  /// Push-style notices not shown yet: `[{id, kind: payout_sent, amount_inr, upi, state}]`; call [ackNotices] once shown.
+  Future<List<Json>> workerNotices();
+  Future<void> ackNotices(List<String> ids);
+  /// Decline a "hire again" request: the job opens to everyone.
+  Future<void> declineDirect(String jobId);
   Future<Json> workerProfile();
   Future<Json> labourCard();
   Future<void> kycLevel1({required String name, required String upi, String? selfieKey, List<String>? trades});
@@ -118,6 +127,14 @@ abstract class Api {
   Future<List<Json>> payments();
   Future<List<Json>> browseWorkers(String? trade);
   Future<Json> workerPublic(String workerId);
+  /// "Your workers": `[{...worker summary, last_job_id, jobs_together, last_trade}]` (rated >= 4 by this customer).
+  Future<List<Json>> favourites();
+  /// Prefill for Post a Job: `{worker, items: [{trade, text_description, description_language}], address_text, lat, lng, city, locality}`.
+  Future<Json> rebookDraft({String? jobId, String? workerId});
+  /// "Share trip": `{token, url, worker_name, worker_phone_masked, trade, police_verified}` (only while the worker is on the way).
+  Future<Json> shareTrip(String jobId);
+  /// "Problem came back" inside the warranty window: free re-fix visit by the same worker. Returns `{job_id, assignment_id}`.
+  Future<Json> requestRefix(String jobId, {required String reason, List<String> photos = const [], String? assignmentId});
 
   // contractor / team hiring
   /// Suggested daily wage per trade: `{items: [{trade, low, median, high, min_wage}]}` (low <= median <= high, low >= min wage).
@@ -215,7 +232,7 @@ class HttpApi implements Api {
   @override
   Future<List<Json>> assignments() async => _list(await _get('/worker/assignments'));
   @override
-  Future<void> startWork(String assignmentId) => _post('/worker/assignments/$assignmentId/start');
+  Future<void> startWork(String assignmentId, {String? code}) => _post('/worker/assignments/$assignmentId/start', {'code': code});
   @override
   Future<Json> attendance(Json body) async => _map(await _post('/worker/attendance', body));
   @override
@@ -238,6 +255,14 @@ class HttpApi implements Api {
   Future<Json> earnings() async => _map(await _get('/worker/earnings'));
   @override
   Future<Json> withdraw() async => _map(await _post('/worker/withdraw'));
+  @override
+  Future<Json> requestPoliceVerification() async => _map(await _post('/worker/police-verification'));
+  @override
+  Future<List<Json>> workerNotices() async => _list(await _get('/worker/notices'));
+  @override
+  Future<void> ackNotices(List<String> ids) => _post('/worker/notices/ack', {'ids': ids});
+  @override
+  Future<void> declineDirect(String jobId) => _post('/worker/jobs/$jobId/decline');
   @override
   Future<Json> workerProfile() async => _map(await _get('/worker/profile'));
   @override
@@ -295,6 +320,16 @@ class HttpApi implements Api {
   Future<List<Json>> browseWorkers(String? trade) async => _list(await _get('/customer/workers', {if (trade != null) 'trade': trade}));
   @override
   Future<Json> workerPublic(String workerId) async => _map(await _get('/customer/workers/$workerId'));
+  @override
+  Future<List<Json>> favourites() async => _list(await _get('/customer/favourites'));
+  @override
+  Future<Json> rebookDraft({String? jobId, String? workerId}) async =>
+      _map(await _get(jobId != null ? '/customer/jobs/$jobId/rebook' : '/customer/workers/$workerId/rebook'));
+  @override
+  Future<Json> shareTrip(String jobId) async => _map(await _post('/customer/jobs/$jobId/share-trip'));
+  @override
+  Future<Json> requestRefix(String jobId, {required String reason, List<String> photos = const [], String? assignmentId}) async =>
+      _map(await _post('/customer/jobs/$jobId/refix', {'reason': reason, 'photos': photos, if (assignmentId != null) 'assignment_id': assignmentId}));
 
   @override
   Future<Json> wageSuggestion(List<String> trades, String? city) async =>

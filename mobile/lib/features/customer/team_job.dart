@@ -10,6 +10,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import '../../widgets/media.dart';
 import '../../widgets/schedule.dart';
+import '../../widgets/trust_widgets.dart';
 import '../common/chat.dart';
 import 'customer_home.dart' show customerRoute, bookingStatus;
 import 'payment.dart';
@@ -292,7 +293,10 @@ class _RosterTile extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(w['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              Row(children: [
+                Flexible(child: Text(w['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+                if (w['police_verified'] == true) const Padding(padding: EdgeInsets.only(left: 4), child: PoliceBadge(size: 16)),
+              ]),
               Text('${tradeLabel(l, trade)} · ${l.perDay(inr(row['daily_wage_inr'] as num))}', maxLines: 1, overflow: TextOverflow.ellipsis, style: BC.subtle),
             ]),
           ),
@@ -305,6 +309,22 @@ class _RosterTile extends StatelessWidget {
           Text(settled && pay != null ? l.teamPaidOut(inr(pay['worker_payout_inr'] as num)) : l.teamDue(inr(row['amount_due_inr'] as num)),
               style: const TextStyle(fontWeight: FontWeight.w700, color: BC.money, fontFeatures: BC.tabular)),
         ]),
+        // One start code per worker per day: the contractor tells it to him when he arrives on site.
+        if (!settled && state == 'held' && row['start_code'] is Map && (row['start_code'] as Map)['verified_today'] != true) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: BC.brandSoft, borderRadius: BorderRadius.circular(BC.rSm)),
+            child: Row(children: [
+              const Icon(Icons.password_rounded, color: BC.brandDark),
+              const SizedBox(width: 8),
+              Expanded(child: Text(l.teamCodeToday('${(row['start_code'] as Map)['code']}'), key: const ValueKey('teamCode'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: BC.brandDark, fontFeatures: BC.tabular))),
+            ]),
+          ),
+        ] else if (!settled && state == 'held' && row['start_code'] is Map) ...[
+          const SizedBox(height: 6),
+          Text(l.teamCodeDone, style: BC.caption),
+        ],
         if (settled && pay != null && (pay['refund_inr'] as num) > 0) ...[
           const SizedBox(height: 4),
           Text(l.teamRefundedToYou(inr(pay['refund_inr'] as num)), style: BC.subtle),

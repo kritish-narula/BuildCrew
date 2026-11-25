@@ -12,6 +12,7 @@ import 'customer_home.dart' show customerRoute;
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 import '../../widgets/schedule.dart';
+import '../../widgets/trust_widgets.dart';
 import '../common/chat.dart';
 import '../common/completion_ui.dart';
 import '../worker/assignment_screen.dart' show EscrowLine;
@@ -30,7 +31,7 @@ class CustomerJobScreen extends StatefulWidget {
 }
 
 class _CustomerJobScreenState extends State<CustomerJobScreen> {
-  bool _byRating = false;
+  String _sort = 'price'; // price | rating | verified (police-verified workers first)
   Json? _job;
   Object? _error;
   late final Poller _poller;
@@ -161,7 +162,21 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
     final status = job['status'] as String;
     final a = job['assignment'] as Json?;
     final bids = [...(job['bids'] as List).cast<Json>()];
-    if (_byRating) bids.sort((x, y) => ((y['worker'] as Json)['rating'] as num).compareTo((x['worker'] as Json)['rating'] as num));
+    bool police(Json b) => (b['worker'] as Json)['police_verified'] == true;
+    if (_sort == 'rating') {
+      // best rated first; at equal rating the police-verified worker ranks higher
+      bids.sort((x, y) {
+        final c = ((y['worker'] as Json)['rating'] as num).compareTo((x['worker'] as Json)['rating'] as num);
+        return c != 0 ? c : (police(y) ? 1 : 0).compareTo(police(x) ? 1 : 0);
+      });
+    } else if (_sort == 'verified') {
+      bids.sort((x, y) {
+        final c = (police(y) ? 1 : 0).compareTo(police(x) ? 1 : 0);
+        return c != 0 ? c : (x['price_inr'] as num).compareTo(y['price_inr'] as num);
+      });
+    }
+    final refix = a != null && a['kind'] == 'refix';
+    final direct = (job['direct'] as Map?)?.cast<String, dynamic>();
     final items = (job['work_items'] as List).cast<Json>();
     return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
       Wrap(spacing: 8, runSpacing: 8, children: [for (final t in (job['trades'] as List).toSet()) TradeChip(t as String)]),
@@ -169,9 +184,13 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
       Text('📍 ${job['locality']} · ${scheduleText(l, job['scheduled_for'] as String?, job['time_slot'] as String?) ?? l.startsOn(job['start_date'] as String)}',
           style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
       const SizedBox(height: 14),
-      if (a != null) ...[
-        _Tracker(status: status, assignment: a),
+      if (refix) ...[
+        InfoBanner(icon: Icons.build_circle_rounded, color: BC.info, text: l.refixCustomerSub((a!['worker'] as Json)['name'] as String)),
         const SizedBox(height: 14),
+      ],
+      if (a != null) ...[
+        if (!refix) _Tracker(status: status, assignment: a),
+        if (!refix) const SizedBox(height: 14),
         ValueListenableBuilder<bool>(
           valueListenable: _acting,
           builder: (_, acting, __) => _NextStep(
@@ -180,16 +199,26 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
               reload: _load),
         ),
       ] else if (status == 'open' || status == 'bidding') ...[
-        Row(children: [
-          Expanded(child: Text(l.workersQuoted(bids.length), style: Theme.of(context).textTheme.titleLarge)),
-          if (bids.length > 1)
-            SegmentedButton<bool>(
-              showSelectedIcon: false,
-              segments: [ButtonSegment(value: false, label: BtnLabel(l.sortPrice)), ButtonSegment(value: true, label: BtnLabel(l.sortRating))],
-              selected: {_byRating},
-              onSelectionChanged: (s) => setState(() => _byRating = s.first),
-            ),
-        ]),
+        Text(l.workersQuoted(bids.length), style: Theme.of(context).textTheme.titleLarge),
+        if (direct != null) ...[
+          const SizedBox(height: 10),
+          InfoBanner(
+            icon: direct['state'] == 'pending' ? Icons.hourglass_top_rounded : Icons.groups_rounded,
+            color: direct['state'] == 'pending' ? BC.info : BC.inkSoft,
+            text: switch (direct['state']) {
+              'pending' => l.directWaiting(((direct['worker'] as Map)['name'] as String).split(' ').first),
+              'declined' => l.directDeclined(((direct['worker'] as Map)['name'] as String).split(' ').first),
+              _ => l.directExpired(((direct['worker'] as Map)['name'] as String).split(' ').first),
+            },
+          ),
+        ],
+        if (bids.length > 1) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            for (final (code, label) in [('price', l.sortPrice), ('rating', l.sortRating), ('verified', l.sortVerified)])
+              ChoiceChip(label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis), selected: _sort == code, onSelected: (_) => setState(() => _sort = code)),
+          ]),
+        ],
         const SizedBox(height: 10),
         if (bids.isEmpty) InfoBanner(icon: Icons.hourglass_top_rounded, color: const Color(0xFF92400E), text: l.waitingForQuotes),
         if (job['no_quotes_24h'] == true) ...[
@@ -213,7 +242,7 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
         for (final (i, b) in bids.indexed) ...[
           _BidCard(
             bid: b,
-            lowest: !_byRating && i == 0 && bids.length > 1,
+            lowest: _sort == 'price' && i == 0 && bids.length > 1,
             onAccept: () => _accept(job, b),
             onChat: () => openChat(context, state, jobId: job['id'] as String, withUser: (b['worker'] as Json)['id'] as String, title: (b['worker'] as Json)['name'] as String),
             onProfile: () => Navigator.of(context).push(customerRoute<void>(builder: (_) => WorkerProfileScreen(state: state, workerId: (b['worker'] as Json)['id'] as String))),
@@ -311,10 +340,13 @@ class _NextStep extends StatelessWidget {
     final w = a['worker'] as Json;
     final name = w['name'] as String;
     final pay = a['payment'] as Json?;
-    final escrow = pay?['escrow_state'] as String? ?? 'created';
+    final refix = a['kind'] == 'refix'; // free warranty visit: nothing to pay, nothing to rate
+    final escrow = pay?['escrow_state'] as String? ?? (refix ? 'free' : 'created');
     final status = job['status'] as String;
     final rated = (a['ratings'] as Map)['customer_to_worker'] != null;
     final tr = a['tracking'] as Json?;
+    final warranty = (a['warranty'] as Map?)?.cast<String, dynamic>();
+    final codeView = (a['start_code'] as Map?)?.cast<String, dynamic>();
     final att = (a['attendance'] as List).cast<Json>();
 
     Widget hero({required IconData icon, required Color color, required String title, String? sub, Widget? child, Widget? action}) => Container(
@@ -368,6 +400,7 @@ class _NextStep extends StatelessWidget {
         color: BC.info,
         title: l.workerOnTheWay(name),
         sub: l.distanceEta((tr['distance_km'] as num).toStringAsFixed(1), (tr['eta_min'] as num).toInt()),
+        action: SecondaryButton(icon: Icons.share_rounded, label: l.shareTrip, onPressed: () => showShareTripSheet(context, state.api, job['id'] as String)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           TrackingMap(
             houseLat: (job['lat'] as num).toDouble(),
@@ -446,6 +479,8 @@ class _NextStep extends StatelessWidget {
         child: workerRow,
         action: FilledButton.icon(onPressed: () => _rate(context), icon: const Icon(Icons.star_rounded), label: BtnLabel(l.rateNow)),
       );
+    } else if (refix) {
+      main = hero(icon: Icons.verified_rounded, color: BC.money, title: l.refixDoneTitle, sub: l.refixDoneSub, child: workerRow);
     } else {
       main = hero(
         icon: Icons.verified_rounded,
@@ -459,7 +494,8 @@ class _NextStep extends StatelessWidget {
             ? null
             : OutlinedButton.icon(
                 onPressed: () => Navigator.of(context).push(customerRoute<void>(
-                    builder: (_) => ReceiptScreen(payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>()))),
+                    builder: (_) => ReceiptScreen(
+                        payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>(), warrantyDays: (warranty?['days'] as num?)?.toInt() ?? 0))),
                 icon: const Icon(Icons.receipt_long_rounded),
                 label: BtnLabel(l.viewReceipt),
               ),
@@ -468,6 +504,15 @@ class _NextStep extends StatelessWidget {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       main,
+      // The 4-digit start code: shown big after paying, until the worker has typed it.
+      if (codeView != null && codeView['needed'] == true && status != 'disputed') ...[
+        const SizedBox(height: 12),
+        StartCodeCard(view: codeView, workerName: name),
+      ],
+      if (warranty != null && ((warranty['days'] as num?) ?? 0) > 0 && (escrow == 'released' || escrow == 'split')) ...[
+        const SizedBox(height: 12),
+        _WarrantyCard(state: state, job: job, a: a, warranty: warranty, workerName: name, reload: reload),
+      ],
       if (pay != null && escrow != 'created') ...[
         const SizedBox(height: 10),
         Container(
@@ -477,7 +522,8 @@ class _NextStep extends StatelessWidget {
             Expanded(child: EscrowLine(state: escrow, amount: escrow == 'held' ? pay['amount_inr'] as num : pay['worker_payout_inr'] as num)),
             TextButton(
               onPressed: () => Navigator.of(context).push(customerRoute<void>(
-                  builder: (_) => ReceiptScreen(payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>()))),
+                  builder: (_) => ReceiptScreen(
+                      payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>(), warrantyDays: (warranty?['days'] as num?)?.toInt() ?? 0))),
               child: Text(l.receipt),
             ),
           ]),
@@ -644,7 +690,7 @@ class _NextStep extends StatelessWidget {
     await _guard(context, () async {
       await state.api.completeJob(job['id'] as String);
       await reload();
-      if (context.mounted) await _rate(context);
+      if (context.mounted && a['kind'] != 'refix') await _rate(context); // a free re-fix has nothing to rate
     });
   }
 
@@ -700,7 +746,7 @@ class _BidCard extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Flexible(child: Text(w['name'] as String, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-                    if (w['verified'] == true) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.verified_rounded, color: BC.info, size: 18)),
+                    WorkerMarks(w),
                   ]),
                   Row(children: [
                     StarBadge(w['rating'] as num),
@@ -717,6 +763,13 @@ class _BidCard extends StatelessWidget {
           if (bid['fair'] is Map) ...[
             const SizedBox(height: 10),
             FairBidBadge(fair: (bid['fair'] as Map).cast<String, dynamic>()),
+          ],
+          if ((w['level'] != null && w['level'] != 'helper') || ((bid['warranty_days'] as num?) ?? 0) > 0) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              LevelChip(w['level'] as String?),
+              WarrantyChip(((bid['warranty_days'] as num?) ?? 0).toInt()),
+            ]),
           ],
           if (badges.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -859,6 +912,152 @@ class _RateWorkerScreenState extends State<RateWorkerScreen> {
           label: BtnLabel(l.submitAndRelease),
         ),
       ]),
+    );
+  }
+}
+
+
+/// After release: "Guaranteed until ..." with "Problem came back" (free re-fix by the same worker), or why it is not possible.
+class _WarrantyCard extends StatefulWidget {
+  const _WarrantyCard({required this.state, required this.job, required this.a, required this.warranty, required this.workerName, required this.reload});
+  final AppState state;
+  final Json job, a, warranty;
+  final String workerName;
+  final Future<void> Function({bool silent}) reload;
+  @override
+  State<_WarrantyCard> createState() => _WarrantyCardState();
+}
+
+class _WarrantyCardState extends State<_WarrantyCard> {
+  bool _busy = false;
+
+  String _date(String iso) {
+    final d = DateTime.parse(iso).toLocal();
+    return '${d.day}/${d.month}/${d.year}';
+  }
+
+  Future<void> _report() async {
+    final l = L.of(context);
+    final r = await showModalBottomSheet<(String, List<String>)>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _WarrantySheet(workerName: widget.workerName),
+    );
+    if (r == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final keys = await uploadPhotos(widget.state.api, r.$2);
+      final out = await widget.state.api.requestRefix(widget.job['id'] as String, reason: r.$1, photos: keys);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BC.money, content: Text(l.warrantyRequested(widget.workerName), style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.white))));
+      await widget.reload();
+      if (mounted) {
+        await Navigator.of(context).push(customerRoute<void>(builder: (_) => CustomerJobScreen(state: widget.state, jobId: out['job_id'] as String)));
+        await widget.reload();
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final w = widget.warranty;
+    final until = w['until'] as String?;
+    final reason = w['reason'] as String?;
+    final Widget body;
+    if (w['can_request'] == true && until != null) {
+      body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(l.warrantyUntil(_date(until)), style: BC.subtle),
+        const SizedBox(height: 12),
+        PrimaryButton(icon: Icons.build_circle_rounded, label: l.warrantyProblem, busy: _busy, color: BC.info, onPressed: _report),
+      ]);
+    } else if (reason == 'open') {
+      body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(l.warrantyOpen, style: BC.subtle),
+        if (w['open_job_id'] != null) ...[
+          const SizedBox(height: 10),
+          SecondaryButton(
+            icon: Icons.visibility_rounded,
+            label: l.warrantyOpenView,
+            onPressed: () => Navigator.of(context).push(customerRoute<void>(builder: (_) => CustomerJobScreen(state: widget.state, jobId: w['open_job_id'] as String))),
+          ),
+        ],
+      ]);
+    } else if (reason == 'limit') {
+      body = Text(l.warrantyLimit((w['refixes_used'] as num).toInt(), (w['refixes_max'] as num).toInt()), style: BC.subtle);
+    } else {
+      body = Text(until == null ? l.warrantyChip((w['days'] as num).toInt()) : l.warrantyExpired(_date(until)), style: BC.subtle);
+    }
+    return AppCard(
+      color: BC.infoSoft,
+      borderColor: BC.info.withValues(alpha: 0.35),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const IconBadge(Icons.build_circle_rounded, color: BC.info, size: 40, solid: true),
+          const SizedBox(width: 12),
+          Expanded(child: Text(l.warrantyTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.titleLarge)),
+          WarrantyChip((w['days'] as num).toInt()),
+        ]),
+        const SizedBox(height: 10),
+        body,
+      ]),
+    );
+  }
+}
+
+/// "Problem came back": what happened + at least one photo.
+class _WarrantySheet extends StatefulWidget {
+  const _WarrantySheet({required this.workerName});
+  final String workerName;
+  @override
+  State<_WarrantySheet> createState() => _WarrantySheetState();
+}
+
+class _WarrantySheetState extends State<_WarrantySheet> {
+  final _reason = TextEditingController();
+  List<String> _photos = [];
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final ok = _reason.text.trim().length >= 5 && _photos.isNotEmpty;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(l.warrantySheetTitle, style: context.tt.titleLarge),
+            const SizedBox(height: 6),
+            Text(l.warrantySheetSub(widget.workerName), style: BC.subtle),
+            const SizedBox(height: 14),
+            TextField(controller: _reason, maxLines: 3, maxLength: 500, decoration: InputDecoration(hintText: l.warrantyReasonHint), onChanged: (_) => setState(() {})),
+            const SizedBox(height: 4),
+            Text(l.warrantyPhotosHint, style: BC.caption),
+            const SizedBox(height: 8),
+            PhotoPickerRow(photos: _photos, onChanged: (p) => setState(() => _photos = p)),
+            const SizedBox(height: 16),
+            PrimaryButton(
+              icon: Icons.build_circle_rounded,
+              color: BC.info,
+              label: l.warrantySend,
+              onPressed: ok ? () => Navigator.pop(context, (_reason.text.trim(), _photos)) : null,
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }

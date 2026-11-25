@@ -12,6 +12,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
+import '../../widgets/trust_widgets.dart';
 import '../common/chat.dart';
 import '../common/completion_ui.dart';
 import 'worker_shell.dart' show PendingChip;
@@ -188,8 +189,34 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
         await state.api.startJourney(widget.assignmentId, p?.latitude, p?.longitude);
       });
 
+  /// Customer's 4-digit start code: checked online first (wrong -> try again inside the sheet); with no network the
+  /// code is kept and verified when the check-in syncs. Returns null when the worker closed the sheet.
+  Future<StartCodeResult?> _askCode() => showStartCodeSheet(context, submit: (c) => state.api.startWork(widget.assignmentId, code: c));
+
+  /// Start-code state of this hire (null = no code involved): needed | locked | pending | failed | verified.
+  String? get _codeState => _a?['start_code_state'] as String?;
+
+  /// Re-enter the code after an offline check-in was wrong / is still pending (needs a connection).
+  Future<void> _enterCode() async {
+    final l = L.of(context);
+    final r = await _askCode();
+    if (r == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: r.offline ? BC.ink : BC.money,
+        content: Text(r.offline ? l.startCodeOfflineSaved : l.startCodeVerified, style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.white))));
+    await _load();
+  }
+
   Future<void> _mark(String kind) async {
     final l = L.of(context);
+    String? code;
+    var codeOffline = false;
+    if (kind == 'in' && (_codeState == 'needed')) {
+      final r = await _askCode();
+      if (r == null || !mounted) return;
+      code = r.code;
+      codeOffline = r.offline;
+    }
     setState(() => _busy = true);
     try {
       String? selfie;
@@ -206,11 +233,12 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
       final pos = await LocationService.get(context);
       if (pos == null) return; // LocationService already told the user what to fix
       final sent = await Outbox.instance.attendance({'assignment_id': widget.assignmentId, 'kind': kind, 'lat': pos.latitude,
-        'lng': pos.longitude, 'selfie_key': selfie});
+        'lng': pos.longitude, 'selfie_key': selfie, if (code != null) 'start_code': code});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: sent ? BC.money : BC.ink,
-        content: Text(sent ? (kind == 'in' ? l.checkedIn : l.checkedOut) : l.savedOffline, style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.white)),
+        content: Text(sent ? (kind == 'in' ? l.checkedIn : l.checkedOut) : (codeOffline ? l.startCodeOfflineSaved : l.savedOffline),
+            style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.white)),
       ));
       await _load();
     } catch (e) {
@@ -269,7 +297,9 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     final job = a['job'] as Json;
     final status = job['status'] as String;
     final pay = a['payment'] as Json?;
-    final escrow = pay?['escrow_state'] as String? ?? 'created';
+    final refix = a['kind'] == 'refix'; // free warranty visit: no escrow, no rating
+    final escrow = pay?['escrow_state'] as String? ?? (refix ? 'free' : 'created');
+    final codeState = a['start_code_state'] as String?;
     final att = (a['attendance'] as List).cast<Json>();
     final open = att.where((x) => x['out'] == null).isNotEmpty;
     final rated = (a['ratings'] as Map)['worker_to_customer'] != null;
@@ -311,7 +341,8 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
         title: l.sharingLocation,
         sub: tr?['eta_min'] != null && tr?['arrived'] != true ? l.distanceEta((tr!['distance_km'] as num).toStringAsFixed(1), tr['eta_min'] as int) : l.reachedSite,
         actions: [
-          PrimaryButton(big: true, color: BC.money, busy: _busy, onPressed: () => _mark('in'), icon: Icons.login_rounded, label: l.arrivedCheckIn),
+          if (codeState == 'needed' || codeState == 'locked') _codeBanner(l, a),
+          PrimaryButton(big: true, color: BC.money, busy: _busy, onPressed: codeState == 'locked' ? null : () => _mark('in'), icon: Icons.login_rounded, label: l.arrivedCheckIn),
         ],
       );
     } else if (status == 'assigned' || status == 'in_progress') {
@@ -325,6 +356,10 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
         title: rework ? l.reworkCardTitle : (done ? l.waitingCustomerConfirm : l.workInProgress),
         sub: rework ? l.reworkCardSub : (done ? l.waitingCustomerConfirmSub : l.attendanceHint),
         actions: [
+          if (codeState == 'pending' || codeState == 'failed' || codeState == 'locked' || codeState == 'needed') ...[
+            _codeBanner(l, a),
+            if (codeState == 'pending' || codeState == 'failed' || (codeState == 'needed' && open)) PrimaryButton(big: true, color: BC.money, onPressed: _busy ? null : _enterCode, icon: Icons.password_rounded, label: l.startCodeEnterAgain),
+          ],
           if (done && ((a['proof_photos'] as List?) ?? const []).isNotEmpty) ThumbRow((a['proof_photos'] as List).cast<String>()),
           if (done && hoursLeft != null) InfoBanner(icon: Icons.timer_rounded, color: BC.info, text: l.autoReleaseWorker(hoursLeft)),
           Row(children: [
@@ -332,7 +367,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
               child: PrimaryButton(
                 big: true,
                 color: BC.money,
-                onPressed: _busy || open ? null : () => _mark('in'),
+                onPressed: _busy || open || codeState == 'locked' ? null : () => _mark('in'),
                 icon: Icons.login_rounded,
                 label: l.checkIn,
               ),
@@ -350,11 +385,13 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
           ]),
           if (rework)
             PrimaryButton(big: true, color: BC.danger, busy: _busy, onPressed: _finish, icon: Icons.task_alt_rounded, label: l.doneAgain)
-          else if (!done && !queued)
+          else if (!done && !queued && !(codeState != null && codeState != 'verified'))
             SecondaryButton(onPressed: _busy ? null : _finish, icon: Icons.task_alt_rounded, label: l.workFinished),
           if (queued) InfoBanner(icon: Icons.cloud_upload_outlined, color: BC.pendingInk, text: l.savedDoneOffline),
         ],
       );
+    } else if (refix && status == 'completed') {
+      next = step(icon: Icons.build_circle_rounded, color: BC.money, title: l.refixDoneTitle, sub: l.refixDoneSub);
     } else if (status == 'completed' && escrow == 'held') {
       next = step(icon: Icons.star_half_rounded, color: BC.brand, title: l.waitingForRating, sub: l.speechHeld(inr(pay?['worker_payout_inr'] as num?)));
     } else {
@@ -363,6 +400,10 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
 
     return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
       const PendingChip(),
+      if (refix) ...[
+        _RefixCard(reason: (a['refix'] as Map?)?['reason'] as String?),
+        const SizedBox(height: 12),
+      ],
       next,
       if (a['rework_open'] == true && a['rework'] is Map) ...[const SizedBox(height: 12), _ReworkCard(rework: (a['rework'] as Map).cast<String, dynamic>(), round: (a['rework_count'] as num?)?.toInt() ?? 1, total: (((a['rework_count'] as num?) ?? 0) + ((a['rework_left'] as num?) ?? 0)).toInt())],
       if (status == 'completed' && a['auto_confirmed'] == true && escrow == 'released') ...[const SizedBox(height: 12), InfoBanner(icon: Icons.timer_rounded, color: BC.money, text: l.autoPaidWorker)],
@@ -373,7 +414,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: Wrap(spacing: 8, runSpacing: 8, children: [for (final t in (job['trades'] as List).toSet()) TradeChip(t as String)])),
             const SizedBox(width: 8),
-            Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(inr(a['price_inr'] as num), maxLines: 1, style: context.tt.displaySmall))),
+            Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(refix ? l.refixBadge : inr(a['price_inr'] as num), maxLines: 1, style: context.tt.displaySmall))),
           ]),
           const SizedBox(height: 12),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -417,11 +458,13 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
                     Text('${_hm(x['in'] as String)} → ${x['out'] == null ? '…' : _hm(x['out'] as String)}',
                         maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium!.copyWith(fontFeatures: BC.tabular)),
                     Text(_day(x['in'] as String), style: BC.subtle),
-                    if (x['offline'] == true || x['geofence_ok'] != true)
+                    if (x['offline'] == true || x['geofence_ok'] != true || x['code_status'] == 'pending' || x['code_status'] == 'failed')
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Wrap(spacing: 6, runSpacing: 6, children: [
                           if (x['offline'] == true) StatusPill(label: l.syncedLater, color: BC.info, bg: BC.infoSoft),
+                          if (x['code_status'] == 'pending') StatusPill(label: l.startCodePendingPill, color: BC.pendingInk, bg: BC.pendingSoft, icon: Icons.password_rounded),
+                          if (x['code_status'] == 'failed') StatusPill(label: l.startCodeFailedPill, color: BC.danger, bg: BC.danger.withValues(alpha: 0.1), icon: Icons.password_rounded),
                           if (x['geofence_ok'] != true) StatusPill(label: l.awayFromSite, color: BC.pendingInk, bg: BC.pendingSoft),
                         ]),
                       ),
@@ -458,6 +501,19 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     ]);
   }
 
+  /// Start-code hint for the worker: ask for it / locked / saved offline / wrong offline.
+  Widget _codeBanner(L l, Json a) {
+    final st = a['start_code_state'] as String?;
+    if (st == 'locked') {
+      final until = DateTime.tryParse('${a['start_code_locked_until']}')?.toLocal();
+      final mins = until == null ? 10 : (until.difference(DateTime.now()).inSeconds / 60).ceil().clamp(1, 10);
+      return InfoBanner(icon: Icons.lock_clock_rounded, color: BC.danger, text: l.startCodeLockedWorker(mins));
+    }
+    if (st == 'pending') return InfoBanner(icon: Icons.cloud_upload_outlined, color: BC.pendingInk, text: l.startCodePending);
+    if (st == 'failed') return InfoBanner(icon: Icons.error_outline_rounded, color: BC.danger, text: l.startCodeFailed);
+    return InfoBanner(icon: Icons.password_rounded, color: BC.info, text: l.startCodeNeeded);
+  }
+
   // Times shown in the phone's local time zone (stored as UTC).
   String _hm(String iso) {
     final d = DateTime.parse(iso).toLocal();
@@ -467,6 +523,33 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
   String _day(String iso) {
     final d = DateTime.parse(iso).toLocal();
     return '${d.day}/${d.month}/${d.year}';
+  }
+}
+
+/// "Warranty re-fix" badge + what the customer reported (a free visit for a job this worker did earlier).
+class _RefixCard extends StatelessWidget {
+  const _RefixCard({this.reason});
+  final String? reason;
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    return AppCard(
+      color: BC.infoSoft,
+      borderColor: BC.info.withValues(alpha: 0.4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.build_circle_rounded, color: BC.info),
+          const SizedBox(width: 8),
+          Expanded(child: Text(l.refixBadge, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium!.copyWith(color: BC.info))),
+        ]),
+        const SizedBox(height: 4),
+        Text(l.refixFreeVisit, style: BC.subtle),
+        if (reason != null && reason!.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(l.refixReasonLabel(reason!), maxLines: 5, overflow: TextOverflow.ellipsis, style: context.tt.bodyLarge),
+        ],
+      ]),
+    );
   }
 }
 

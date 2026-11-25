@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..audit import audit
 from ..db import get_db
-from ..domain import flows
+from ..domain import flows, trust
 from ..domain.state import transition
 from ..enums import BidStatus, DisputeStatus, DocStatus, EscrowState, JobStatus, Role
 from ..errors import AppError
@@ -45,6 +45,7 @@ def kpis(user: User = Depends(A), db: Session = Depends(get_db)):
         "pending_bids": db.scalar(select(func.count()).select_from(Bid).where(Bid.status == BidStatus.pending)),
         "kyc_pending": db.scalar(select(func.count()).select_from(WorkerProfile).where(
             (WorkerProfile.aadhaar_status == DocStatus.pending) | (WorkerProfile.pan_status == DocStatus.pending))),
+        "police_pending": db.scalar(select(func.count()).select_from(WorkerProfile).where(WorkerProfile.police_status == "pending")),
         "jobs_by_status": {k.value: v for k, v in by_status.items()},
     }
 
@@ -84,7 +85,7 @@ def workers(trade: str | None = None, kyc: int | None = None, min_rating: float 
         wp = w.worker_profile
         out.append({**worker_summary(db, w), "phone": w.phone, "city": wp.city, "suspended": wp.is_suspended,
                     "strikes": wp.strikes, "online": wp.is_online, "aadhaar": wp.aadhaar_status.value,
-                    "pan": wp.pan_status.value, "eshram": bool(wp.eshram_id),
+                    "pan": wp.pan_status.value, "eshram": bool(wp.eshram_id), "police_status": wp.police_status,
                     "earned_inr": wp.lifetime_earnings_paise / 100})
     return out
 
@@ -118,6 +119,28 @@ def kyc_decide(worker_id: uuid.UUID, body: KycDecision, user: User = Depends(A),
           entity_id=w.id, doc=doc, note=body.note)
     db.commit()
     return {"kyc_level": w.kyc_level}
+
+
+@router.get("/police-queue")
+def police_queue(status: str = "pending", user: User = Depends(A), db: Session = Depends(get_db)):
+    """Police-verification requests (pending by default; status=all for history)."""
+    q = select(User).join(WorkerProfile, WorkerProfile.user_id == User.id).where(User.role == Role.worker)
+    q = q.where(WorkerProfile.police_status != "none") if status == "all" else q.where(WorkerProfile.police_status == status)
+    rows = db.scalars(q.order_by(WorkerProfile.police_requested_at)).all()
+    return [{**worker_summary(db, w), "phone": w.phone, "city": w.worker_profile.city, "police_status": w.worker_profile.police_status,
+             "requested_at": w.worker_profile.police_requested_at.isoformat() if w.worker_profile.police_requested_at else None,
+             "note": w.worker_profile.police_note, "kyc_level": w.kyc_level,
+             "earned_inr": w.worker_profile.lifetime_earnings_paise / 100} for w in rows]
+
+
+@router.post("/workers/{worker_id}/police")
+def police_decide(worker_id: uuid.UUID, body: KycDecision, user: User = Depends(A), db: Session = Depends(get_db)):
+    w = db.get(User, worker_id)
+    if not w or not w.worker_profile:
+        raise AppError("err.not_found", 404)
+    out = trust.decide_police(db, user, w, body.approve, body.note)
+    db.commit()
+    return out
 
 
 class SuspendIn(BaseModel):

@@ -203,7 +203,10 @@ def test_team_lifecycle_join_accept_pay_attend_settle_refund():
     assert client.post(f"/customer/jobs/{jid}/pay", headers=c, json={"method": "upi"}).json()["count"] == 0  # idempotent
     assert client.get(f"/customer/jobs/{jid}/team", headers=c).json()["payment_due_count"] == 0
 
-    # attendance: w1 works 1 of 2 days; nobody else turns up
+    # attendance: w1 works 1 of 2 days; nobody else turns up (the contractor reads today's code off the roster)
+    ros = client.get(f"/customer/jobs/{jid}/team", headers=c).json()
+    code = next(w for w in ros["workers"] if w["assignment_id"] == a1["id"])["start_code"]["code"]
+    att["start_code"] = code
     assert client.post("/worker/attendance", headers=w1, json=att).status_code == 200
     ros = client.get(f"/customer/jobs/{jid}/team", headers=c).json()
     r1 = next(w for w in ros["workers"] if w["assignment_id"] == a1["id"])

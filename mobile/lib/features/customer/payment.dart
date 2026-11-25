@@ -190,10 +190,13 @@ class PaymentSuccessScreen extends StatelessWidget {
 
 /// Receipt: what was paid, how, when, and where the money is now.
 class ReceiptScreen extends StatelessWidget {
-  const ReceiptScreen({super.key, required this.payment, required this.workerName, this.trades = const []});
+  const ReceiptScreen({super.key, required this.payment, required this.workerName, this.trades = const [], this.warrantyDays = 0});
   final Json payment;
   final String workerName;
   final List<String> trades;
+
+  /// "30-day re-fix guarantee" line (0 = none for this trade, e.g. helper work).
+  final int warrantyDays;
 
   @override
   Widget build(BuildContext context) {
@@ -217,6 +220,7 @@ class ReceiptScreen extends StatelessWidget {
       (l.paidOn, date(payment['paid_at'] as String?)),
       (l.releasedOn, date(payment['released_at'] as String?)),
       (l.transactionId, '${payment['ref']}'),
+      if (warrantyDays > 0) (l.warrantyTitle, l.warrantyChip(warrantyDays)),
     ];
     final statusText = switch (state) {
       'released' => l.receiptReleased(workerName),

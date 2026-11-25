@@ -32,20 +32,21 @@ const W = (id: string, name: string, phone: string, trades: string[], rating: nu
   suspended: false, strikes: 0, online: extra.online ?? true, aadhaar: kyc === 2 ? "approved" : (extra.aadhaar ?? "not_submitted"),
   pan: kyc === 2 ? "approved" : "not_submitted", eshram: kyc === 2, earned_inr: extra.earned ?? count * 2600, selfie: ph(`selfie${id}`), verified: kyc >= 1,
   doc_url: extra.doc ?? null, doc_type: extra.doc ? "aadhaar" : undefined,
+  police_status: extra.police ?? "none", police_requested_at: extra.police === "pending" ? ago(5) : null, police_note: extra.police === "rejected" ? "Address could not be matched" : null,
 });
 
 const db: J = {
   workers: [
-    W("w1", "Ramesh Pawar", "9200000001", ["mason"], 4.6, 24, 2, "Kothrud", { badges: ["trusted_mason"] }),
-    W("w2", "Sunil Yadav", "9200000002", ["mason", "helper"], 4.1, 9, 1, "Vaishali Nagar"),
-    W("w3", "Imran Shaikh", "9200000003", ["plumber"], 4.7, 31, 2, "Salt Lake", { badges: ["trusted_plumber"] }),
+    W("w1", "Ramesh Pawar", "9200000001", ["mason"], 4.6, 24, 2, "Kothrud", { badges: ["trusted_mason"], police: "verified" }),
+    W("w2", "Sunil Yadav", "9200000002", ["mason", "helper"], 4.1, 9, 1, "Vaishali Nagar", { police: "pending" }),
+    W("w3", "Imran Shaikh", "9200000003", ["plumber"], 4.7, 31, 2, "Salt Lake", { badges: ["trusted_plumber"], police: "verified" }),
     W("w4", "Gopal Das", "9200000004", ["plumber", "helper"], 3.9, 6, 1, "Garia", { online: false }),
-    W("w5", "Venkat Rao", "9200000005", ["electrician"], 4.8, 42, 2, "Indiranagar", { badges: ["trusted_electrician", "fast_responder"] }),
-    W("w6", "Ajay Kumar", "9200000006", ["electrician"], 4.2, 12, 1, "Koramangala", { online: false }),
+    W("w5", "Venkat Rao", "9200000005", ["electrician"], 4.8, 42, 2, "Indiranagar", { badges: ["trusted_electrician", "fast_responder"], police: "verified" }),
+    W("w6", "Ajay Kumar", "9200000006", ["electrician"], 4.2, 12, 1, "Koramangala", { online: false, police: "pending" }),
     W("w7", "Harpreet Singh", "9200000007", ["carpenter"], 4.5, 19, 1, "Model Town", { aadhaar: "pending", doc: ph("kyc-doc-7"), earned: 44000 }),
     W("w8", "Mohan Jadhav", "9200000008", ["carpenter", "helper"], 0, 0, 0, "Adarsh Nagar"),
     W("w9", "Selvam K", "9200000009", ["painter"], 4.4, 15, 1, "Dwarka"),
-    W("w10", "Deepak Gupta", "9200000010", ["painter", "helper"], 4.0, 8, 1, "Rohini", { online: false }),
+    W("w10", "Deepak Gupta", "9200000010", ["painter", "helper"], 4.0, 8, 1, "Rohini", { online: false, police: "rejected" }),
   ],
   customers: { c1: "Priya Sharma", c2: "Anil Deshmukh", c3: "Neha Kulkarni" },
   jobs: [] as J[],
@@ -117,7 +118,8 @@ const kpis = () => {
     bids_today: 4, gmv_inr: db.payments.reduce((s: number, p: J) => s + p.amount_inr, 0), in_escrow_inr: held.reduce((s: number, p: J) => s + p.amount_inr, 0),
     platform_revenue_inr: rel.reduce((s: number, p: J) => s + p.platform_fee_inr, 0), open_disputes: db.disputes.filter((d: J) => d.status !== "resolved").length,
     pending_bids: db.jobs.flatMap((j: J) => j.bids).filter((b: J) => b.status === "pending").length,
-    kyc_pending: db.workers.filter((w: J) => w.aadhaar === "pending" || w.pan === "pending").length, jobs_by_status: by,
+    kyc_pending: db.workers.filter((w: J) => w.aadhaar === "pending" || w.pan === "pending").length,
+    police_pending: db.workers.filter((w: J) => w.police_status === "pending").length, jobs_by_status: by,
   };
 };
 
@@ -148,6 +150,16 @@ export async function demoHandle(path: string, init: RequestInit): Promise<unkno
     return db.workers.filter((w: J) => (!q.get("trade") || w.trades.includes(q.get("trade"))) && (!q.get("kyc") || String(w.kyc_level) === q.get("kyc"))
       && (!q.get("min_rating") || w.rating >= Number(q.get("min_rating"))) && (!q.get("q") || (w.name + w.phone).toLowerCase().includes(q.get("q")!.toLowerCase()))
       && (q.get("suspended") === null || String(w.suspended) === q.get("suspended")));
+  }
+  if (p === "/admin/police-queue") {
+    const all = q.get("status") === "all";
+    return db.workers.filter((w: J) => (all ? w.police_status !== "none" : w.police_status === "pending")).map((w: J) => ({ ...w, requested_at: w.police_requested_at, note: w.police_note }));
+  }
+  if ((m = p.match(/^\/admin\/workers\/(\w+)\/police$/))) {
+    const w = db.workers.find((x: J) => x.id === m![1]);
+    w.police_status = body.approve ? "verified" : "rejected";
+    w.police_note = body.approve ? null : (body.note ?? null);
+    return { police_status: w.police_status };
   }
   if (p === "/admin/kyc-queue") return db.workers.filter((w: J) => w.aadhaar === "pending" || w.pan === "pending");
   if ((m = p.match(/^\/admin\/workers\/(\w+)\/kyc$/))) {

@@ -84,6 +84,12 @@ class WorkerProfile(Base):
     kyc_doc_key: Mapped[str | None] = mapped_column(String(500))
     kyc_note: Mapped[str | None] = mapped_column(String(300))  # rejection reason shown to worker
     strikes: Mapped[int] = mapped_column(SmallInteger, default=0)  # no-shows / penalties
+    # Police verification (optional, reviewed by admin / a partner): none | pending | verified | rejected
+    police_status: Mapped[str] = mapped_column(String(10), default="none", server_default="none")
+    police_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    police_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    police_note: Mapped[str | None] = mapped_column(String(300))
+    refix_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # warranty re-fix visits owed
 
     user: Mapped[User] = relationship(back_populates="worker_profile")
 
@@ -117,6 +123,10 @@ class Job(Base):
     status: Mapped[JobStatus] = mapped_column(_enum(JobStatus), default=JobStatus.open, index=True)
     created_at: Mapped[datetime] = _created()
     nudged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # customer reminded nearby workers
+    # "Hire again": offered ONLY to this worker until direct_until (or until he declines); then it opens to everyone
+    direct_worker_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    direct_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    direct_declined: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     work_items: Mapped[list["WorkItem"]] = relationship(back_populates="job", order_by="WorkItem.sort_order",
                                                         cascade="all, delete-orphan")
@@ -203,6 +213,15 @@ class Assignment(Base):
     rework_count: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")  # "send back" rounds used
     rework_open: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # sent back, worker yet to redo
     auto_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Start-work code: the 4 digits are DERIVED (HMAC of server secret, assignment, nonce, day) - never stored.
+    start_code_nonce: Mapped[str | None] = mapped_column(String(32))
+    start_code_attempts: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    start_code_attempts_day: Mapped[str | None] = mapped_column(String(10))
+    start_code_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Warranty re-fix visit: a free linked hire (no payment) for a job that came back
+    kind: Mapped[str] = mapped_column(String(10), default="job", server_default="job")  # job | refix
+    parent_assignment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assignments.id"))
+    refix_reason: Mapped[str | None] = mapped_column(Text)
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # hire ended (not the escrow!)
     release_reason: Mapped[str | None] = mapped_column(String(30))  # customer_changed | worker_withdrew | no_show | cancelled | suspended
 
@@ -236,6 +255,8 @@ class Attendance(Base):
     checkout_lat: Mapped[float | None] = mapped_column(Float)
     checkout_lng: Mapped[float | None] = mapped_column(Float)
     geofence_ok: Mapped[bool] = mapped_column(Boolean, default=True)  # within radius of the job site
+    # start code: not_required | verified | pending (offline, nothing to check yet) | failed (wrong code on sync)
+    code_status: Mapped[str] = mapped_column(String(12), default="not_required", server_default="not_required")
     offline_synced: Mapped[bool] = mapped_column(Boolean, default=False)  # True = captured offline, synced later
     client_ref: Mapped[str | None] = mapped_column(String(64), unique=True)  # idempotent offline replay
 
@@ -284,9 +305,25 @@ class Payout(Base):  # addition: worker withdrawals of released earnings to UPI
     worker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     amount_paise: Mapped[int] = mapped_column(BigInteger)
     upi_masked: Mapped[str] = mapped_column(String(120))
-    status: Mapped[str] = mapped_column(String(20), default="processed")  # processed | failed
+    status: Mapped[str] = mapped_column(String(20), default="processed")  # processed (manual withdraw) | processing | paid | failed
     provider_ref: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = _created()
+    # same-day pay: sent automatically when an escrow is released
+    source: Mapped[str] = mapped_column(String(10), default="withdraw", server_default="withdraw")  # withdraw | auto
+    assignment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assignments.id"))
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # in-app "sent to your UPI" notice shown
+
+
+class TripShare(Base):
+    """A customer's shareable "live trip" link. The token is the only credential: unguessable, expires when
+    the worker arrives, after `trip_share_ttl_hours`, or when the hire ends."""
+    __tablename__ = "trip_shares"
+    id: Mapped[uuid.UUID] = _pk()
+    assignment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), index=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = _created()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class Dispute(Base):

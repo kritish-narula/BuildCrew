@@ -52,6 +52,18 @@ Json _jobBody() => {
       ],
     };
 
+/// The customer reads today's start code; the worker enters it (the demo's equivalent of the check-in sheet).
+/// Leaves the worker signed in. No-op when no code is needed any more.
+Future<void> startWithCode(String worker, String jobId, String aid, {String customer = _priya}) async {
+  await signInAs(customer);
+  final a = (await api.customerJob(jobId))['assignment'] as Map;
+  final code = (a['start_code'] as Map?)?['code'] as String?;
+  await signInAs(worker);
+  if (code != null) await api.startWork(aid, code: code);
+}
+
+String _wrongCode(String code) => code == '0000' ? '1111' : '0000';
+
 Matcher _apiError(String code) => throwsA(isA<ApiException>().having((e) => e.code, 'code', code));
 
 void main() {
@@ -232,14 +244,17 @@ void main() {
       expect(tr!['distance_km'] as num, greaterThan(1.0));
 
       // ------------------------------------------------ worker checks in on site, then out, then done
+      await signInAs(_priya);
+      final startCode = ((await api.customerJob(jobId))['assignment'] as Map)['start_code']['code'] as String;
       await signInAs(_ramesh);
       final jobCard = await api.workerJob(jobId);
       final att = await api.attendance({
         'assignment_id': aid, 'kind': 'in', 'lat': jobCard['lat'], 'lng': jobCard['lng'], 'client_ref': 'att-qa-1', 'offline': false, 'selfie_key': null,
+        'start_code': startCode,
       });
       expect(att['geofence_ok'], true);
       final dup = await api.attendance({
-        'assignment_id': aid, 'kind': 'in', 'lat': jobCard['lat'], 'lng': jobCard['lng'], 'client_ref': 'att-qa-1', 'offline': false,
+        'assignment_id': aid, 'kind': 'in', 'lat': jobCard['lat'], 'lng': jobCard['lng'], 'client_ref': 'att-qa-1', 'offline': false, 'start_code': startCode,
       });
       expect(dup['geofence_ok'], true);
       await api.attendance({'assignment_id': aid, 'kind': 'out', 'lat': jobCard['lat'], 'lng': jobCard['lng'], 'client_ref': 'att-qa-2'});
@@ -441,6 +456,8 @@ void main() {
 
     Future<void> done(String worker, String aid, {String photo = 'after.jpg'}) async {
       await signInAs(worker);
+      final jobId = ((await api.assignments()).firstWhere((x) => x['id'] == aid)['job'] as Map)['id'] as String;
+      await startWithCode(worker, jobId, aid);
       await api.markDone(aid, photos: [photo], note: 'finished');
       await signInAs(_priya);
     }
@@ -450,6 +467,8 @@ void main() {
       await signInAs(_ramesh);
       await expectLater(api.markDone(h.aid), _apiError('err.proof_required'));
       await expectLater(api.markDone(h.aid, photos: ['  ']), _apiError('err.proof_required'));
+      await expectLater(api.markDone(h.aid, photos: ['after_1.jpg']), _apiError('err.start_code_required'));
+      await startWithCode(_ramesh, h.jobId, h.aid);
       await api.markDone(h.aid, photos: ['after_1.jpg'], note: 'Wall built');
       await api.markDone(h.aid, photos: ['after_1.jpg']); // double tap / offline replay
       await signInAs(_priya);
@@ -554,6 +573,7 @@ void main() {
       final h = await hire();
       await signInAs(_ramesh);
       await expectLater(api.workerDispute(h.aid, 'Customer is not answering'), _apiError('err.too_early_to_dispute'));
+      await startWithCode(_ramesh, h.jobId, h.aid);
       await api.markDone(h.aid, photos: ['after.jpg']);
       await api.workerDispute(h.aid, 'Customer is not confirming');
       await api.workerDispute(h.aid, 'Customer is not confirming'); // idempotent
@@ -648,7 +668,7 @@ void main() {
 
     test('cancel after work started goes through support (dispute), not cancel', () async {
       final h = await hire();
-      await signInAs(_ramesh);
+      await startWithCode(_ramesh, h.jobId, h.aid);
       final jc = await api.workerJob(h.jobId);
       await api.attendance({'assignment_id': h.aid, 'kind': 'in', 'lat': jc['lat'], 'lng': jc['lng'], 'client_ref': 'att-${h.aid}', 'offline': false});
       await signInAs(_priya);
@@ -937,9 +957,14 @@ void main() {
       expect(pay['escrow_state'], 'held');
 
       // attendance: Ramesh turns up, Sunil never does
+      await signInAs('9100000002');
+      final teamRows = ((await api.teamRoster(jobId))['workers'] as List).cast<Map>();
+      final teamCode = (teamRows.firstWhere((r) => r['assignment_id'] == a1)['start_code'] as Map)['code'] as String;
       await signInAs(_ramesh);
       final site = await api.workerJob(jobId);
-      await api.attendance({'assignment_id': a1, 'kind': 'in', 'lat': site['lat'], 'lng': site['lng'], 'client_ref': 'tm-att-1'});
+      await expectLater(api.attendance({'assignment_id': a1, 'kind': 'in', 'lat': site['lat'], 'lng': site['lng'], 'client_ref': 'tm-att-0', 'start_code': _wrongCode(teamCode)}),
+          _apiError('err.start_code_invalid'));
+      await api.attendance({'assignment_id': a1, 'kind': 'in', 'lat': site['lat'], 'lng': site['lng'], 'client_ref': 'tm-att-1', 'start_code': teamCode});
 
       await signInAs('9100000002');
       var roster = await api.teamRoster(jobId);
@@ -976,6 +1001,351 @@ void main() {
       expect((t1['summary'] as Map)['headcount'], 6);
       expect((t1['summary'] as Map)['filled'], 3);
       expect(((t1['summary'] as Map)['present_today'] as int), greaterThanOrEqualTo(1));
+    });
+  });
+
+  // ====================================================================================================
+  // Trust & worker features: start code, share trip, police badge, warranty re-fix, same-day pay,
+  // skill ladder + streak, hire again. Every rule is mirrored by backend/tests/test_trust.py.
+  // ====================================================================================================
+  group('trust & worker features', () {
+    const stars = {'quality': 5, 'timeliness': 5, 'behaviour': 5, 'value_for_money': 5};
+
+    Future<({String jobId, String aid})> hire({String worker = _ramesh}) async {
+      await signInAs(_priya);
+      final jobId = (await api.createJob(_jobBody()))['id'] as String;
+      await signInAs(worker);
+      await api.placeBid(jobId, 15000, 'ref-$worker-$jobId');
+      await signInAs(_priya);
+      final bids = ((await api.customerJob(jobId))['bids'] as List).cast<Map>();
+      final aid = (await api.acceptBid(jobId, bids.firstWhere((b) => b['price_inr'] == 15000)['id'] as String))['assignment_id'] as String;
+      await api.payJob(jobId, 'upi');
+      return (jobId: jobId, aid: aid);
+    }
+
+    Future<Map> asg(String jobId) async => (await api.customerJob(jobId))['assignment'] as Map;
+
+    /// hire -> start with the code -> done -> confirm -> rate (releases the money). Ends signed in as Priya.
+    Future<({String jobId, String aid})> finished({String worker = _ramesh}) async {
+      final h = await hire(worker: worker);
+      await startWithCode(worker, h.jobId, h.aid);
+      await api.markDone(h.aid, photos: ['after.jpg']);
+      await signInAs(_priya);
+      await api.completeJob(h.jobId);
+      await api.rateWorker(h.jobId, stars);
+      return h;
+    }
+
+    // ------------------------------------------------------------------ 1. start-work code
+    test('start code: wrong code, lock after five misses, right code starts the work', () async {
+      final h = await hire();
+      final code = ((await asg(h.jobId))['start_code'] as Map)['code'] as String;
+      expect(code, matches(RegExp(r'^\d{4}$')));
+      expect(((await asg(h.jobId))['start_code'] as Map)['needed'], true);
+
+      await signInAs(_ramesh);
+      final mine = (await api.assignments()).firstWhere((x) => x['id'] == h.aid);
+      expect(mine['start_code_state'], 'needed');
+      expect(mine.toString(), isNot(contains(code)), reason: 'the code is never sent to the worker');
+      await expectLater(api.startWork(h.aid), _apiError('err.start_code_required'));
+      final bad = _wrongCode(code);
+      for (var i = 0; i < 4; i++) {
+        await expectLater(api.startWork(h.aid, code: bad), _apiError('err.start_code_invalid'));
+      }
+      await expectLater(api.startWork(h.aid, code: bad), _apiError('err.start_code_locked'));
+      await expectLater(api.startWork(h.aid, code: code), _apiError('err.start_code_locked'), reason: 'locked even for the right code');
+      expect((await api.assignments()).firstWhere((x) => x['id'] == h.aid)['start_code_state'], 'locked');
+      await signInAs(_priya);
+      expect(((await asg(h.jobId))['start_code'] as Map)['locked_until'], isNotNull);
+      expect((await api.customerJob(h.jobId))['status'], 'assigned', reason: 'wrong tries never start the work');
+    });
+
+    test('start code: the right code starts the work and hides the code', () async {
+      final h = await hire();
+      await startWithCode(_ramesh, h.jobId, h.aid);
+      await signInAs(_priya);
+      expect((await api.customerJob(h.jobId))['status'], 'in_progress');
+      expect(((await asg(h.jobId))['start_code'] as Map)['needed'], false);
+      expect(((await asg(h.jobId))['start_code'] as Map)['code'], isNull);
+    });
+
+    test('start code: check-in needs it online; offline check-in is pending until the code is entered', () async {
+      final h = await hire();
+      await signInAs(_priya);
+      final code = ((await asg(h.jobId))['start_code'] as Map)['code'] as String;
+      await signInAs(_ramesh);
+      final jc = await api.workerJob(h.jobId);
+      Json body(String ref, {String? c, bool offline = false}) =>
+          {'assignment_id': h.aid, 'kind': 'in', 'lat': jc['lat'], 'lng': jc['lng'], 'client_ref': ref, 'offline': offline, if (c != null) 'start_code': c};
+      await expectLater(api.attendance(body('att-nc')), _apiError('err.start_code_required'));
+      await expectLater(api.attendance(body('att-bad', c: _wrongCode(code))), _apiError('err.start_code_invalid'));
+      // typed without a connection and left out: stored as pending, work does NOT start
+      final off = await api.attendance(body('att-off', offline: true));
+      expect(off['code_status'], 'pending');
+      await expectLater(api.markDone(h.aid, photos: ['after.jpg']), _apiError('err.start_code_required'));
+      expect((await api.assignments()).firstWhere((x) => x['id'] == h.aid)['start_code_state'], 'pending');
+      // back online: the worker enters the code and the pending check-in is verified
+      await api.startWork(h.aid, code: code);
+      await api.markDone(h.aid, photos: ['after.jpg']);
+      await signInAs(_priya);
+      expect((await asg(h.jobId))['worker_done_at'], isNotNull);
+    });
+
+    test('start code: an offline wrong code is marked failed on sync and never starts the work', () async {
+      final h = await hire();
+      await signInAs(_priya);
+      final code = ((await asg(h.jobId))['start_code'] as Map)['code'] as String;
+      await signInAs(_ramesh);
+      final jc = await api.workerJob(h.jobId);
+      final r = await api.attendance({'assignment_id': h.aid, 'kind': 'in', 'lat': jc['lat'], 'lng': jc['lng'], 'client_ref': 'att-off-bad', 'offline': true, 'start_code': _wrongCode(code)});
+      expect(r['code_status'], 'failed');
+      await expectLater(api.markDone(h.aid, photos: ['after.jpg']), _apiError('err.start_code_required'));
+    });
+
+    // ------------------------------------------------------------------ 2. share live trip
+    test('share trip: token + link + masked phone while on the way; refused once work started', () async {
+      final h = await hire();
+      final t = await api.shareTrip(h.jobId);
+      expect(t['url'], startsWith('https://buildcrew.app/t/'));
+      expect(t['url'], endsWith(t['token'] as String));
+      expect(t['worker_name'], 'Ramesh Pawar');
+      expect(t['trade'], 'mason');
+      expect(t['police_verified'], true);
+      expect(t['worker_phone_masked'], contains('*'));
+      expect(t['worker_phone_masked'], isNot(contains(_ramesh)));
+      expect((await api.shareTrip(h.jobId))['token'], t['token'], reason: 'one live link per trip');
+      await startWithCode(_ramesh, h.jobId, h.aid);
+      await signInAs(_priya);
+      await expectLater(api.shareTrip(h.jobId), _apiError('err.trip_not_active'));
+      await signInAs(_neha);
+      await expectLater(api.shareTrip(h.jobId), _apiError('err.not_found'));
+    });
+
+    // ------------------------------------------------------------------ 3. police-verified badge
+    test('police verification: needs KYC L1, pending after the request, seeded shields show in browse', () async {
+      await signInAs(_sunil);
+      final before = await api.workerProfile();
+      expect((before['police'] as Map)['status'], 'pending', reason: 'seeded: Sunil already asked');
+      expect((await api.requestPoliceVerification())['status'], 'pending', reason: 'asking twice is harmless');
+      await signInAs('9200000004'); // Gopal: no request yet
+      expect(((await api.workerProfile())['police'] as Map)['status'], 'none');
+      expect((await api.requestPoliceVerification())['status'], 'pending');
+      expect(((await api.workerProfile())['police'] as Map)['status'], 'pending');
+      expect((await api.workerProfile())['police_verified'], false);
+
+      await signInAs(_priya);
+      final rows = await api.browseWorkers('mason');
+      final ramesh = rows.firstWhere((r) => r['name'] == 'Ramesh Pawar');
+      expect(ramesh['police_verified'], true);
+      expect(ramesh['level'], 'skilled');
+    });
+
+    // ------------------------------------------------------------------ 4. work warranty
+    test('warranty: re-fix is free, one open at a time, max two, then limit; expires with the days', () async {
+      final h = await finished();
+      final w = (await asg(h.jobId))['warranty'] as Map;
+      expect(w['days'], 15);
+      expect(w['active'], true);
+      expect(w['can_request'], true);
+      await expectLater(api.requestRefix(h.jobId, reason: 'x', photos: ['a.jpg']), _apiError('err.validation'));
+      await expectLater(api.requestRefix(h.jobId, reason: 'Crack is back on the wall'), _apiError('err.proof_required'));
+
+      Future<({String jobId, String aid})> refix(String why) async {
+        final r = await api.requestRefix(h.jobId, reason: why, photos: ['crack.jpg']);
+        return (jobId: r['job_id'] as String, aid: r['assignment_id'] as String);
+      }
+
+      final r1 = await refix('Crack is back on the wall');
+      final job = await api.customerJob(r1.jobId);
+      expect(job['status'], 'assigned');
+      expect((job['assignment'] as Map)['kind'], 'refix');
+      expect(((job['assignment'] as Map)['refix'] as Map)['parent_job_id'], h.jobId);
+      expect(((job['assignment'] as Map)['payment']), isNull, reason: 're-fix is free: no payment');
+      expect((await api.customerJobs()).firstWhere((j) => j['id'] == r1.jobId)['refix'], true);
+      expect((await asg(h.jobId))['warranty']['open_job_id'], r1.jobId);
+      await expectLater(api.requestRefix(h.jobId, reason: 'Another crack appeared', photos: ['c2.jpg']), _apiError('err.refix_open'));
+      await expectLater(api.rateWorker(r1.jobId, stars), _apiError('err.validation'), reason: 'a re-fix is not rated');
+
+      Future<void> finishRefix(({String jobId, String aid}) r) async {
+        await startWithCode(_ramesh, r.jobId, r.aid);
+        await api.markDone(r.aid, photos: ['fixed.jpg']);
+        await signInAs(_priya);
+        await api.demoSkipTime(r.jobId, const Duration(hours: 49)); // auto-confirms after 48 h
+        expect((await api.customerJob(r.jobId))['status'], 'completed');
+      }
+
+      await finishRefix(r1);
+      final r2 = await refix('Corner is loose again');
+      await finishRefix(r2);
+      await expectLater(api.requestRefix(h.jobId, reason: 'Third time now', photos: ['c3.jpg']), _apiError('err.refix_limit'));
+      expect((await asg(h.jobId))['warranty']['can_request'], false);
+
+      // the guarantee runs out after the trade's days
+      final h2 = await finished();
+      await api.demoSkipTime(h2.jobId, const Duration(days: 16));
+      expect(((await asg(h2.jobId))['warranty'] as Map)['active'], false);
+      await expectLater(api.requestRefix(h2.jobId, reason: 'Crack is back on the wall', photos: ['a.jpg']), _apiError('err.warranty_expired'));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('warranty: only when the money was released; only the owner can ask; counts on the worker record', () async {
+      final h = await hire();
+      await expectLater(api.requestRefix(h.jobId, reason: 'Crack is back on the wall', photos: ['a.jpg']), _apiError('err.job_not_completed'));
+      final done = await finished();
+      await signInAs(_neha);
+      await expectLater(api.requestRefix(done.jobId, reason: 'Crack is back on the wall', photos: ['a.jpg']), _apiError('err.not_found'));
+      await signInAs(_ramesh);
+      final before = (await api.workerProfile())['warranty_record'] as Map;
+      await signInAs(_priya);
+      await api.requestRefix(done.jobId, reason: 'Crack is back on the wall', photos: ['a.jpg']);
+      await signInAs(_ramesh);
+      final after = (await api.workerProfile())['warranty_record'] as Map;
+      expect(after['refixes'], (before['refixes'] as int) + 1);
+    });
+
+    // ------------------------------------------------------------------ 5. same-day pay
+    test('same-day pay: release sends the money to UPI (processing, then paid) and notifies once', () async {
+      await signInAs(_ramesh);
+      final before = await api.earnings();
+      final beforeToday = ((before['paid_today'] as Map)['total_inr'] as num);
+      final h = await finished();
+      await signInAs(_ramesh);
+      final notices = await api.workerNotices();
+      expect(notices.length, 1);
+      expect(notices.first['kind'], 'payout_sent');
+      expect(notices.first['amount_inr'], 15000);
+      expect(notices.first['upi'], 'ra****@okaxis');
+      expect(notices.first['state'], 'processing');
+      final e = await api.earnings();
+      expect(((e['paid_today'] as Map)['total_inr'] as num) - beforeToday, 15000);
+      expect(((e['paid_today'] as Map)['items'] as List).cast<Map>().any((x) => x['state'] == 'processing'), true);
+      expect(e['nudge_add_upi'], false);
+      await api.ackNotices([notices.first['id'] as String]);
+      expect(await api.workerNotices(), isEmpty, reason: 'acknowledged notices do not come back');
+      await Future<void>.delayed(DemoApi.payoutSettle + const Duration(milliseconds: 300));
+      await api.workerNotices(); // settles processing payouts
+      final e2 = await api.earnings();
+      expect(((e2['paid_today'] as Map)['items'] as List).cast<Map>().every((x) => x['state'] == 'paid'), true);
+      expect(h.jobId, isNotEmpty);
+    }, timeout: const Timeout(Duration(minutes: 2)));
+
+    test('same-day pay: seeded plumber already has a "paid today" row', () async {
+      await signInAs('9200000003');
+      final e = await api.earnings();
+      final items = ((e['paid_today'] as Map)['items'] as List).cast<Map>();
+      expect(items, isNotEmpty);
+      expect(items.first['amount_inr'], 1300);
+      expect(items.first['upi'], 'im****@okaxis');
+    });
+
+    // ------------------------------------------------------------------ 6. skill ladder + streak
+    test('levels: seeded Ramesh is Skilled with a streak; the ladder and fair-wage multipliers', () async {
+      await signInAs(_ramesh);
+      final p = await api.workerProfile();
+      final lc = p['level_card'] as Map;
+      expect(lc['code'], 'skilled');
+      expect((lc['next'] as Map)['code'], 'master');
+      expect(lc['fair_multiplier'], 1.1);
+      expect(lc['progress'] as num, inInclusiveRange(0, 1));
+      expect((p['streak'] as Map)['weeks'] as int, greaterThanOrEqualTo(1));
+
+      expect(DemoLevels.levelFor(0, 0, 0)['code'], 'helper');
+      expect(DemoLevels.levelFor(5, 4.0, 0)['code'], 'semi_skilled');
+      expect(DemoLevels.levelFor(5, 3.9, 0)['code'], 'helper');
+      expect(DemoLevels.levelFor(20, 4.3, 0)['code'], 'skilled');
+      expect(DemoLevels.levelFor(60, 4.6, 0)['code'], 'master');
+      expect(DemoLevels.levelFor(60, 4.6, 6)['code'], 'skilled', reason: 'too many re-fixes: 10% >= 5%');
+      expect(DemoLevels.levelFor(60, 4.6, 0)['fair_multiplier'], 1.25);
+      final jan = DateTime(2026, 1, 5);
+      expect(DemoLevels.streakFromWeeks({DemoLevels.weekKey(jan), DemoLevels.weekKey(jan.subtract(const Duration(days: 7)))}, jan)['weeks'], 2);
+      expect(DemoLevels.streakFromWeeks({DemoLevels.weekKey(jan.subtract(const Duration(days: 14)))}, jan)['weeks'], 0, reason: 'a missed week breaks it');
+    });
+
+    test('levels: the suggested range scales with level but the minimum wage floor never moves', () async {
+      await signInAs(_ramesh);
+      final jobs = await api.workerFeed();
+      expect(jobs, isNotEmpty);
+      final id = jobs.first['id'] as String;
+      final detail = await api.workerJob(id);
+      expect(detail['level'], 'skilled');
+      expect(detail['level_multiplier'], 1.1);
+      final fr = detail['fair_range'] as Map?;
+      if (fr != null) {
+        expect(fr['low'] as num, lessThanOrEqualTo(fr['high'] as num));
+        if (fr['min_wage_total'] != null) expect(fr['min_wage_total'] as num, lessThanOrEqualTo(fr['low'] as num), reason: 'the legal minimum is never scaled');
+      }
+    });
+
+    test('streak: public profile and worker profile show the weeks', () async {
+      await signInAs(_priya);
+      final pub = await api.workerPublic('w1');
+      expect((pub['level_card'] as Map)['code'], 'skilled');
+      expect((pub['streak'] as Map)['weeks'] as int, greaterThanOrEqualTo(1));
+      expect((pub['warranty_record'] as Map)['refixes'], 1);
+    });
+
+    // ------------------------------------------------------------------ 10. hire again
+    test('hire again: favourites list the worker Priya rated well, the draft is prefilled', () async {
+      await signInAs(_priya);
+      final favs = await api.favourites();
+      expect(favs, isNotEmpty);
+      final imran = favs.firstWhere((f) => f['name'] == 'Imran Shaikh');
+      expect(imran['last_trade'], 'plumber');
+      expect(imran['jobs_together'] as int, greaterThanOrEqualTo(1));
+      final draft = await api.rebookDraft(workerId: imran['id'] as String);
+      expect((draft['worker'] as Map)['name'], 'Imran Shaikh');
+      final item = (draft['items'] as List).cast<Map>().first;
+      expect(item['trade'], 'plumber');
+      expect((item['text_description'] as String), isNotEmpty);
+      expect(draft['address_text'], isNotEmpty);
+      final byJob = await api.rebookDraft(jobId: 'jw');
+      expect((byJob['worker'] as Map)['name'], 'Imran Shaikh');
+      await signInAs(_neha);
+      await expectLater(api.rebookDraft(jobId: 'jw'), _apiError('err.not_found'));
+    });
+
+    test('hire again: completed bookings point to the worker', () async {
+      await signInAs(_priya);
+      final rows = await api.customerJobs();
+      final jw = rows.firstWhere((j) => j['id'] == 'jw');
+      expect(jw['hire_again_worker_id'], 'w3');
+    });
+
+    test('direct request: only the chosen worker sees it and can quote; declining opens it to everyone', () async {
+      await signInAs(_priya);
+      final mine = (await api.customerJobs()).firstWhere((j) => j['id'] == 'jd');
+      expect(mine['direct_state'], 'pending');
+      expect(mine['direct_worker'], 'Ramesh Pawar');
+
+      await signInAs(_ramesh);
+      final feed = await api.workerFeed();
+      expect(feed.first['id'], 'jd', reason: 'direct requests come first');
+      expect((feed.first['direct'] as Map)['customer_name'], 'Priya Sharma');
+
+      await signInAs(_sunil); // another mason
+      expect((await api.workerFeed()).any((r) => r['id'] == 'jd'), false);
+      await expectLater(api.placeBid('jd', 3000, 'ref-sunil-jd'), _apiError('err.direct_only'));
+
+      await signInAs(_ramesh);
+      await api.declineDirect('jd');
+      await signInAs(_priya);
+      expect((await api.customerJobs()).firstWhere((j) => j['id'] == 'jd')['direct_state'], 'declined');
+      await signInAs(_sunil);
+      expect((await api.workerFeed()).any((r) => r['id'] == 'jd'), true, reason: 'open to all once declined');
+      await signInAs(_neha);
+      await expectLater(api.declineDirect('jd'), _apiError('err.forbidden'));
+    });
+
+    test('direct request: a new job "send to X first" is exclusive to that worker', () async {
+      await signInAs(_priya);
+      final body = _jobBody()..['direct_worker_id'] = 'w1';
+      final id = (await api.createJob(body))['id'] as String;
+      await signInAs(_sunil);
+      expect((await api.workerFeed()).any((r) => r['id'] == id), false);
+      await expectLater(api.placeBid(id, 15000, 'ref-sunil-direct'), _apiError('err.direct_only'));
+      await signInAs(_ramesh);
+      final row = (await api.workerFeed()).firstWhere((r) => r['id'] == id);
+      expect(row['direct'], isNotNull);
+      await api.placeBid(id, 15000, 'ref-ramesh-direct');
     });
   });
 }

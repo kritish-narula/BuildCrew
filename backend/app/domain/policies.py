@@ -23,5 +23,9 @@ def can_access_job_media(db: Session, user: User, job: Job) -> bool:
         return True
     if job.status not in (JobStatus.open, JobStatus.bidding) and not (job.kind == "team" and job.status in (JobStatus.assigned, JobStatus.in_progress)):
         return False
+    from . import trust
+    ex = trust.exclusive_to(job)
+    if ex is not None and ex != user.id:
+        return False
     trades = set(user.worker_profile.trades or [])
     return any(wi.trade.value in trades for wi in job.work_items)
