@@ -1821,9 +1821,9 @@ class DemoApi implements Api {
     await _lag();
     final d = await _d;
     final j = _row(d, 'jobs', jobId);
-    if (j['status'] != 'completed') _err('err.job_not_completed');
     final a = _assignmentFor(d, jobId) ?? _err('err.not_found');
     if (a['kind'] == 'refix') _err('err.validation'); // nothing to rate or pay on a free re-fix visit
+    if (j['status'] != 'completed') _err('err.job_not_completed');
     final rs = d['ratings'] as List;
     if (rs.cast<Map>().any((r) => r['assignment_id'] == a['id'] && r['direction'] == 'customer_to_worker')) _err('err.already_rated');
     final p = _paymentFor(d, a['id'] as String);
