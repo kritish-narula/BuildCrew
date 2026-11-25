@@ -35,7 +35,7 @@ jobs:
       - name: Test
         run: |
           flutter test > /tmp/test.txt 2>&1 \
-            || { grep -E "^  - |Error|error:|Expected|Actual|FAILED|overflowed|Exception|RENDER OVERFLOW|OTHER FLUTTER ERRORS|COULD NOT BE CAPTURED" /tmp/test.txt | cut -c1-400 | head -90 | sed -E 's/^\s*/::error::/'; tail -200 /tmp/test.txt; exit 1; }
+            || { grep -E "\[E\]|Which:|Bad state|^  - |Error|error:|Expected|Actual|FAILED|overflowed|Exception|RENDER OVERFLOW|OTHER FLUTTER ERRORS|COULD NOT BE CAPTURED" /tmp/test.txt | cut -c1-400 | head -90 | sed -E 's/^\s*/::error::/'; tail -200 /tmp/test.txt; exit 1; }
           tail -3 /tmp/test.txt
       - name: Upload screenshots
         if: always()
