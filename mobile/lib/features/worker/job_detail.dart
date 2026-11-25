@@ -8,6 +8,7 @@ import '../../core/outbox.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import '../../widgets/fair_price.dart';
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 import '../common/chat.dart';
@@ -166,6 +167,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   const SizedBox(height: 10),
                   VoiceAmountButton(lang: lang, onAmount: (n) => setState(() => _price.text = '$n')),
                   const SizedBox(height: 12),
+                  if (job['fair_range'] is Map) ...[
+                    FairPriceBanner(fairRange: (job['fair_range'] as Map).cast<String, dynamic>(), priceInr: _amount),
+                    const SizedBox(height: 12),
+                  ],
                   PrimaryButton(
                     big: true,
                     busy: _sending,

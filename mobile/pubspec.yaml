@@ -3,7 +3,7 @@ description: BuildCrew — hyperlocal construction labour marketplace (worker + 
 publish_to: "none"
 # versionName comes from here; versionCode (build number) is set by CI from the run number,
 # so every release is strictly higher and installs as an UPDATE over the previous one.
-version: 0.3.0+1
+version: 0.4.0+1
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

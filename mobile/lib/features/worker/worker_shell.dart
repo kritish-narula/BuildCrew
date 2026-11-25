@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import '../../widgets/media.dart';
+import '../common/chat.dart';
 import '../common/profile.dart';
 import '../common/update_ui.dart';
 import 'assignment_screen.dart';
@@ -165,7 +166,7 @@ class JobsTab extends StatelessWidget {
                 ]),
               ),
               const SizedBox(width: 4),
-              // CHAT_INBOX_BUTTON — the lead places the chat inbox icon button here (before the speaker).
+              ChatInboxButton(state: state),
               SpeakButton(text: '${l.jobsNear}. ${l.jobsNearSub(jobs.length)}', lang: state.language ?? 'hi'),
             ]),
           ),

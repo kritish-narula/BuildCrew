@@ -1,0 +1,43 @@
+name: Mobile check (dev)
+
+on:
+  push:
+    branches: [dev]
+    paths: ["mobile/**", ".github/workflows/check.yml"]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Android project
+        run: python3 tool/prepare_android.py
+      - name: Dependencies & localisation
+        run: |
+          flutter pub get
+          flutter gen-l10n
+      - name: Analyze
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings > /tmp/analyze.txt 2>&1 \
+            || { grep -E "error" /tmp/analyze.txt | head -60 | sed -E 's/^\s*/::error::/'; cat /tmp/analyze.txt; exit 1; }
+          grep -E "warning" /tmp/analyze.txt | head -30 | sed -E 's/^\s*/::warning::/' || true
+      - name: Test
+        run: |
+          flutter test > /tmp/test.txt 2>&1 \
+            || { grep -E "Error|error:|Expected|Actual|FAILED|overflowed|Exception" /tmp/test.txt | head -60 | sed -E 's/^\s*/::error::/'; tail -80 /tmp/test.txt; exit 1; }
+          tail -3 /tmp/test.txt
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screens
+          path: mobile/test/screens_out/
+          if-no-files-found: ignore

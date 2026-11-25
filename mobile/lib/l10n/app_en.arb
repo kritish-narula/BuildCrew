@@ -839,5 +839,81 @@
       }
     }
   },
-  "workerWillStartSub": "You'll see the distance and arrival time here."
+  "workerWillStartSub": "You'll see the distance and arrival time here.",
+  "chatSending": "Sending…",
+  "@chatSending": {},
+  "chatNotSent": "Not sent · tap to retry",
+  "@chatNotSent": {},
+  "messagesTitle": "Messages",
+  "@messagesTitle": {},
+  "messagesEmpty": "No chats yet. When you message a worker or customer, the chat shows up here.",
+  "@messagesEmpty": {},
+  "navHome": "Home",
+  "@navHome": {},
+  "navBookings": "Bookings",
+  "@navBookings": {},
+  "navMessages": "Messages",
+  "@navMessages": {},
+  "navProfile": "Profile",
+  "@navProfile": {},
+  "bookingsTitle": "Your bookings",
+  "@bookingsTitle": {},
+  "bookingsOpen": "Open",
+  "@bookingsOpen": {},
+  "bookingsOngoing": "Ongoing",
+  "@bookingsOngoing": {},
+  "bookingsPast": "Past",
+  "@bookingsPast": {},
+  "bookingsEmptyOpen": "No open bookings. Post a job to get quotes from workers.",
+  "@bookingsEmptyOpen": {},
+  "bookingsEmptyOngoing": "Nothing in progress right now.",
+  "@bookingsEmptyOngoing": {},
+  "bookingsEmptyPast": "Completed and cancelled jobs will show here.",
+  "@bookingsEmptyPast": {},
+  "attentionTitle": "Needs your attention",
+  "@attentionTitle": {},
+  "allCaughtUp": "You are all caught up. Nothing needs your attention.",
+  "@allCaughtUp": {},
+  "viewQuotes": "View quotes",
+  "@viewQuotes": {},
+  "seeAllBookings": "See all bookings",
+  "@seeAllBookings": {},
+  "fairRangeTitle": "Fair price for this job",
+  "@fairRangeTitle": {},
+  "fairRangeText": "{range} for about {days} days of work",
+  "@fairRangeText": {
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "fairBelowMinWage": "Your price is below the minimum wage for ~{days} days of work ({amount}). Don't undersell yourself.",
+  "@fairBelowMinWage": {
+    "placeholders": {
+      "days": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "fairYourPriceOk": "Your price is in the fair range.",
+  "@fairYourPriceOk": {},
+  "fairYourPriceHigh": "Your price is higher than usual. The customer may pick a cheaper quote.",
+  "@fairYourPriceHigh": {},
+  "fairBadgeFair": "Fair price ✓",
+  "@fairBadgeFair": {},
+  "fairBadgeBelow": "Below minimum wage ⚠",
+  "@fairBadgeBelow": {},
+  "fairBadgeHigh": "Higher than usual",
+  "@fairBadgeHigh": {},
+  "fairBelowNote": "This quote is below the legal minimum wage — consider paying fairly.",
+  "@fairBelowNote": {},
+  "todaysWork": "Today's work",
+  "@todaysWork": {}
 }
