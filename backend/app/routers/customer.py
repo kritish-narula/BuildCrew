@@ -11,7 +11,7 @@ from .. import services
 from ..audit import audit
 from ..config import get_settings
 from ..db import get_db
-from ..domain import flows, pricing, team
+from ..domain import flows, levels, pricing, team, trust
 from ..domain.state import transition
 from ..enums import AudioUploadState, BidStatus, JobStatus, Role, Trade
 from ..errors import AppError
@@ -28,6 +28,11 @@ def _own(db: Session, user: User, job_id: uuid.UUID) -> Job:
     if not job or job.customer_id != user.id:
         raise AppError("err.not_found", 404)
     return job
+
+
+def _level_mult(w: User) -> float:
+    wp = w.worker_profile
+    return levels.level_for(wp.completed_jobs, wp.overall_rating if wp.rating_count else 0.0, wp.refix_count)["fair_multiplier"]
 
 
 def _assignment(db: Session, job: Job) -> Assignment:
@@ -55,6 +60,11 @@ def jobs(user: User = Depends(C), db: Session = Depends(get_db)):
         p = db.scalar(select(Payment).where(Payment.assignment_id == a.id)) if a else None
         row = {**job_card(db, j, user.language_code), "bid_count": counts.get(j.id, 0),
                "needs_rating": j.status == JobStatus.completed and p is not None and p.escrow_state.value == "held",
+               "refix": bool(a and a.kind == "refix"), "direct_state": trust.direct_state(j),
+               "direct_until": j.direct_until.isoformat() if j.direct_until else None,
+               "direct_worker": (db.get(User, j.direct_worker_id).name if j.direct_worker_id else None),
+               "hire_again_worker_id": str(a.worker_id) if a and j.kind == "single" and a.kind == "job" else None,
+               "warranty": trust.warranty_view(db, a) if a and j.kind == "single" else None,
                "worker_name": a.worker.name if a else None,
                "payment_state": p.escrow_state.value if p else None,
                "needs_action": bool(a and j.status == JobStatus.in_progress and a.worker_done_at and not a.rework_open),
@@ -97,6 +107,7 @@ class JobIn(BaseModel):
     time_slot: str | None = Field(default=None, pattern="^(morning|afternoon|evening|exact)$")
     kind: str = Field(default="single", pattern="^(single|team)$")
     work_items: list[WorkItemIn]
+    direct_worker_id: uuid.UUID | None = None  # "Send to <worker> first": exclusive for 2 hours (hire again)
 
 
 MIN_PHOTOS, MIN_DESCRIPTION = 2, 50
@@ -171,9 +182,12 @@ def create_job(body: JobIn, user: User = Depends(C), db: Session = Depends(get_d
         db.flush()
         for k, key in enumerate(w.photo_keys):
             db.add(WorkItemPhoto(work_item_id=item.id, photo_url=key, sort_order=k))
+    if body.direct_worker_id:
+        trust.set_direct(db, user, job, body.direct_worker_id)
     audit(db, actor_id=user.id, action="job.posted", entity="job", entity_id=job.id, items=len(body.work_items), kind=body.kind)
     db.commit()
-    return {"id": str(job.id), "status": job.status.value, "locality": locality}
+    return {"id": str(job.id), "status": job.status.value, "locality": locality,
+            "direct_until": job.direct_until.isoformat() if job.direct_until else None}
 
 
 @router.get("/price-estimate")
@@ -239,8 +253,11 @@ def job_detail(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends
            "work_items": [work_item_view(db, wi, user.language_code, include_audio=True) for wi in job.work_items],
            "bids": [{"id": str(b.id), "price_inr": b.quoted_price_paise / 100, "status": b.status.value,
                      "created_at": b.created_at.isoformat(), "worker": worker_summary(db, b.worker),
-                     "fair": pricing.fair_check(b.quoted_price_paise / 100, job, b.worker.worker_profile.trades)} for b in bids],
-           "assignment": assignment_view(db, a, user.language_code) if job.kind != "team" else None,
+                     "warranty_days": trust.warranty_for_quote(job, b.worker),
+                     "fair": pricing.fair_check(b.quoted_price_paise / 100, job, b.worker.worker_profile.trades,
+                                                _level_mult(b.worker))} for b in bids],
+           "direct": trust.direct_view(db, job),
+           "assignment": assignment_view(db, a, user.language_code, viewer="customer") if job.kind != "team" else None,
            "fee_inr": get_settings().platform_fee_flat_inr}
     if job.kind == "team":
         out["team"] = team.roster(db, job, user.language_code)
@@ -446,8 +463,13 @@ def payments(user: User = Depends(C), db: Session = Depends(get_db)):
     rows = db.execute(select(Payment, Assignment).join(Assignment, Assignment.id == Payment.assignment_id)
                       .join(Job, Job.id == Assignment.job_id).where(Job.customer_id == user.id)
                       .order_by(Job.created_at.desc())).all()
-    return [{**payment_view(p), "job_id": str(a.job_id), "locality": a.job.locality, "worker_name": a.worker.name,
-             "trades": sorted({wi.trade.value for wi in a.job.work_items})} for p, a in rows]
+    out = []
+    for p, a in rows:
+        wv = trust.warranty_view(db, a)
+        out.append({**payment_view(p), "job_id": str(a.job_id), "locality": a.job.locality, "worker_name": a.worker.name,
+                    "trades": sorted({wi.trade.value for wi in a.job.work_items}),
+                    "warranty_days": wv["days"] if wv else 0, "warranty_until": wv["until"] if wv else None})
+    return out
 
 
 @router.get("/workers")
@@ -457,7 +479,10 @@ def browse_workers(trade: Trade | None = None, user: User = Depends(C), db: Sess
         User.role == Role.worker, WorkerProfile.is_suspended.is_(False), User.kyc_level >= 1)
     if trade:
         q = q.where(WorkerProfile.trades.any(trade.value))
-    rows = db.scalars(q.order_by(WorkerProfile.overall_rating.desc()).limit(50)).all()
+    rows = db.scalars(q.order_by(WorkerProfile.overall_rating.desc()).limit(200)).all()
+    # best rated first (to 1 decimal); at equal rating the police-verified worker ranks higher ("Verified first" tie-breaker)
+    rows = sorted(rows, key=lambda w: (-round(w.worker_profile.overall_rating, 1), w.worker_profile.police_status != "verified",
+                                       -w.worker_profile.rating_count))[:50]
     return [{**worker_summary(db, w), "online": w.worker_profile.is_online} for w in rows]
 
 
@@ -466,4 +491,62 @@ def worker_profile(worker_id: uuid.UUID, user: User = Depends(C), db: Session = 
     w = db.get(User, worker_id)
     if not w or w.role != Role.worker:
         raise AppError("err.not_found", 404)
-    return {**worker_summary(db, w), "breakdown": rating_breakdown(db, w.id), "history": worker_history(db, w.id)}
+    wp = w.worker_profile
+    return {**worker_summary(db, w), "breakdown": rating_breakdown(db, w.id), "history": worker_history(db, w.id),
+            "warranty_record": trust.worker_warranty_record(db, wp), "level_card": levels.level_view(wp),
+            "streak": levels.streak(db, w.id)}
+
+
+@router.get("/favourites")
+def favourites(user: User = Depends(C), db: Session = Depends(get_db)):
+    """"Your workers": everyone this customer rated 4 or more (real ratings only)."""
+    return trust.favourites(db, user)
+
+
+@router.get("/workers/{worker_id}/rebook")
+def rebook_worker(worker_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
+    """Prefill for "Hire again" from a worker's profile: last job done together (else the latest address)."""
+    w = db.get(User, worker_id)
+    if not w or w.role != Role.worker or not w.worker_profile:
+        raise AppError("err.not_found", 404)
+    return trust.rebook_draft(db, user, worker=w)
+
+
+@router.get("/jobs/{job_id}/rebook")
+def rebook_job(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
+    """Prefill for "Hire again" from a past booking: trade, address and last description + the worker who did it."""
+    job = _own(db, user, job_id)
+    if job.kind == "team":
+        raise AppError("err.validation", 422)
+    return trust.rebook_draft(db, user, job=job)
+
+
+@router.post("/jobs/{job_id}/share-trip")
+def share_trip(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
+    """Share live trip: a link (https://buildcrew.app/t/<token>) with the worker, his ETA and nothing about the customer."""
+    out = trust.share_trip(db, user, _assignment(db, _own(db, user, job_id)))
+    db.commit()
+    return out
+
+
+class RefixIn(BaseModel):
+    reason: str = Field(min_length=5, max_length=1000)
+    photos: list[str] = Field(default=[], max_length=5)
+    assignment_id: uuid.UUID | None = None  # team jobs: which worker
+
+
+@router.post("/jobs/{job_id}/refix")
+def refix(job_id: uuid.UUID, body: RefixIn, user: User = Depends(C), db: Session = Depends(get_db)):
+    """"Problem came back": inside the warranty window the SAME worker returns for free (a linked re-fix visit)."""
+    job = _own(db, user, job_id)
+    if job.kind == "team":
+        a = db.get(Assignment, body.assignment_id) if body.assignment_id else None
+        if not a or a.job_id != job.id:
+            raise AppError("err.not_found", 404)
+    else:
+        a = flows.active_assignment(db, job.id)
+        if not a:
+            raise AppError("err.hire_cancelled", 409)
+    r = trust.request_refix(db, user, a, body.reason, body.photos)
+    db.commit()
+    return {"job_id": str(r.job_id), "assignment_id": str(r.id)}

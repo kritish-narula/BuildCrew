@@ -44,8 +44,17 @@ Demo mode needs no server. All demo accounts share the data on the phone, so wha
    - Priya → **View receipt**: price, fee, method, paid date, released date and transaction ID. Share it.
    - Switch to **Ramesh** → **Earnings**: the money is there → **Withdraw to UPI**. He can rate the customer too.
 
+## Trust & worker features (3 minutes, each is independent)
+1. **Start code** — Priya → *Bookings* → the paid carpenter job (Harpreet) shows a 4-digit **start code** card. Switch to **Harpreet** → *My work* → **I've arrived — check in** asks for the code. A wrong code says how many tries are left; 5 wrong tries lock it for 10 minutes. The right code starts the work. Without a network the check-in is saved as *waiting for code* and is verified when the code is entered online. For a contractor team, each worker has a new code every day on the roster.
+2. **Share live trip** — Priya on a job where the worker is on the way → **Share live trip**. The text has the worker's name, trade, shield, a masked phone and a link `buildcrew.app/t/...`. The link works without logging in and stops once work starts.
+3. **Police-verified shield** — Switch to **Gopal** → *Profile* → *Verification* → **Request police check**. In the demo it is approved after about 20 seconds. Customers see the shield next to the name and *Verified first* ranking in *Browse workers*. Admin → *Workers* → *Police check* is the review queue.
+4. **Work warranty** — Priya → *Bookings* → *Past* → the finished plumber job *Kitchen sink* (Imran) shows **30-day guarantee** → **Problem came back** → reason and a photo. A free re-fix visit is created: no payment, no rating, the worker gets a start code too. One open re-fix at a time, 2 per job, none after the guarantee ends.
+5. **Same-day pay** — Switch to **Imran** → *Earnings* → **Paid today**: *₹1,300 sent to your UPI im****@okaxis*. When Priya releases a payment, the money moves to UPI at once (*Processing*, then *Paid* after about 5 seconds) and the worker gets a notice. Without a UPI ID, an **Add UPI** nudge is shown. Manual withdraw still works.
+6. **Skill level and streak** — Switch to **Ramesh** → *Profile*: **Skilled** level card with a progress bar to *Master* (jobs, rating, few re-fixes) and **4-week streak**. A higher level only widens the suggested price range; the legal minimum wage never changes.
+10. **Hire again** — Priya → *Home* → **Your workers** → Imran → **Hire again**, or *Bookings* → *Past* → **Hire again**. *Post a job* opens filled in, with **Send to Imran first**. The job is only visible to him for 2 hours. Switch to **Ramesh** → *Jobs*: *Priya wants you again* with a **Direct request** badge at the top (Decline is on the card). After a decline or 2 hours it opens to everyone.
+
 ## Admin (optional)
-BuildCrew Admin page: log in with `9000000001` / `123456`. It shows KYC approval, disputes with the voice note next to its transcript, the escrow ledger and the compliance export.
+BuildCrew Admin page: log in with `9000000001` / `123456`. It shows KYC approval, the police-verification queue, disputes with the voice note next to its transcript, the escrow ledger and the compliance export.
 
 ## Points to make
 - **No payment until rated:** the server enforces it, not just the app.

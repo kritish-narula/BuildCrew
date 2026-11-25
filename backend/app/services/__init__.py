@@ -5,6 +5,7 @@ from functools import lru_cache
 from ..config import get_settings
 from .infra import DevSmsStub, GoogleMaps, MapsService, MockMaps, MockRealtime, Msg91Sms, RealtimeService, SmsProvider
 from .language import BhashiniAdapter, GoogleAdapter, MockSpeech, MockTranslation, SpeechService, TranslationService
+from .payout import MockPayoutProvider, PayoutProvider, RazorpayXPayoutProvider
 from .payment import MockPaymentProvider, PaymentProvider, RazorpayRouteProvider
 from .storage import LocalStorage, S3Storage, StorageService
 
@@ -54,3 +55,9 @@ def maps() -> MapsService:
 @lru_cache
 def realtime() -> RealtimeService:
     return MockRealtime()
+
+
+@lru_cache
+def payouts() -> PayoutProvider:
+    s = get_settings()
+    return RazorpayXPayoutProvider() if s.payout_provider == "razorpayx" else MockPayoutProvider(s.payout_mock_settle_seconds)

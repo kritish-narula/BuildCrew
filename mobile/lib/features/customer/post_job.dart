@@ -15,6 +15,7 @@ import '../../widgets/fair_price.dart';
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
 import '../../widgets/schedule.dart';
+import 'customer_home.dart' show customerRoute;
 
 const trades = ['mason', 'plumber', 'electrician', 'carpenter', 'painter', 'helper'];
 
@@ -46,9 +47,13 @@ class WorkDraft {
 /// C2 — the core flow: 1 trades → 2 work cards → 3 place & date/time → 4 fair price → post.
 /// With [team] (contractors) step 1 also asks headcount + days per trade and step 4 sets the daily wage.
 class PostJobScreen extends StatefulWidget {
-  const PostJobScreen({super.key, required this.state, this.team = false});
+  const PostJobScreen({super.key, required this.state, this.team = false, this.prefill});
   final AppState state;
   final bool team;
+
+  /// "Hire again": `api.rebookDraft` result (worker, items, address). Trade, address and the last description are
+  /// filled in and the job is offered to that worker first.
+  final Json? prefill;
   @override
   State<PostJobScreen> createState() => _PostJobScreenState();
 }
@@ -69,6 +74,32 @@ class _PostJobScreenState extends State<PostJobScreen> {
   bool _posting = false, _locating = false;
 
   String get _lang => widget.state.language ?? 'hi';
+
+  String? _directId, _directName; // hire again: offered to this worker exclusively for 2 hours
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.prefill;
+    if (d == null) return;
+    final w = (d['worker'] as Map).cast<String, dynamic>();
+    _directId = w['id'] as String;
+    _directName = (w['name'] as String).split(' ').first;
+    for (final it in (d['items'] as List).cast<Json>()) {
+      final t = it['trade'] as String;
+      if (!trades.contains(t) || _works.any((x) => x.trade == t)) continue;
+      _works.add(WorkDraft(t)..text.text = (it['text_description'] as String?) ?? '');
+    }
+    final lat = (d['lat'] as num?)?.toDouble(), lng = (d['lng'] as num?)?.toDouble();
+    if (lat != null && lng != null) {
+      _point = LatLng(lat, lng);
+      _askedGps = true;
+    }
+    _area.text = (d['locality'] as String?) ?? '';
+    _city = (d['city'] as String?) ?? '';
+    _address.text = (d['address_text'] as String?) ?? '';
+    if (_works.isNotEmpty) _step = 1; // trade is known: straight to "describe + photos"
+  }
 
   @override
   void dispose() {
@@ -325,6 +356,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         'start_date': _start.toIso8601String().substring(0, 10), 'work_items': items,
         'scheduled_for': _scheduledFor!.toUtc().toIso8601String(), 'time_slot': _slot,
         if (widget.team) 'kind': 'team',
+        if (_directId != null && !widget.team) 'direct_worker_id': _directId,
       });
       if (!mounted) return;
       await showDialog<void>(
@@ -398,12 +430,14 @@ class _PostJobScreenState extends State<PostJobScreen> {
                     Expanded(child: Text(reason, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BC.pendingInk, fontWeight: FontWeight.w600, fontSize: 14, height: 1.3))),
                   ]),
                 ),
+              if (_step == 3 && _directName != null && !widget.team)
+                Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(l.sendToFirstNote(_directName!), style: BC.caption)),
               _step < 3
                   ? FilledButton(onPressed: _canNext ? _next : null, child: BtnLabel(l.continueBtn))
                   : FilledButton.icon(
                       onPressed: (_posting || reason != null || (widget.team && _estimate == null)) ? null : _post,
                       icon: _posting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white)) : const Icon(Icons.send_rounded),
-                      label: BtnLabel(widget.team ? l.postTeamJobNow : l.postJobNow),
+                      label: BtnLabel(widget.team ? l.postTeamJobNow : (_directName != null ? l.sendToFirst(_directName!) : l.postJobNow)),
                     ),
             ]),
           ),
@@ -448,6 +482,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   // ---------------------------------------------------------------- step 2
   Widget _describeStep(L l) => ListView(padding: const EdgeInsets.all(16), children: [
+        if (_directName != null) ...[
+          InfoBanner(icon: Icons.replay_circle_filled_rounded, color: BC.brandDark, text: l.hireAgainPrefilled(_directName!)),
+          const SizedBox(height: 14),
+        ],
         for (final (i, w) in _works.indexed) ...[
           _WorkCardEditor(
             index: i,
@@ -874,5 +912,19 @@ class _WorkCardEditor extends StatelessWidget {
         ]),
       ),
     );
+  }
+}
+
+
+/// "Hire again": fetch the prefill (trade, address, last description) for a past job or a worker, then open Post a Job
+/// with "Send to <worker> first". Returns true when the job was posted.
+Future<bool?> hireAgain(BuildContext context, AppState state, {String? jobId, String? workerId}) async {
+  try {
+    final draft = await state.api.rebookDraft(jobId: jobId, workerId: workerId);
+    if (!context.mounted) return null;
+    return await Navigator.of(context).push<bool>(customerRoute<bool>(builder: (_) => PostJobScreen(state: state, prefill: draft)));
+  } catch (e) {
+    if (context.mounted) showError(context, e);
+    return null;
   }
 }

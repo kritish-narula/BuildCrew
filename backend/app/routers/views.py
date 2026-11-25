@@ -8,6 +8,7 @@ from ..config import get_settings
 from ..crypto import mask_phone
 from ..enums import RatingDirection
 from ..i18n import t
+from ..domain import levels, trust
 from ..models import Assignment, Attendance, Bid, Job, Payment, Rating, User, WorkerProfile, WorkItem
 
 
@@ -55,7 +56,9 @@ def worker_summary(db: Session, user: User) -> dict:
     return {"id": str(user.id), "name": user.name or mask_phone(user.phone), "trades": list(wp.trades or []),
             "rating": round(wp.overall_rating, 1), "rating_count": wp.rating_count,
             "completed_jobs": wp.completed_jobs, "badges": list(wp.badges or []), "kyc_level": user.kyc_level,
-            "selfie": signed(wp.selfie_url), "verified": user.kyc_level >= 1}
+            "selfie": signed(wp.selfie_url), "verified": user.kyc_level >= 1,
+            "police_verified": wp.police_status == "verified",
+            "level": levels.level_for(wp.completed_jobs, wp.overall_rating if wp.rating_count else 0.0, wp.refix_count)["code"]}
 
 
 def rating_breakdown(db: Session, worker_id) -> dict:
@@ -93,7 +96,8 @@ def payment_view(p: Payment | None) -> dict | None:
             "ref": p.razorpay_ref, "method": p.method, "paid_at": p.paid_at.isoformat() if p.paid_at else None}
 
 
-def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None:
+def assignment_view(db: Session, a: Assignment | None, lang: str, viewer: str = "admin") -> dict | None:
+    """viewer: customer (sees the start code) | worker (never sees it) | admin."""
     if not a:
         return None
     p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
@@ -115,7 +119,16 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
     rework = next((e for e in reversed(events) if e.kind == "rework_requested"), None) if a.rework_open else None
     due = flows.auto_confirm_at(a)
     no_show = flows.no_show_after(db, a)
-    return {"proof_photos": [signed(k) for k in (a.proof_photos or [])], "worker_done_note": a.worker_done_note,
+    code_part: dict = {}
+    if viewer == "customer":
+        code_part = {"start_code": trust.customer_code_view(db, a)}
+    elif viewer == "worker":
+        code_part = {"start_code_state": trust.start_code_state(db, a),
+                     "start_code_locked_until": a.start_code_locked_until.isoformat() if trust.is_locked(a) else None}
+    refix_part = {"refix": {"parent_job_id": str(db.get(Assignment, a.parent_assignment_id).job_id) if a.parent_assignment_id else None,
+                            "reason": a.refix_reason}} if a.kind == "refix" else {}
+    return {**code_part, **refix_part, "kind": a.kind, "warranty": trust.warranty_view(db, a),
+            "proof_photos": [signed(k) for k in (a.proof_photos or [])], "worker_done_note": a.worker_done_note,
             "before_photos": [signed(p.photo_url) for wi in a.job.work_items for p in wi.photos],
             "rework_count": a.rework_count, "rework_left": max(0, flows.MAX_REWORK_ROUNDS - a.rework_count),
             "rework_open": a.rework_open,
@@ -135,7 +148,7 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
             "completed_at": a.completed_at.isoformat() if a.completed_at else None,
             "payment": payment_view(p), "ratings": ratings,
             "attendance": [{"in": x.checkin_at.isoformat(), "out": x.checkout_at.isoformat() if x.checkout_at else None,
-                            "offline": x.offline_synced, "geofence_ok": x.geofence_ok,
+                            "offline": x.offline_synced, "geofence_ok": x.geofence_ok, "code_status": x.code_status,
                             "selfie": signed(x.checkin_selfie_url)} for x in att]}
 
 
@@ -143,6 +156,7 @@ def job_card(db: Session, job: Job, lang: str) -> dict:
     from ..domain import team
     return {"kind": job.kind, "scheduled_for": job.scheduled_for.isoformat() if job.scheduled_for else None,
             "time_slot": job.time_slot, "team": team.summary(db, job),
+            "direct": trust.direct_state(job),
             "id": str(job.id), "customer_id": str(job.customer_id), "status": job.status.value, "locality": job.locality, "city": job.city,
             "address": job.address_text, "lat": job.location_lat, "lng": job.location_lng,
             "start_date": job.start_date.isoformat(), "created_at": job.created_at.isoformat(),

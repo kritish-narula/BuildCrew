@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import '../../widgets/media.dart';
+import 'growth_ui.dart';
 import 'worker_shell.dart' show badgeLabel;
 
 /// Progressive KYC (design rule #3): Level 0 = phone only, can browse/listen/bid.
@@ -30,9 +31,10 @@ class KycNudge extends StatelessWidget {
 }
 
 class KycStatusCard extends StatelessWidget {
-  const KycStatusCard({super.key, required this.state, required this.kyc, required this.onChanged});
+  const KycStatusCard({super.key, required this.state, required this.kyc, required this.onChanged, this.police});
   final AppState state;
   final Json kyc;
+  final Json? police; // {status, note, requested_at}: optional police verification step
   final Future<void> Function() onChanged;
   @override
   Widget build(BuildContext context) {
@@ -85,6 +87,10 @@ class KycStatusCard extends StatelessWidget {
                     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => KycLevel2Screen(state: state)));
                     await onChanged();
                   }),
+        if (police != null) ...[
+          const Divider(height: 12),
+          PoliceStep(state: state, police: police!, kycLevel: level, onChanged: onChanged),
+        ],
       ]),
     );
   }

@@ -339,12 +339,10 @@ class ComingSoon extends StatelessWidget {
   }
 }
 
-void showError(BuildContext context, Object e) {
-  final l = L.of(context);
-  // Server errors arrive already translated into the user's language; we only fill gaps
-  // (the demo backend throws bare codes: map those to friendly text).
+/// Friendly text for any error (server messages are already in the user's language; demo codes are mapped).
+String errorText(L l, Object e) {
   final coded = e is ApiException && needsLocalText(e.message) ? errorMessageFor(l, e.code, e.message) : null;
-  final msg = coded ?? switch (e) {
+  return coded ?? switch (e) {
     ApiException(code: 'network') => l.errorNetwork,
     ApiException(code: 'err.otp_invalid', message: '') => l.errorGeneric,
     ApiException(:final message) when message.isNotEmpty => message,
@@ -357,6 +355,10 @@ void showError(BuildContext context, Object e) {
     ApiException(code: 'err.contractor_only') => l.errContractorOnly,
     _ => l.errorGeneric,
   };
+}
+
+void showError(BuildContext context, Object e) {
+  final msg = errorText(L.of(context), e);
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(

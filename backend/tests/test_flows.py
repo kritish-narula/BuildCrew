@@ -93,8 +93,9 @@ def test_full_lifecycle_with_mandatory_rating():
 
     # S9 attendance: offline check-in replayed twice → one row; geofence respected
     ref2 = uuid.uuid4().hex
+    code = client.get(f"/customer/jobs/{jid}", headers=cust).json()["assignment"]["start_code"]["code"]
     for _ in range(2):
-        a = client.post("/worker/attendance", headers=plumber, json={"assignment_id": asg, "kind": "in", "lat": 18.5987,
+        a = client.post("/worker/attendance", headers=plumber, json={"assignment_id": asg, "kind": "in", "lat": 18.5987, "start_code": code,
                                                                     "lng": 73.7605, "client_ref": ref2, "offline": True})
         assert a.status_code == 200 and a.json()["geofence_ok"]
     far = client.post("/worker/attendance", headers=plumber, json={"assignment_id": asg, "kind": "out", "lat": 18.40, "lng": 73.70})
@@ -111,9 +112,10 @@ def test_full_lifecycle_with_mandatory_rating():
     assert client.post(f"/customer/jobs/{jid}/rate", headers=cust, json=stars).status_code == 409  # once only
 
     earn = client.get("/worker/earnings", headers=plumber).json()
-    assert earn["available_inr"] == before + 1500
-    w = client.post("/worker/withdraw", headers=plumber).json()
-    assert w["amount_inr"] >= 1500 and "*" in w["upi"]
+    assert earn["available_inr"] == before  # same-day pay: the 1500 went straight to UPI (see test_trust)
+    assert any(x["amount_inr"] == 1500 and x["source"] == "auto" for x in earn["paid_today"]["items"])
+    w = client.post("/worker/withdraw", headers=plumber).json()  # the leftover balance can still be withdrawn by hand
+    assert w["amount_inr"] == before and "*" in w["upi"]
     assert client.post("/worker/withdraw", headers=plumber).status_code == 409  # nothing left
 
     # two-way: worker rates customer
@@ -147,7 +149,7 @@ def test_admin_tools():
     assert csv.status_code == 200 and "eshram_registered" in csv.text
     m = client.get("/admin/map", headers=admin).json()
     assert m["pins"] and m["by_locality"]
-    job = client.get("/admin/jobs?status=open", headers=admin).json()[0]
+    job = next(j for j in client.get("/admin/jobs?status=open", headers=admin).json() if not j["direct"])  # not the exclusive "hire again" offer
     detail = client.get(f"/admin/jobs/{job['id']}", headers=admin).json()
     item = next(wi for wi in detail["work_items"] if wi["audio"])
     mod = client.post(f"/admin/work-items/{item['id']}/audio", headers=admin, json={"muted": True}).json()

@@ -124,6 +124,14 @@ class _CustomerShellState extends State<CustomerShell> {
     _push(j != null && isTeamJob(j) ? TeamJobScreen(state: _s, jobId: id) : CustomerJobScreen(state: _s, jobId: id));
   }
 
+  /// "Hire again" (Home row / past booking): Post a Job prefilled for the same worker, offered to him first.
+  Future<void> _hireAgain({String? jobId, String? workerId}) async {
+    final posted = await hireAgain(context, _s, jobId: jobId, workerId: workerId);
+    if (!mounted) return;
+    if (posted == true) setState(() => _tab = _contractor ? 2 : 1);
+    _reload();
+  }
+
   Future<void> _addBusiness() async {
     final l = L.of(context);
     final c = TextEditingController(text: _s.user?.orgName ?? '');
@@ -169,6 +177,7 @@ class _CustomerShellState extends State<CustomerShell> {
             onAddBusiness: contractor ? _addBusiness : null,
             onBrowse: () => _push(BrowseWorkersScreen(state: _s)),
             onSeeBookings: () => setState(() => _tab = contractor ? 2 : 1),
+            onHireAgain: (workerId) => _hireAgain(workerId: workerId),
           ),
           if (contractor)
             ContractorTeamTab(
@@ -186,6 +195,7 @@ class _CustomerShellState extends State<CustomerShell> {
             onReload: _reload,
             onOpenJob: _openJob,
             onPost: _post,
+            onHireAgain: (j) => _hireAgain(jobId: j['id'] as String),
           ),
           Scaffold(
             key: ValueKey('messages$_gen'),

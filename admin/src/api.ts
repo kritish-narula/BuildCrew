@@ -51,12 +51,16 @@ export const fmtTime = (s?: string | null) => (s ? new Date(s).toLocaleString("e
 // ---- shapes (subset of the API responses used by the UI)
 export type Kpis = {
   active_jobs: number; workers_online: number; workers_total: number; bids_today: number; gmv_inr: number; in_escrow_inr: number;
-  platform_revenue_inr: number; open_disputes: number; pending_bids: number; kyc_pending: number; jobs_by_status: Record<string, number>;
+  platform_revenue_inr: number; open_disputes: number; pending_bids: number; kyc_pending: number; police_pending: number; jobs_by_status: Record<string, number>;
 };
 export type WorkerRow = {
   id: string; name: string; phone: string; trades: string[]; rating: number; rating_count: number; completed_jobs: number; badges: string[];
   kyc_level: number; city: string; suspended: boolean; strikes: number; online: boolean; aadhaar: string; pan: string; eshram: boolean; earned_inr: number;
   selfie?: string | null; doc_url?: string | null; doc_type?: string;
+};
+export type PoliceRow = {
+  id: string; name: string; phone: string; trades: string[]; rating: number; rating_count: number; completed_jobs: number; kyc_level: number;
+  city: string; police_status: "pending" | "verified" | "rejected"; requested_at: string | null; note: string | null; earned_inr: number;
 };
 export type Audio = { url: string; duration_sec: number; size_kb: number; flagged: boolean; muted: boolean } | null;
 export type WorkItem = { id: string; index: number; trade: string; photos: string[]; text: string | null; transcript: string | null; translated: boolean; original_language: string; audio: Audio };

@@ -67,5 +67,15 @@
  "err.team_full": null,
  "err.contractor_only": null,
  "err.wage_below_minimum": null,
- "err.team_use_roster": null
+ "err.team_use_roster": null,
+ "err.start_code_invalid": "Wrong code. {left} tries left. Ask the customer to read it again.",
+ "err.start_code_locked": "Too many wrong codes. Please try again in {minutes} min.",
+ "err.start_code_required": "Ask the customer for the 4-digit start code.",
+ "err.trip_not_active": "The worker is not on the way right now.",
+ "err.trip_expired": "This trip link has ended.",
+ "err.warranty_expired": "The warranty for this work has ended.",
+ "err.refix_open": "A free re-fix visit is already on its way for this job.",
+ "err.refix_limit": "The free re-fix limit ({max}) for this job is used up.",
+ "err.kyc_required": "Add your name, photo and UPI first.",
+ "err.direct_only": "This request was sent to another worker."
 }

@@ -15,7 +15,7 @@ from sqlalchemy import select, text
 from . import services
 from .audit import audit
 from .db import SessionLocal
-from .domain import pricing
+from .domain import pricing, trust
 from .domain.fees import compute_fees
 from .enums import (
     RatingDirection,
@@ -86,6 +86,9 @@ WORKERS = [  # phone, name, lang, trades, locality, rating, count, kyc, badges, 
     ("9200000023", "Santosh Kamble", "mr", ["helper"], "Aundh", 4.1, 8, 1, [], True),                   # Maharashtra
     ("9200000024", "Sunita Devi", "hi", ["helper"], "Kharadi", 4.4, 18, 1, [], True),                   # Madhya Pradesh
 ]
+# worker index (1-based) -> police verification status / warranty re-fixes owed (demo: badges, queue, record)
+POLICE = {1: "verified", 3: "verified", 5: "verified", 13: "verified", 16: "verified", 7: "pending", 2: "pending", 10: "rejected"}
+REFIXES = {1: 1, 3: 2, 5: 1, 16: 1, 13: 1}
 CUSTOMERS = [
     ("9100000001", "Priya Sharma", "hi", CustomerType.homeowner, None),
     ("9100000002", "Anil Deshmukh", "mr", CustomerType.contractor, "Deshmukh Constructions"),
@@ -170,6 +173,10 @@ def run(do_reset: bool = False):
             badges=badges, overall_rating=rating, rating_count=count, completed_jobs=count,
             home_lat=lat + random.uniform(-0.01, 0.01), home_lng=lng + random.uniform(-0.01, 0.01),
             city="Pune", is_online=online,
+            police_status=POLICE.get(i, "none"), refix_count=REFIXES.get(i, 0),
+            police_requested_at=NOW - timedelta(hours=5) if POLICE.get(i) == "pending" else None,
+            police_decided_at=NOW - timedelta(days=20) if POLICE.get(i) in ("verified", "rejected") else None,
+            police_note="Address could not be matched" if POLICE.get(i) == "rejected" else None,
             lifetime_earnings_paise=count * random.randint(1500, 4000) * INR))
         workers.append(u)
     db.flush()
@@ -231,6 +238,8 @@ def run(do_reset: bool = False):
                        worker_payout_paise=fees.worker_payout_paise, escrow_state=escrow,
                        razorpay_ref=f"order_mock_seed{str(a.id)[:8]}", method="upi",
                        paid_at=bid.created_at + timedelta(hours=1) if escrow != EscrowState.created else None))
+        if escrow != EscrowState.created:
+            trust.new_nonce(a)  # the customer's 4-digit start code (derived, never stored)
         if started:  # worker travelled and is on site
             a.journey_started_at = started - timedelta(minutes=25)
             a.worker_lat, a.worker_lng, a.worker_loc_at = job.location_lat, job.location_lng, started
@@ -311,6 +320,7 @@ def run(do_reset: bool = False):
                        worker_payout_paise=fees.worker_payout_paise, escrow_state=EscrowState.held,
                        razorpay_ref=f"order_mock_team{str(a.id)[:8]}", method="upi", paid_at=NOW - timedelta(days=3)))
         a.journey_started_at = NOW - timedelta(days=2, minutes=25)
+        trust.new_nonce(a)
         return a
 
     # Site 1: in progress. 3 masons + 3 helpers wanted, 2 masons + 1 helper hired and on site, others applied.
@@ -387,6 +397,56 @@ def run(do_reset: bool = False):
     hp.kyc_doc_type, hp.kyc_doc_key = "aadhaar", photo("kyc-doc-7")
     hp.lifetime_earnings_paise = 44_000 * INR  # near the ₹50k cap → app nudges for Level 2
 
+    # ---- Trust demo data ----
+    priya, imran = customers[0], by_phone["9200000003"]
+    # A plumber job Priya finished 3 days ago: rated 5 stars, paid, inside the 30-day warranty ("Problem came back" + "Hire again").
+    done = NOW - timedelta(days=3)
+    lat, lng = PUNE_LOCALITIES["Kothrud"]
+    rj = Job(customer_id=priya.id, location_lat=lat, location_lng=lng, address_text="Flat 302, Sai Residency, Kothrud, Pune", city="Pune",
+             locality="Kothrud", start_date=(done - timedelta(days=1)).date(), status=JobStatus.completed, created_at=done - timedelta(days=5))
+    db.add(rj)
+    db.flush()
+    rwi = WorkItem(job_id=rj.id, sort_order=0, trade=Trade.plumber, text_description="Kitchen sink tap leaking and the waste pipe under the sink drips. Replace the tap and fix the pipe joint.",
+                   description_language="en")
+    db.add(rwi)
+    db.flush()
+    db.add(WorkItemPhoto(work_item_id=rwi.id, photo_url=trade_photo("plumber", 1), sort_order=0))
+    rprice = 1300 * INR
+    rb = Bid(job_id=rj.id, worker_id=imran.id, quoted_price_paise=rprice, status=BidStatus.accepted, created_at=rj.created_at + timedelta(hours=2))
+    db.add(rb)
+    db.flush()
+    ra = Assignment(job_id=rj.id, worker_id=imran.id, accepted_bid_id=rb.id, escrow_status=EscrowState.released,
+                    started_at=done - timedelta(hours=4), completed_at=done)
+    db.add(ra)
+    db.flush()
+    rf = compute_fees(rprice)
+    db.add(Payment(assignment_id=ra.id, amount_paise=rf.customer_pays_paise, platform_fee_paise=rf.platform_fee_paise,
+                   worker_payout_paise=rf.worker_payout_paise, escrow_state=EscrowState.released, razorpay_ref="order_mock_seedwarranty",
+                   method="upi", paid_at=done - timedelta(days=1), released_at=done + timedelta(hours=2)))
+    db.add(Rating(assignment_id=ra.id, direction=RatingDirection.customer_to_worker, rater_id=priya.id, ratee_id=imran.id, quality=5,
+                  timeliness=5, behaviour=5, value_for_money=4, overall=4.75, comment="Fixed it neatly", created_at=done + timedelta(hours=2)))
+    # Same-day pay: the worker's payout from that job went to UPI the moment it was released (shows in "Paid today").
+    db.add(Payout(worker_id=imran.id, amount_paise=rf.worker_payout_paise, upi_masked="im****@okaxis", status="paid", source="auto",
+                  provider_ref="pout_mock_seed1", assignment_id=ra.id, created_at=NOW - timedelta(hours=1), paid_at=NOW - timedelta(minutes=59),
+                  notified_at=NOW - timedelta(minutes=59)))
+    # "Hire again": Priya asks Ramesh (mason) again - exclusive to him for the next 2 hours.
+    lat, lng = PUNE_LOCALITIES["Kothrud"]
+    dj = Job(customer_id=priya.id, location_lat=lat, location_lng=lng, address_text="Flat 302, Sai Residency, Kothrud, Pune", city="Pune",
+             locality="Kothrud", start_date=date.today() + timedelta(days=2), status=JobStatus.open, created_at=NOW - timedelta(minutes=20),
+             direct_worker_id=by_phone["9200000001"].id, direct_until=NOW + timedelta(minutes=100))
+    db.add(dj)
+    db.flush()
+    dwi = WorkItem(job_id=dj.id, sort_order=0, trade=Trade.mason, description_language="en",
+                   text_description="Balcony wall plaster is cracking and needs patching and finishing, about 80 sq ft. Same as last time.")
+    dkey = store.put(audio_bytes, prefix="audio", ext="ogg", content_type="audio/ogg")
+    dwi.audio_url, dwi.audio_duration_sec, dwi.audio_size_bytes = dkey, 21, len(audio_bytes)
+    dwi.audio_upload_state = AudioUploadState.uploaded
+    dwi.transcript = services.speech().transcribe(audio_bytes, "en")
+    db.add(dwi)
+    db.flush()
+    for p_ in range(2):
+        db.add(WorkItemPhoto(work_item_id=dwi.id, photo_url=trade_photo("mason", p_), sort_order=p_))
+
     # Historical prices for the Fair Price Estimate (C2 step 4): the pricing model +/- noise, for the sample
     # Pune marketplace and a few other cities so tier-2 / other-metro estimates have local history too.
     city_localities = {"Pune": list(PUNE_LOCALITIES), "Delhi": ["Dwarka", "Rohini"], "Bengaluru": ["Whitefield", "Indiranagar"],
@@ -402,7 +462,7 @@ def run(do_reset: bool = False):
                                         price_paise=int(round(med * random.uniform(0.8, 1.2) / 50.0)) * 50 * INR,
                                         completed_on=date.today() - timedelta(days=random.randint(5, 180))))
     db.commit()
-    print(f"Seeded: 1 admin, {len(customers)} customers, {len(workers)} workers, {len(jobs)} jobs.")
+    print(f"Seeded: 1 admin, {len(customers)} customers, {len(workers)} workers, {len(jobs)} jobs (+ team sites and trust demo data).")
 
 
 if __name__ == "__main__":

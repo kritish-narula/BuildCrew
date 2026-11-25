@@ -25,6 +25,15 @@ String? errorMessageFor(L l, String code, [String param = '']) => switch (code) 
       'err.too_many_photos' => l.errTooManyPhotos,
       'err.account_suspended' => l.errAccountSuspended,
       'err.job_not_completed' => l.errJobNotCompleted,
+      'err.start_code_invalid' => l.errStartCodeInvalid(param.isEmpty ? '?' : param),
+      'err.start_code_locked' => l.errStartCodeLocked(param.isEmpty ? '10' : param),
+      'err.start_code_required' => l.errStartCodeRequired,
+      'err.trip_not_active' || 'err.trip_expired' => l.errTripNotActive,
+      'err.warranty_expired' => l.errWarrantyExpired,
+      'err.refix_open' => l.errRefixOpen,
+      'err.refix_limit' => l.errRefixLimit(param.isEmpty ? '2' : param),
+      'err.kyc_required' => l.errKycRequired,
+      'err.direct_only' => l.errDirectOnly,
       _ => null,
     };
 

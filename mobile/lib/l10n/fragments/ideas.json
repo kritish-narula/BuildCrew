@@ -1,0 +1,562 @@
+{
+  "startCodeTitle": {
+    "en": "Start code",
+    "hi": "स्टार्ट कोड"
+  },
+  "startCodeTell": {
+    "en": "Tell this code to {name} when they arrive",
+    "hi": "{name} के पहुँचने पर उन्हें यह कोड बताएँ",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "startCodeWhy": {
+    "en": "Work starts only after the code is entered. Do not share it before they arrive.",
+    "hi": "कोड डालने के बाद ही काम शुरू होता है। पहुँचने से पहले इसे किसी को न बताएँ।"
+  },
+  "startCodeLockedCust": {
+    "en": "Too many wrong tries. {name} can try again in a few minutes.",
+    "hi": "कई बार गलत कोड डाला गया। {name} कुछ मिनट बाद फिर कोशिश कर सकते हैं।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "startCodeVerified": {
+    "en": "Start code verified. Work has started.",
+    "hi": "स्टार्ट कोड सही है। काम शुरू हो गया।"
+  },
+  "startCodeEnterTitle": {
+    "en": "Enter start code",
+    "hi": "स्टार्ट कोड डालें"
+  },
+  "startCodeEnterSub": {
+    "en": "Ask the customer for the 4-digit code shown in their app.",
+    "hi": "ग्राहक से उनके ऐप में दिख रहा 4 अंकों का कोड माँगें।"
+  },
+  "startCodeStart": {
+    "en": "Start work",
+    "hi": "काम शुरू करें"
+  },
+  "startCodeNeeded": {
+    "en": "Ask the customer for the 4-digit start code to begin.",
+    "hi": "काम शुरू करने के लिए ग्राहक से 4 अंकों का स्टार्ट कोड माँगें।"
+  },
+  "startCodeLockedWorker": {
+    "en": "Too many wrong codes. Try again in {minutes} min.",
+    "hi": "कई बार गलत कोड डाला। {minutes} मिनट बाद फिर कोशिश करें।",
+    "placeholders": {
+      "minutes": "int"
+    }
+  },
+  "startCodePending": {
+    "en": "Code saved offline. It will be checked when you are online.",
+    "hi": "कोड ऑफ़लाइन सेव हुआ। नेटवर्क आने पर जाँचा जाएगा।"
+  },
+  "startCodeFailed": {
+    "en": "The code entered offline was wrong. Enter it again to start.",
+    "hi": "ऑफ़लाइन डाला गया कोड गलत था। शुरू करने के लिए फिर से डालें।"
+  },
+  "startCodeEnterAgain": {
+    "en": "Enter start code",
+    "hi": "स्टार्ट कोड डालें"
+  },
+  "startCodeOfflineSaved": {
+    "en": "No network. Code saved, check-in will be verified later.",
+    "hi": "नेटवर्क नहीं है। कोड सेव हुआ, चेक-इन बाद में जाँचा जाएगा।"
+  },
+  "startCodePendingPill": {
+    "en": "Code pending",
+    "hi": "कोड जाँच बाकी"
+  },
+  "startCodeFailedPill": {
+    "en": "Wrong code",
+    "hi": "कोड गलत"
+  },
+  "teamCodeToday": {
+    "en": "Start code today: {code}",
+    "hi": "आज का स्टार्ट कोड: {code}",
+    "placeholders": {
+      "code": "String"
+    }
+  },
+  "teamCodeDone": {
+    "en": "Checked in today",
+    "hi": "आज चेक-इन हो गया"
+  },
+  "startCodeCard": {
+    "en": "Start code",
+    "hi": "स्टार्ट कोड"
+  },
+  "errStartCodeInvalid": {
+    "en": "Wrong code. {left} tries left.",
+    "hi": "कोड गलत है। {left} कोशिशें बची हैं।",
+    "placeholders": {
+      "left": "String"
+    }
+  },
+  "errStartCodeLocked": {
+    "en": "Too many wrong codes. Try again in {minutes} min.",
+    "hi": "कई बार गलत कोड डाला। {minutes} मिनट बाद फिर कोशिश करें।",
+    "placeholders": {
+      "minutes": "String"
+    }
+  },
+  "errStartCodeRequired": {
+    "en": "Enter the start code from the customer first.",
+    "hi": "पहले ग्राहक का स्टार्ट कोड डालें।"
+  },
+  "errTripNotActive": {
+    "en": "Trip sharing works only while the worker is on the way.",
+    "hi": "ट्रिप शेयर तभी हो सकता है जब कारीगर रास्ते में हो।"
+  },
+  "errWarrantyExpired": {
+    "en": "The guarantee period for this work has ended.",
+    "hi": "इस काम की गारंटी की अवधि खत्म हो चुकी है।"
+  },
+  "errRefixOpen": {
+    "en": "A free re-fix visit is already open for this job.",
+    "hi": "इस काम के लिए मुफ़्त री-फ़िक्स विज़िट पहले से खुली है।"
+  },
+  "errRefixLimit": {
+    "en": "The free re-fix limit for this job ({max}) is used up.",
+    "hi": "इस काम की मुफ़्त री-फ़िक्स सीमा ({max}) पूरी हो चुकी है।",
+    "placeholders": {
+      "max": "String"
+    }
+  },
+  "errKycRequired": {
+    "en": "Complete your UPI and selfie step first.",
+    "hi": "पहले अपना UPI और सेल्फ़ी वाला चरण पूरा करें।"
+  },
+  "errDirectOnly": {
+    "en": "This job was sent to another worker first.",
+    "hi": "यह काम पहले किसी और कारीगर को भेजा गया है।"
+  },
+  "shareTrip": {
+    "en": "Share trip",
+    "hi": "ट्रिप शेयर करें"
+  },
+  "shareTripTitle": {
+    "en": "Share this trip",
+    "hi": "यह ट्रिप शेयर करें"
+  },
+  "shareTripSub": {
+    "en": "Family or friends can follow the worker live. Your address is never shared.",
+    "hi": "परिवार या दोस्त कारीगर को लाइव देख सकते हैं। आपका पता कभी शेयर नहीं होता।"
+  },
+  "shareTripText": {
+    "en": "I booked {name} ({trade}) on BuildCrew. Phone: {phone}. Follow live: {url}",
+    "hi": "मैंने BuildCrew पर {name} ({trade}) को बुक किया है। फ़ोन: {phone}। लाइव देखें: {url}",
+    "placeholders": {
+      "name": "String",
+      "trade": "String",
+      "phone": "String",
+      "url": "String"
+    }
+  },
+  "shareTripTextVerified": {
+    "en": "I booked {name} ({trade}), police verified, on BuildCrew. Phone: {phone}. Follow live: {url}",
+    "hi": "मैंने BuildCrew पर {name} ({trade}) को बुक किया है, पुलिस वेरिफ़ाइड। फ़ोन: {phone}। लाइव देखें: {url}",
+    "placeholders": {
+      "name": "String",
+      "trade": "String",
+      "phone": "String",
+      "url": "String"
+    }
+  },
+  "shareTripSend": {
+    "en": "Share",
+    "hi": "शेयर करें"
+  },
+  "shareTripValid": {
+    "en": "The link stops working when they arrive, or after 6 hours.",
+    "hi": "कारीगर के पहुँचते ही या 6 घंटे बाद लिंक बंद हो जाता है।"
+  },
+  "policeVerified": {
+    "en": "Police verified",
+    "hi": "पुलिस वेरिफ़ाइड"
+  },
+  "policeTitle": {
+    "en": "Police verification",
+    "hi": "पुलिस वेरिफ़िकेशन"
+  },
+  "policeSub": {
+    "en": "Optional. A partner checks your Aadhaar and address. The shield badge builds trust and ranks you higher.",
+    "hi": "वैकल्पिक। एक पार्टनर आपका आधार और पता जाँचता है। शील्ड बैज से भरोसा बढ़ता है और आप ऊपर दिखते हैं।"
+  },
+  "policeGet": {
+    "en": "Get police verification",
+    "hi": "पुलिस वेरिफ़िकेशन करवाएँ"
+  },
+  "policePending": {
+    "en": "Verification in progress. We will tell you the result.",
+    "hi": "वेरिफ़िकेशन चल रहा है। नतीजा हम बताएँगे।"
+  },
+  "policeDone": {
+    "en": "You are police verified. The shield shows on your profile and quotes.",
+    "hi": "आप पुलिस वेरिफ़ाइड हैं। शील्ड आपकी प्रोफ़ाइल और कोट पर दिखता है।"
+  },
+  "policeRejected": {
+    "en": "Could not verify this time: {note}",
+    "hi": "इस बार वेरिफ़ाई नहीं हो सका: {note}",
+    "placeholders": {
+      "note": "String"
+    }
+  },
+  "policeRetry": {
+    "en": "Request again",
+    "hi": "फिर से अनुरोध करें"
+  },
+  "policeRequested": {
+    "en": "Request sent",
+    "hi": "अनुरोध भेज दिया गया"
+  },
+  "policeNeedKyc": {
+    "en": "Add your UPI and selfie first to ask for verification.",
+    "hi": "वेरिफ़िकेशन के लिए पहले UPI और सेल्फ़ी जोड़ें।"
+  },
+  "sortVerified": {
+    "en": "Verified first",
+    "hi": "वेरिफ़ाइड पहले"
+  },
+  "warrantyChip": {
+    "en": "{days}-day re-fix guarantee",
+    "hi": "{days} दिन की री-फ़िक्स गारंटी",
+    "placeholders": {
+      "days": "int"
+    }
+  },
+  "warrantyTitle": {
+    "en": "Work guarantee",
+    "hi": "काम की गारंटी"
+  },
+  "warrantyUntil": {
+    "en": "Guaranteed until {date}. If the problem comes back, the same worker returns for free.",
+    "hi": "{date} तक गारंटी। समस्या लौटे तो वही कारीगर मुफ़्त में दोबारा आएगा।",
+    "placeholders": {
+      "date": "String"
+    }
+  },
+  "warrantyProblem": {
+    "en": "Problem came back",
+    "hi": "समस्या फिर आ गई"
+  },
+  "warrantySheetTitle": {
+    "en": "Report the problem",
+    "hi": "समस्या बताएँ"
+  },
+  "warrantySheetSub": {
+    "en": "{name} will come back and fix it for free.",
+    "hi": "{name} दोबारा आकर इसे मुफ़्त में ठीक करेंगे।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "warrantyReasonHint": {
+    "en": "What came back? For example: the tap is leaking again",
+    "hi": "क्या फिर से हुआ? जैसे: नल फिर से टपक रहा है"
+  },
+  "warrantyPhotosHint": {
+    "en": "Add at least 1 photo of the problem",
+    "hi": "समस्या की कम से कम 1 फ़ोटो जोड़ें"
+  },
+  "warrantySend": {
+    "en": "Request free re-fix",
+    "hi": "मुफ़्त री-फ़िक्स माँगें"
+  },
+  "warrantyOpen": {
+    "en": "A free re-fix visit is in progress.",
+    "hi": "मुफ़्त री-फ़िक्स विज़िट चल रही है।"
+  },
+  "warrantyOpenView": {
+    "en": "View re-fix",
+    "hi": "री-फ़िक्स देखें"
+  },
+  "warrantyLimit": {
+    "en": "Free re-fix limit reached for this job ({used} of {max}).",
+    "hi": "इस काम की मुफ़्त री-फ़िक्स सीमा पूरी ({used} / {max}).",
+    "placeholders": {
+      "used": "int",
+      "max": "int"
+    }
+  },
+  "warrantyExpired": {
+    "en": "The guarantee ended on {date}.",
+    "hi": "गारंटी {date} को खत्म हो गई।",
+    "placeholders": {
+      "date": "String"
+    }
+  },
+  "warrantyRequested": {
+    "en": "Re-fix requested. {name} is on the way.",
+    "hi": "री-फ़िक्स माँगी गई। {name} रास्ते में हैं।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "refixBadge": {
+    "en": "Warranty re-fix",
+    "hi": "वारंटी री-फ़िक्स"
+  },
+  "refixFreeVisit": {
+    "en": "Free visit. No payment for this one.",
+    "hi": "मुफ़्त विज़िट। इसका कोई भुगतान नहीं।"
+  },
+  "refixReasonLabel": {
+    "en": "What the customer reported: {reason}",
+    "hi": "ग्राहक ने बताया: {reason}",
+    "placeholders": {
+      "reason": "String"
+    }
+  },
+  "refixDoneTitle": {
+    "en": "Re-fix finished",
+    "hi": "री-फ़िक्स पूरी हुई"
+  },
+  "refixDoneSub": {
+    "en": "Thank you for making it right. No payment or rating for a free visit.",
+    "hi": "इसे ठीक करने के लिए धन्यवाद। मुफ़्त विज़िट का कोई भुगतान या रेटिंग नहीं होती।"
+  },
+  "refixCustomerTitle": {
+    "en": "Free re-fix visit",
+    "hi": "मुफ़्त री-फ़िक्स विज़िट"
+  },
+  "refixCustomerSub": {
+    "en": "{name} is fixing the problem at no cost.",
+    "hi": "{name} बिना किसी शुल्क के समस्या ठीक कर रहे हैं।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "refixConfirmQ": {
+    "en": "Is the problem fixed?",
+    "hi": "क्या समस्या ठीक हो गई?"
+  },
+  "warrantyRecord": {
+    "en": "{refixes} re-fixes in {jobs} jobs",
+    "hi": "{jobs} काम में {refixes} री-फ़िक्स",
+    "placeholders": {
+      "refixes": "int",
+      "jobs": "int"
+    }
+  },
+  "warrantyRecordTitle": {
+    "en": "Work record",
+    "hi": "काम का रिकॉर्ड"
+  },
+  "paidToday": {
+    "en": "Paid today",
+    "hi": "आज मिला भुगतान"
+  },
+  "paidTodayTotal": {
+    "en": "{amount} paid to your UPI today",
+    "hi": "आज आपके UPI में {amount} आए",
+    "placeholders": {
+      "amount": "String"
+    }
+  },
+  "payoutProcessing": {
+    "en": "Sending to {upi}",
+    "hi": "{upi} पर भेजा जा रहा है",
+    "placeholders": {
+      "upi": "String"
+    }
+  },
+  "payoutPaid": {
+    "en": "Paid to {upi}",
+    "hi": "{upi} पर भेज दिया",
+    "placeholders": {
+      "upi": "String"
+    }
+  },
+  "payoutNotice": {
+    "en": "{amount} sent to your UPI {upi}",
+    "hi": "{amount} आपके UPI {upi} पर भेज दिए गए",
+    "placeholders": {
+      "amount": "String",
+      "upi": "String"
+    }
+  },
+  "addUpiNudge": {
+    "en": "Add your UPI so money reaches you the same day",
+    "hi": "पैसा उसी दिन मिलने के लिए अपना UPI जोड़ें"
+  },
+  "addUpiAction": {
+    "en": "Add UPI",
+    "hi": "UPI जोड़ें"
+  },
+  "sameDayNote": {
+    "en": "Money goes to your UPI as soon as the customer rates.",
+    "hi": "ग्राहक के रेटिंग देते ही पैसा आपके UPI पर चला जाता है।"
+  },
+  "levelHelper": {
+    "en": "Helper",
+    "hi": "हेल्पर"
+  },
+  "levelSemi": {
+    "en": "Semi-skilled",
+    "hi": "अर्ध-कुशल"
+  },
+  "levelSkilled": {
+    "en": "Skilled",
+    "hi": "कुशल"
+  },
+  "levelMaster": {
+    "en": "Master",
+    "hi": "मास्टर"
+  },
+  "levelCardTitle": {
+    "en": "Your level",
+    "hi": "आपका स्तर"
+  },
+  "levelNext": {
+    "en": "Next level: {name}",
+    "hi": "अगला स्तर: {name}",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "levelNeedJobs": {
+    "en": "{n} more completed jobs",
+    "hi": "{n} और पूरे किए गए काम",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "levelNeedRating": {
+    "en": "Average rating {rating} or more",
+    "hi": "औसत रेटिंग {rating} या ज़्यादा",
+    "placeholders": {
+      "rating": "String"
+    }
+  },
+  "levelNeedRefix": {
+    "en": "Re-fix rate under {pct}%",
+    "hi": "री-फ़िक्स दर {pct}% से कम",
+    "placeholders": {
+      "pct": "int"
+    }
+  },
+  "levelTop": {
+    "en": "You are at the top level. Keep the quality up.",
+    "hi": "आप सबसे ऊँचे स्तर पर हैं। काम की क्वालिटी बनाए रखें।"
+  },
+  "levelFairNote": {
+    "en": "Your suggested price range is {pct}% higher at this level.",
+    "hi": "इस स्तर पर आपकी सुझाई कीमत की रेंज {pct}% ऊँची है।",
+    "placeholders": {
+      "pct": "int"
+    }
+  },
+  "streakWeeks": {
+    "en": "{n}-week streak",
+    "hi": "{n} हफ़्ते की लगातार कमाई",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "streakKeep": {
+    "en": "Finish a job this week to keep your streak.",
+    "hi": "स्ट्रीक बनाए रखने के लिए इस हफ़्ते एक काम पूरा करें।"
+  },
+  "levelOnCard": {
+    "en": "Level: {name}",
+    "hi": "स्तर: {name}",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "hireAgain": {
+    "en": "Hire again",
+    "hi": "फिर से बुलाएँ"
+  },
+  "yourWorkers": {
+    "en": "Your workers",
+    "hi": "आपके कारीगर"
+  },
+  "sendToFirst": {
+    "en": "Send to {name} first",
+    "hi": "पहले {name} को भेजें",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "sendToFirstNote": {
+    "en": "{name} gets 2 hours to quote first. If they decline or do not reply, your job opens to everyone.",
+    "hi": "{name} को पहले 2 घंटे कोट देने के लिए मिलते हैं। मना करने या जवाब न देने पर आपका काम सबके लिए खुल जाता है।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "hireAgainPrefilled": {
+    "en": "Filled from your last job with {name}. Add fresh photos.",
+    "hi": "{name} के साथ आपके पिछले काम से भरा गया। नई फ़ोटो जोड़ें।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "directWaiting": {
+    "en": "Waiting for {name}. If they decline or do not reply, it opens to everyone.",
+    "hi": "{name} के जवाब का इंतज़ार है। मना करने या जवाब न देने पर यह सबके लिए खुल जाएगा।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "directDeclined": {
+    "en": "{name} cannot take this job. It is open to everyone now.",
+    "hi": "{name} यह काम नहीं ले सकते। अब यह सबके लिए खुला है।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "directExpired": {
+    "en": "{name} did not reply in time. Your job is open to everyone now.",
+    "hi": "{name} ने समय पर जवाब नहीं दिया। अब आपका काम सबके लिए खुला है।",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "directBadge": {
+    "en": "Direct request",
+    "hi": "सीधा अनुरोध"
+  },
+  "directWantsYou": {
+    "en": "{worker}, {customer} wants you again",
+    "hi": "{worker}, {customer} आपको फिर से बुलाना चाहते हैं",
+    "placeholders": {
+      "worker": "String",
+      "customer": "String"
+    }
+  },
+  "directDecline": {
+    "en": "Decline",
+    "hi": "मना करें"
+  },
+  "directDeclinedDone": {
+    "en": "Declined. The job is open to everyone now.",
+    "hi": "मना कर दिया। अब यह काम सबके लिए खुला है।"
+  },
+  "directQuotedByYou": {
+    "en": "You quoted. Waiting for the customer.",
+    "hi": "आपने कोट दे दिया। ग्राहक के जवाब का इंतज़ार है।"
+  },
+  "directUntil": {
+    "en": "Reply within {time}",
+    "hi": "{time} में जवाब दें",
+    "placeholders": {
+      "time": "String"
+    }
+  },
+  "directLeft": {
+    "en": "{h}h {m}m left",
+    "hi": "{h} घंटे {m} मिनट बाकी",
+    "placeholders": {
+      "h": "int",
+      "m": "int"
+    }
+  },
+  "hireAgainHint": {
+    "en": "Past work",
+    "hi": "पिछला काम"
+  }
+}

@@ -11,7 +11,7 @@ from ..audit import audit
 from ..config import get_settings
 from ..crypto import mask_upi
 from ..db import get_db
-from ..domain import flows, pricing, team
+from ..domain import flows, levels, pricing, team, trust
 from ..domain.policies import can_access_job_media
 from ..enums import JobStatus, Role, Trade
 from ..errors import AppError
@@ -52,6 +52,9 @@ def feed(user: User = Depends(W), db: Session = Depends(get_db)):
     my_bids = {b.job_id: b for b in db.scalars(select(Bid).where(Bid.worker_id == user.id))}
     out = []
     for job in jobs:
+        ex = trust.exclusive_to(job)
+        if ex is not None and ex != user.id:
+            continue  # a "hire again" offer is for ONE worker until he declines or the 2 hours pass
         trades = [wi.trade.value for wi in job.work_items]
         if wp.trades and not set(trades) & set(wp.trades):
             continue
@@ -74,7 +77,10 @@ def feed(user: User = Depends(W), db: Session = Depends(get_db)):
             "kind": job.kind, "team": tsum, "scheduled_for": job.scheduled_for.isoformat() if job.scheduled_for else None,
             "time_slot": job.time_slot,
             "already_bid": mine is not None, "my_price_inr": mine.quoted_price_paise / 100 if mine else None,
+            "direct": {"customer_name": db.get(User, job.customer_id).name, "until": job.direct_until.isoformat()}
+            if ex == user.id else None,
         })
+    out.sort(key=lambda r: 0 if r["direct"] else 1)  # stable: direct requests first, newest first otherwise
     return out
 
 
@@ -83,24 +89,31 @@ def job_detail(job_id: uuid.UUID, user: User = Depends(W), db: Session = Depends
     """S5. Each work item: photos, text + transcript translated into the worker's language,
     and a signed audio URL (only if the access policy allows)."""
     job = _job(db, job_id)
+    trust.check_direct_access(job, user)
     allowed = can_access_job_media(db, user, job)
     if not allowed and job.status not in (JobStatus.open, JobStatus.bidding) and not (job.kind == "team" and job.status in (JobStatus.assigned, JobStatus.in_progress)):
         raise AppError("err.forbidden", 403)
     mine = db.scalar(select(Bid).where(Bid.job_id == job.id, Bid.worker_id == user.id))
     wp = user.worker_profile
     dist = services.maps().distance_km((wp.home_lat, wp.home_lng), (job.location_lat, job.location_lng)) if wp.home_lat else None
+    lvl = levels.level_for(wp.completed_jobs, wp.overall_rating if wp.rating_count else 0.0, wp.refix_count)
+    mult = lvl["fair_multiplier"]
     out = {**job_card(db, job, user.language_code),
            "address": job.address_text if mine and mine.status.value == "accepted" else job.locality,  # exact address only once hired
            "distance_km": round(dist, 1) if dist is not None else None,
            "work_items": [work_item_view(db, wi, user.language_code, include_audio=allowed) for wi in job.work_items],
            "my_bid": {"id": str(mine.id), "price_inr": mine.quoted_price_paise / 100, "status": mine.status.value} if mine else None,
            "bid_count": len(job.bids),
-           "fair_range": pricing.fair_range(job, wp.trades)}
+           "fair_range": pricing.scale_range(pricing.fair_range(job, wp.trades), mult),
+           "level": lvl["code"], "level_multiplier": mult,
+           "direct": ({"customer_name": db.get(User, job.customer_id).name, "until": job.direct_until.isoformat(),
+                       "state": trust.direct_state(job)} if job.direct_worker_id == user.id else None)}
     if job.kind == "team":
         # A team line is a DAILY wage: the fair range is the day-wage band of the trade this worker would fill.
         mine_item = next((wi for wi in job.work_items if not wp.trades or wi.trade.value in wp.trades), job.work_items[0])
         dw = pricing.day_wage_range(mine_item.trade.value, job.city)
-        out["fair_range"] = {"low": dw["low"], "median": dw["median"], "high": dw["high"], "min_wage_total": dw["min_wage"], "est_days": 1}
+        out["fair_range"] = pricing.scale_range({"low": dw["low"], "median": dw["median"], "high": dw["high"],
+                                                 "min_wage_total": dw["min_wage"], "est_days": 1}, mult)
         out["my_item"] = {"trade": mine_item.trade.value, "days": mine_item.days, "daily_wage_inr": (mine_item.daily_wage_paise or 0) / 100,
                           "headcount": mine_item.headcount}
         out["open_for_team"] = job.status in team.HIRING and team.open_slots(db, job) > 0
@@ -152,16 +165,21 @@ def assignments(user: User = Depends(W), db: Session = Depends(get_db)):
     rows = db.scalars(select(Assignment).where(Assignment.worker_id == user.id, Assignment.released_at.is_(None))).all()
     out = []
     for a in sorted(rows, key=lambda x: x.job.created_at, reverse=True):
-        v = assignment_view(db, a, user.language_code)
+        v = assignment_view(db, a, user.language_code, viewer="worker")
         v["job"] = {**job_card(db, a.job, user.language_code), "address": a.job.address_text}
         v["customer_name"] = a.job and db.get(User, a.job.customer_id).name
         out.append(v)
     return out
 
 
+class StartIn(BaseModel):
+    code: str | None = Field(default=None, max_length=8)  # the 4 digits the customer shows on arrival
+
+
 @router.post("/assignments/{assignment_id}/start")
-def start(assignment_id: uuid.UUID, user: User = Depends(W), db: Session = Depends(get_db)):
-    flows.start_work(db, user, _my_assignment(db, user, assignment_id))
+def start(assignment_id: uuid.UUID, body: StartIn | None = None, user: User = Depends(W), db: Session = Depends(get_db)):
+    """Start work. Needs the customer's 4-digit start code (err.start_code_invalid / err.start_code_locked)."""
+    trust.worker_start(db, user, _my_assignment(db, user, assignment_id), (body.code if body else None))
     db.commit()
     return {"ok": True}
 
@@ -232,15 +250,17 @@ class AttendanceIn(BaseModel):
     selfie_key: str | None = None
     client_ref: str | None = Field(default=None, max_length=64)
     offline: bool = False
+    start_code: str | None = Field(default=None, max_length=8)  # needed for check-in; offline ones are verified on sync
 
 
 @router.post("/attendance")
 def attendance(body: AttendanceIn, user: User = Depends(W), db: Session = Depends(get_db)):
     a = _my_assignment(db, user, body.assignment_id)
     row = flows.attendance(db, user, a, kind=body.kind, lat=body.lat, lng=body.lng, at=body.at,
-                           selfie_key=body.selfie_key, client_ref=body.client_ref, offline=body.offline)
+                           selfie_key=body.selfie_key, client_ref=body.client_ref, offline=body.offline,
+                           start_code=body.start_code)
     db.commit()
-    return {"id": str(row.id), "geofence_ok": row.geofence_ok}
+    return {"id": str(row.id), "geofence_ok": row.geofence_ok, "code_status": row.code_status}
 
 
 class RateCustomerIn(BaseModel):
@@ -259,19 +279,55 @@ def rate_customer(assignment_id: uuid.UUID, body: RateCustomerIn, user: User = D
 
 @router.get("/earnings")
 def earnings(user: User = Depends(W), db: Session = Depends(get_db)):
-    """S7. One dominant number (available), plus held-in-escrow and history rows."""
+    """S7. One dominant number (available), plus held-in-escrow and history rows. Same-day pay: payouts that
+    were sent to UPI automatically when a job was released show up in `paid_today`."""
+    trust.settle_payouts(db, user.id)
     bal = flows.worker_balance(db, user.id)
     released = db.execute(select(Payment, Assignment).join(Assignment, Assignment.id == Payment.assignment_id)
                           .where(Assignment.worker_id == user.id).order_by(Payment.released_at.desc().nullslast())).all()
     rows = [{"kind": "job", "amount_inr": p.worker_payout_paise / 100, "state": p.escrow_state.value,
              "date": (p.released_at or a.completed_at or a.job.created_at).isoformat(), "locality": a.job.locality,
              "trades": sorted({wi.trade.value for wi in a.job.work_items})} for p, a in released]
-    rows += [{"kind": "payout", "amount_inr": po.amount_paise / 100, "state": po.status, "date": po.created_at.isoformat(),
-              "upi": po.upi_masked} for po in db.scalars(select(Payout).where(Payout.worker_id == user.id))]
+    pays = list(db.scalars(select(Payout).where(Payout.worker_id == user.id).order_by(Payout.created_at.desc())))
+    rows += [{"kind": "payout", **trust.payout_view(po), "state": trust.payout_view(po)["state"], "date": po.created_at.isoformat()} for po in pays]
     rows.sort(key=lambda r: r["date"], reverse=True)
+    today = trust.now().astimezone(trust.IST).date()
+    todays = []
+    for po in pays:
+        if po.source == "auto" and po.created_at.astimezone(trust.IST).date() == today:
+            a = db.get(Assignment, po.assignment_id) if po.assignment_id else None
+            todays.append({**trust.payout_view(po), "locality": a.job.locality if a else None,
+                           "trades": sorted({wi.trade.value for wi in a.job.work_items}) if a else []})
+    wp = user.worker_profile
+    db.commit()
     return {"available_inr": bal["available_paise"] / 100, "held_inr": bal["held_paise"] / 100,
             "total_earned_inr": bal["total_earned_paise"] / 100, "paid_out_inr": bal["paid_out_paise"] / 100,
-            "upi": mask_upi(user.worker_profile.upi_id), "kyc": flows.kyc_state(user), "history": rows}
+            "upi": mask_upi(wp.upi_id), "kyc": flows.kyc_state(user), "history": rows,
+            "paid_today": {"total_inr": sum(x["amount_inr"] for x in todays), "items": todays},
+            "nudge_add_upi": bool(bal["available_paise"] > 0 and not wp.upi_id)}
+
+
+@router.get("/notices")
+def notices(user: User = Depends(W), db: Session = Depends(get_db)):
+    """In-app, push-style notices not yet shown: "Rs 1,300 sent to your UPI ra****@okaxis"."""
+    trust.settle_payouts(db, user.id)
+    rows = db.scalars(select(Payout).where(Payout.worker_id == user.id, Payout.source == "auto", Payout.notified_at.is_(None))
+                      .order_by(Payout.created_at)).all()
+    db.commit()
+    return [{"id": str(p.id), "kind": "payout_sent", "amount_inr": p.amount_paise / 100, "upi": p.upi_masked,
+             "state": trust.payout_view(p)["state"], "at": p.created_at.isoformat()} for p in rows]
+
+
+class AckIn(BaseModel):
+    ids: list[uuid.UUID] = Field(max_length=50)
+
+
+@router.post("/notices/ack")
+def ack_notices(body: AckIn, user: User = Depends(W), db: Session = Depends(get_db)):
+    for p in db.scalars(select(Payout).where(Payout.worker_id == user.id, Payout.id.in_(body.ids))):
+        p.notified_at = trust.now()
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/withdraw")
@@ -287,7 +343,11 @@ def profile(user: User = Depends(W), db: Session = Depends(get_db)):
     wp = user.worker_profile
     return {**worker_summary(db, user), "phone": user.phone, "upi": mask_upi(wp.upi_id), "is_online": wp.is_online,
             "breakdown": rating_breakdown(db, user.id), "history": worker_history(db, user.id),
-            "kyc": flows.kyc_state(user), "eshram_registered": bool(wp.eshram_id), "strikes": wp.strikes}
+            "kyc": flows.kyc_state(user), "eshram_registered": bool(wp.eshram_id), "strikes": wp.strikes,
+            "level_card": levels.level_view(wp), "streak": levels.streak(db, user.id),
+            "warranty_record": trust.worker_warranty_record(db, wp),
+            "police": {"status": wp.police_status, "note": wp.police_note,
+                       "requested_at": wp.police_requested_at.isoformat() if wp.police_requested_at else None}}
 
 
 @router.get("/labour-card")
@@ -297,7 +357,8 @@ def labour_card(user: User = Depends(W), db: Session = Depends(get_db)):
     b = rating_breakdown(db, user.id)
     return {"name": user.name, "trades": list(wp.trades or []), "rating": b["overall"], "rating_count": b["count"],
             "completed_jobs": wp.completed_jobs, "badges": list(wp.badges or []), "breakdown": b,
-            "verified_level": user.kyc_level, "eshram_registered": bool(wp.eshram_id), "city": wp.city,
+            "verified_level": user.kyc_level, "police_verified": wp.police_status == "verified",
+            "level": levels.level_view(wp)["code"], "eshram_registered": bool(wp.eshram_id), "city": wp.city,
             "member_since": user.created_at.date().isoformat(), "card_id": f"BC-{user.id.hex[:8].upper()}"}
 
 
@@ -320,6 +381,22 @@ def kyc_level1(body: KycL1In, user: User = Depends(W), db: Session = Depends(get
     audit(db, actor_id=user.id, action="kyc.level1", entity="user", entity_id=user.id)
     db.commit()
     return {"kyc_level": user.kyc_level}
+
+
+@router.post("/police-verification")
+def police_verification(user: User = Depends(W), db: Session = Depends(get_db)):
+    """Optional: ask for police verification (Aadhaar-based check by a partner - admin reviews for now)."""
+    out = trust.request_police(db, user)
+    db.commit()
+    return out
+
+
+@router.post("/jobs/{job_id}/decline")
+def decline_direct(job_id: uuid.UUID, user: User = Depends(W), db: Session = Depends(get_db)):
+    """Decline a "hire again" request: the job opens to everyone straight away."""
+    out = trust.decline_direct(db, user, _job(db, job_id))
+    db.commit()
+    return out
 
 
 class KycL2In(BaseModel):

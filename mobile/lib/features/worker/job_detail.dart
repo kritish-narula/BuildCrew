@@ -88,7 +88,16 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             for (final it in items) '${l.workN(it['index'] as int)}. ${tradeLabel(l, it['trade'] as String)}. ${it['text'] ?? ''}'
           ].join(' ');
           final where = '${job['address']}${job['distance_km'] != null ? ' · ${l.kmAway((job['distance_km'] as num).toStringAsFixed(1))}' : ''}';
+          final direct = (job['direct'] as Map?)?.cast<String, dynamic>();
           return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
+            if (direct != null && open) ...[
+              InfoBanner(
+                icon: Icons.favorite_rounded,
+                color: BC.brandDark,
+                text: l.directWantsYou(widget.state.user?.name?.split(' ').first ?? '', '${direct['customer_name'] ?? ''}'),
+              ),
+              const SizedBox(height: 12),
+            ],
             AppCard(
               padding: const EdgeInsets.fromLTRB(BC.pad, 12, 8, BC.pad),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -240,9 +240,21 @@ def fair_range(job, trades: Iterable[str] | None = None) -> dict:
 HIGH_FACTOR = 1.2  # more than 20% over the top of the range = "higher than usual"
 
 
-def fair_check(price_inr: float, job, trades: Iterable[str] | None = None) -> dict:
+def scale_range(fr: dict, mult: float) -> dict:
+    """Skill-ladder band: a higher level may ask more. Scales low/median/high but NEVER the legal minimum:
+    `low` stays >= min_wage_total and the order low < median < high is kept."""
+    if mult == 1.0:
+        return fr
+    lo, md, hi = fr["low"] * mult, fr["median"] * mult, fr["high"] * mult
+    step = _step(max(lo, fr["min_wage_total"]))
+    lo = max(_round(lo, step), _ceil(fr["min_wage_total"], step))
+    lo, md, hi = spread(lo, md, hi)
+    return {**fr, "low": lo, "median": md, "high": hi}
+
+
+def fair_check(price_inr: float, job, trades: Iterable[str] | None = None, level_mult: float = 1.0) -> dict:
     """Never blocks: classifies a quote. verdict: fair | below_min_wage | high."""
-    fr = fair_range(job, trades)
+    fr = scale_range(fair_range(job, trades), level_mult)
     if price_inr < fr["min_wage_total"]:
         verdict = "below_min_wage"
     elif price_inr > fr["high"] * HIGH_FACTOR:

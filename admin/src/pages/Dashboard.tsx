@@ -26,6 +26,7 @@ export default function Dashboard() {
           <Stat label="In escrow now" value={inr(k.data.in_escrow_inr)} tone="text-amber-700" />
           <Stat label="Platform revenue" value={inr(k.data.platform_revenue_inr)} tone="text-brand-dark" hint="fees on released payments" />
           <Stat label="KYC to review" value={k.data.kyc_pending} tone={k.data.kyc_pending ? "text-sky-700" : undefined} />
+          <Stat label="Police checks" value={k.data.police_pending ?? 0} tone={k.data.police_pending ? "text-sky-700" : undefined} hint="verification requests" />
         </div>
       )}
       <div className="grid lg:grid-cols-3 gap-4 mt-4">

@@ -23,6 +23,7 @@ import 'package:buildcrew/features/worker/kyc_screens.dart';
 import 'package:buildcrew/features/worker/worker_shell.dart';
 import 'package:buildcrew/l10n/gen/app_localizations.dart';
 import 'package:buildcrew/widgets/media.dart';
+import 'package:buildcrew/widgets/trust_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -46,6 +47,8 @@ const _neha = '9100000003'; // customer: j2 with 3 quotes (one below min wage), 
 const _ramesh = '9200000001'; // mason: in-progress job a4, earnings history
 const _harpreet = '9200000007'; // carpenter hired on j3
 const _selvam = '9200000009'; // painter, completed job a5
+const _imran = '9200000003'; // plumber: same-day payout today, police-verified, hired again by Priya
+const _gopal = '9200000004'; // plumber: no police request yet (verification step)
 
 late AppState state;
 final Map<String, String> _secure = {};
@@ -361,6 +364,43 @@ List<_Screen> _coreScreens() => [
       }),
     ];
 
+String? _refixJobId;
+Json? _rebook;
+
+/// Restarts the demo journey of Harpreet's hire on j3 so the customer can share the live trip / sees the start code.
+Future<void> _restartJ3Journey() async {
+  await state.switchAccount(_harpreet);
+  final a = (await state.api.assignments()).firstWhere((x) => (x['job'] as Json)['id'] == 'j3');
+  await state.api.startJourney(a['id'] as String, null, null);
+  await state.switchAccount(_priya);
+}
+
+List<_Screen> _trustScreens() => [
+      // ---- trust & worker features
+      _Screen('customer_start_code', _priya, () => CustomerJobScreen(state: state, jobId: 'j3'), scrollBottom: true, prepare: _restartJ3Journey),
+      _Screen('worker_checkin_code', _harpreet, () => Builder(builder: (ctx) => Scaffold(body: Center(child: FilledButton(
+          onPressed: () => showStartCodeSheet(ctx, submit: (c) async {}), child: const Text('code'))))),
+          act: (t) => _tap(t, find.byType(FilledButton))),
+      _Screen('customer_share_trip', _priya, () => Builder(builder: (ctx) => Scaffold(body: Center(child: FilledButton(
+          onPressed: () => showShareTripSheet(ctx, state.api, 'j3'), child: const Text('share'))))),
+          prepare: _restartJ3Journey, act: (t) => _tap(t, find.byType(FilledButton))),
+      _Screen('worker_police_verification', _gopal, () => WorkerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.person_outline_rounded)), scrollBottom: true),
+      _Screen('customer_warranty', _priya, () => CustomerJobScreen(state: state, jobId: 'jw'), scrollBottom: true),
+      _Screen('customer_refix_job', _priya, () => CustomerJobScreen(state: state, jobId: _refixJobId ?? 'jw'), scrollBottom: true, prepare: () async {
+        try {
+          await state.api.requestRefix('jw', reason: 'Tap joint is dripping again', photos: const ['photos/leak_1.jpg']);
+        } catch (_) {} // already asked in an earlier language run
+        final rows = await state.api.customerJobs();
+        _refixJobId = rows.cast<Json>().firstWhere((j) => j['refix'] == true, orElse: () => {'id': 'jw'})['id'] as String;
+      }),
+      _Screen('worker_earnings_paid_today', _imran, () => WorkerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.currency_rupee_rounded)), scrollBottom: true),
+      _Screen('worker_level_card', _ramesh, () => WorkerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.person_outline_rounded)), scrollBottom: true),
+      _Screen('customer_hire_again_post_job', _priya, () => PostJobScreen(state: state, prefill: _rebook), scrollBottom: true, prepare: () async {
+        _rebook = await state.api.rebookDraft(workerId: 'w3');
+      }),
+      _Screen('worker_direct_request', _ramesh, () => WorkerShell(state: state)),
+    ];
+
 List<_Screen> _extraScreens(String lang) => [
       _Screen('update_sheet', _priya, () => Builder(builder: (ctx) => Scaffold(body: Center(child: FilledButton(onPressed: () => showUpdateSheet(ctx, lang), child: const Text('update'))))),
           prepare: () async {
@@ -427,5 +467,10 @@ void main() {
     testWidgets('extra screens: $lang 360x800', (t) async {
       await _runScreens(t, _extraScreens(lang), lang, 360, 800, 2);
     }, timeout: const Timeout(Duration(minutes: 5)));
+    for (final (w, h, dpr) in sizes) {
+      testWidgets('trust & worker screens: $lang ${w.toInt()}x${h.toInt()}', (t) async {
+        await _runScreens(t, _trustScreens(), lang, w, h, dpr);
+      }, timeout: const Timeout(Duration(minutes: 5)));
+    }
   }
 }

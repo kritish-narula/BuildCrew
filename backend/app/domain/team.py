@@ -19,7 +19,7 @@ from ..audit import audit
 from ..enums import BidStatus, EscrowState, JobStatus, RatingDirection
 from ..errors import AppError
 from ..models import Assignment, Attendance, Bid, Job, Payment, Rating, User, WorkerProfile, WorkItem
-from . import pricing
+from . import pricing, trust
 from .fees import compute_fees
 from .state import transition
 
@@ -53,15 +53,19 @@ def pick_item(db: Session, job: Job, worker: User) -> WorkItem:
     raise AppError("err.team_full", 409)
 
 
+def _verified_checkins(db: Session, a: Assignment):
+    """Check-ins whose start code was not refused: a wrong code on sync never counts as a worked day."""
+    return db.scalars(select(Attendance.checkin_at).where(Attendance.assignment_id == a.id,
+                                                          Attendance.code_status.in_(["verified", "not_required"]))).all()
+
+
 def days_worked(db: Session, a: Assignment) -> int:
-    rows = db.scalars(select(Attendance.checkin_at).where(Attendance.assignment_id == a.id)).all()
-    return min(a.days_planned, len({r.astimezone(IST).date() for r in rows}))
+    return min(a.days_planned, len({r.astimezone(IST).date() for r in _verified_checkins(db, a)}))
 
 
 def present_today(db: Session, a: Assignment) -> bool:
     today = now().astimezone(IST).date()
-    rows = db.scalars(select(Attendance.checkin_at).where(Attendance.assignment_id == a.id)).all()
-    return any(r.astimezone(IST).date() == today for r in rows)
+    return any(r.astimezone(IST).date() == today for r in _verified_checkins(db, a))
 
 
 def wage_paise(db: Session, a: Assignment) -> int:
@@ -98,7 +102,8 @@ def roster(db: Session, job: Job, lang: str) -> dict:
         rows.append({"assignment_id": str(a.id), "worker": worker_summary(db, a.worker), "trade": item.trade.value if item else None,
                      "daily_wage_inr": wage / 100, "days_planned": a.days_planned, "days_worked": worked,
                      "present_today": present_today(db, a), "amount_due_inr": wage * worked / 100,
-                     "total_inr": wage * a.days_planned / 100, "payment": payment_view(p), "rated": rated,
+                     "total_inr": wage * a.days_planned / 100, "payment": payment_view(p), "rated": rated, "start_code": trust.team_day_code(db, a),
+                     "warranty": trust.warranty_view(db, a),
                      "settled": bool(p and p.escrow_state in SETTLED)})
     return {"summary": summary(db, job), "workers": rows, "payment_due_inr": due_paise / 100, "payment_due_count": due_n}
 

@@ -67,5 +67,15 @@
  "err.team_full": "All places for this trade are already filled.",
  "err.contractor_only": "Only contractor accounts can hire a team.",
  "err.wage_below_minimum": "The daily wage is below the minimum wage (₹{minimum}/day for {trade}). Please offer at least the minimum.",
- "err.team_use_roster": "Pay and rate each worker from the Team roster."
+ "err.team_use_roster": "Pay and rate each worker from the Team roster.",
+ "err.start_code_invalid": "Wrong code. {left} tries left. Ask the customer to read it again.",
+ "err.start_code_locked": "Too many wrong codes. Please try again in {minutes} min.",
+ "err.start_code_required": "Ask the customer for the 4-digit start code.",
+ "err.trip_not_active": "The worker is not on the way right now.",
+ "err.trip_expired": "This trip link has ended.",
+ "err.warranty_expired": "The warranty for this work has ended.",
+ "err.refix_open": "A free re-fix visit is already on its way for this job.",
+ "err.refix_limit": "The free re-fix limit ({max}) for this job is used up.",
+ "err.kyc_required": "Add your name, photo and UPI first.",
+ "err.direct_only": "This request was sent to another worker."
 }

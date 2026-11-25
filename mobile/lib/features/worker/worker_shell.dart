@@ -12,10 +12,12 @@ import '../../widgets/common.dart';
 import '../../widgets/media.dart';
 import '../../widgets/schedule.dart';
 import '../../widgets/team_widgets.dart';
+import '../../widgets/trust_widgets.dart';
 import '../common/chat.dart';
 import '../common/profile.dart';
 import '../common/update_ui.dart';
 import 'assignment_screen.dart';
+import 'growth_ui.dart';
 import 'job_detail.dart';
 import 'kyc_screens.dart';
 
@@ -44,7 +46,35 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     Outbox.instance.init(widget.state.api);
     // 4 s while the app is in the foreground (paused in the background, immediate refresh on resume).
-    _poller = Poller(const Duration(seconds: 4), () async => _tick.fire())..start();
+    _poller = Poller(const Duration(seconds: 4), () async {
+      _tick.fire();
+      await _checkNotices();
+    })
+      ..start();
+  }
+
+  /// Same-day pay: "Rs 1,300 sent to your UPI ra****@okaxis" appears once, wherever the worker is in the app.
+  Future<void> _checkNotices() async {
+    try {
+      final ns = await widget.state.api.workerNotices();
+      if (ns.isEmpty || !mounted) return;
+      final l = L.of(context);
+      final m = ScaffoldMessenger.of(context);
+      for (final n in ns) {
+        if (n['kind'] != 'payout_sent') continue;
+        m.showSnackBar(SnackBar(
+          backgroundColor: BC.money,
+          duration: const Duration(seconds: 6),
+          content: Row(children: [
+            const Icon(Icons.bolt_rounded, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(child: Text(l.payoutNotice(inr(n['amount_inr'] as num), '${n['upi']}'), maxLines: 3, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.white, fontWeight: FontWeight.w600))),
+          ]),
+        ));
+      }
+      await widget.state.api.ackNotices([for (final n in ns) n['id'] as String]);
+    } catch (_) {/* best effort: shown again on the next tick */}
   }
 
   @override
@@ -138,7 +168,10 @@ class JobsTab extends StatelessWidget {
         return (await state.api.workerFeed(), await state.api.assignments());
       },
       builder: (ctx, data, reload) {
-        final (jobs, work) = data;
+        final (feed, work) = data;
+        final direct = feed.where((j) => j['direct'] != null).toList();
+        final jobs = feed.where((j) => j['direct'] == null).toList();
+        final myName = state.user?.name?.split(' ').first ?? '';
         final active = work.where((a) => const ['assigned', 'in_progress', 'disputed'].contains((a['job'] as Json)['status'])).toList();
         final toRate = work.where((a) => (a['job'] as Json)['status'] == 'completed' && (a['ratings'] as Map)['worker_to_customer'] == null).toList();
         final today = [...active, ...toRate];
@@ -157,6 +190,30 @@ class JobsTab extends StatelessWidget {
                     await state.api.updateMyLocation(p.latitude, p.longitude);
                   } catch (_) {}
                   await reload();
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+          // "Ramesh, Priya wants you again": direct requests (hire again) always come first.
+          for (final j in direct) ...[
+            JobCard(
+              job: j,
+              workerName: myName,
+              onTap: () async {
+                await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => JobDetailScreen(state: state, jobId: j['id'] as String)));
+                await reload();
+              },
+              onDecline: () async {
+                final l2 = L.of(context);
+                try {
+                  await state.api.declineDirect(j['id'] as String);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BC.ink, content: Text(l2.directDeclinedDone, style: const TextStyle(fontSize: 15, color: Colors.white))));
+                  }
+                  await reload();
+                } catch (e) {
+                  if (context.mounted) showError(context, e);
                 }
               },
             ),
@@ -245,7 +302,7 @@ class ActiveWorkCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleLarge!.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
-            Text('${job['locality']} · ${inr(a['price_inr'] as num)}',
+            Text('${job['locality']} · ${a['kind'] == 'refix' ? l.refixBadge : inr(a['price_inr'] as num)}',
                 maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: context.tt.titleSmall!.copyWith(color: Colors.white.withValues(alpha: 0.92), fontWeight: FontWeight.w500, fontFeatures: BC.tabular)),
           ]),
@@ -258,9 +315,13 @@ class ActiveWorkCard extends StatelessWidget {
 }
 
 class JobCard extends StatelessWidget {
-  const JobCard({super.key, required this.job, required this.onTap});
+  const JobCard({super.key, required this.job, required this.onTap, this.workerName = '', this.onDecline});
   final Json job;
   final VoidCallback onTap;
+
+  /// Direct request ("hire again"): the worker's first name for the greeting, and a Decline action.
+  final String workerName;
+  final VoidCallback? onDecline;
 
   @override
   Widget build(BuildContext context) {
@@ -270,11 +331,24 @@ class JobCard extends StatelessWidget {
     final trades = [for (final t in job['trades'] as List) (t as Map)['code'] as String];
     final dist = job['distance_km'] as num?;
     final where = '${job['locality']}${dist != null ? ' · ${l.kmAway(dist.toStringAsFixed(1))}' : ''}';
+    final direct = (job['direct'] as Map?)?.cast<String, dynamic>();
     return AppCard(
       padding: EdgeInsets.zero,
       shadow: true,
+      color: direct != null ? BC.brandSoft : BC.card,
+      borderColor: direct != null ? BC.brand : BC.line,
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (direct != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(BC.pad, 12, BC.pad, 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              StatusPill(label: l.directBadge, color: Colors.white, bg: BC.brand, icon: Icons.favorite_rounded),
+              const SizedBox(height: 8),
+              Text(l.directWantsYou(workerName, '${direct['customer_name'] ?? ''}'), maxLines: 3, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium),
+              Text(_directLeft(l, direct['until'] as String?), style: BC.caption),
+            ]),
+          ),
         // Photo strip — what the work looks like, before any words.
         SizedBox(
           height: 132,
@@ -333,11 +407,17 @@ class JobCard extends StatelessWidget {
                   return StatusPill(label: '${l.alreadyQuoted} · ${inr(job['my_price_inr'] as num?)}', color: BC.pendingInk,
                       bg: BC.pendingSoft, icon: Icons.hourglass_top_rounded);
                 }
-                return PrimaryButton(
-                    big: true,
-                    onPressed: onTap,
-                    icon: job['kind'] == 'team' ? Icons.group_add_rounded : Icons.currency_rupee_rounded,
-                    label: job['kind'] == 'team' ? l.teamSeeAndJoin : l.quotePrice);
+                return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  PrimaryButton(
+                      big: true,
+                      onPressed: onTap,
+                      icon: job['kind'] == 'team' ? Icons.group_add_rounded : Icons.currency_rupee_rounded,
+                      label: job['kind'] == 'team' ? l.teamSeeAndJoin : l.quotePrice),
+                  if (direct != null && onDecline != null) ...[
+                    const SizedBox(height: 8),
+                    SecondaryButton(label: l.directDecline, icon: Icons.close_rounded, onPressed: onDecline),
+                  ],
+                ]);
               },
             ),
           ]),
@@ -345,6 +425,14 @@ class JobCard extends StatelessWidget {
       ]),
     );
   }
+}
+
+String _directLeft(L l, String? until) {
+  final t = until == null ? null : DateTime.tryParse(until);
+  if (t == null) return '';
+  final left = t.difference(DateTime.now());
+  if (left.isNegative) return '';
+  return l.directUntil(l.directLeft(left.inHours, left.inMinutes % 60));
 }
 
 // ================================================================== S6 My Bids
@@ -511,6 +599,18 @@ class EarningsTab extends StatelessWidget {
             ]),
           ),
           const SizedBox(height: 16),
+          // Same-day pay: today's automatic payouts, or a nudge to add UPI so the money can reach him the same day.
+          if (e['paid_today'] is Map && ((e['paid_today'] as Map)['items'] as List).isNotEmpty) ...[
+            PaidTodayCard(paidToday: (e['paid_today'] as Map).cast<String, dynamic>()),
+            const SizedBox(height: 16),
+          ],
+          if (e['nudge_add_upi'] == true) ...[
+            InfoBanner(icon: Icons.bolt_rounded, color: BC.info, text: l.addUpiNudge, action: l.addUpiAction, onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => KycLevel1Screen(state: state)));
+              await reload();
+            }),
+            const SizedBox(height: 16),
+          ],
           if (kyc['nudge_level2'] == true) ...[
             InfoBanner(icon: Icons.verified_user_rounded, color: BC.info, text: l.kycL2Nudge, action: l.addNow, onTap: () async {
               await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => KycLevel2Screen(state: state)));
@@ -706,12 +806,21 @@ class _WorkerProfileTabState extends State<WorkerProfileTab> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(p['name'] as String? ?? '+91 ${p['phone']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.headlineSmall),
+                  if (p['police_verified'] == true) ...[const SizedBox(height: 4), const PoliceBadge(label: true)],
                   const SizedBox(height: 6),
                   Wrap(spacing: 6, runSpacing: 6, children: [for (final t in p['trades'] as List) TradeChip(t as String)]),
                 ]),
               ),
             ]),
           ),
+          if (p['level_card'] is Map) ...[
+            const SizedBox(height: 12),
+            LevelCard(
+              level: (p['level_card'] as Map).cast<String, dynamic>(),
+              streak: (p['streak'] as Map?)?.cast<String, dynamic>(),
+              record: (p['warranty_record'] as Map?)?.cast<String, dynamic>(),
+            ),
+          ],
           const SizedBox(height: 12),
           // Large overall rating + parameter-wise breakdown
           AppCard(
@@ -747,7 +856,7 @@ class _WorkerProfileTabState extends State<WorkerProfileTab> {
             label: l.myLabourCard,
           ),
           const SizedBox(height: 16),
-          KycStatusCard(state: state, kyc: kyc, onChanged: reload),
+          KycStatusCard(state: state, kyc: kyc, onChanged: reload, police: (p['police'] as Map?)?.cast<String, dynamic>()),
           if (history.isNotEmpty) ...[
             const SizedBox(height: 20),
             SectionHeader(l.workHistory),

@@ -19,6 +19,7 @@ from ..errors import AppError
 from ..models import (
     Assignment, AssignmentEvent, Attendance, Bid, Dispute, Job, Payment, Payout, Rating, User, WorkerProfile,
 )
+from . import trust
 from .fees import compute_fees
 from .state import transition
 
@@ -89,6 +90,7 @@ def place_bid(db: Session, worker: User, job: Job, price_paise: int, client_ref:
         if existing:
             return existing
     from . import team  # local import: team builds on this module
+    trust.check_direct_access(job, worker)  # a "hire again" offer is exclusive for its first 2 hours
     is_team = job.kind == "team"
     if job.status not in (JobStatus.open, JobStatus.bidding) and not (
             is_team and job.status in (JobStatus.assigned, JobStatus.in_progress) and team.open_slots(db, job) > 0):
@@ -181,6 +183,8 @@ def pay_escrow(db: Session, customer: User, a: Assignment, *, method: str, razor
 
 
 def _require_paid(db: Session, a: Assignment) -> None:
+    if a.kind == "refix":  # a warranty re-fix is free: there is no escrow to wait for
+        return
     p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
     if not p or p.escrow_state == EscrowState.created:
         raise AppError("err.payment_pending", 409)
@@ -189,6 +193,8 @@ def _require_paid(db: Session, a: Assignment) -> None:
 def mark_held(db: Session, p: Payment, a: Assignment, actor_id) -> None:
     transition(db, p, kind="escrow", field="escrow_state", new=EscrowState.held, actor_id=actor_id)
     a.escrow_status = EscrowState.held
+    if not a.start_code_nonce:  # the customer now gets a start code to tell the worker on arrival
+        trust.new_nonce(a)
 
 
 # ------------------------------------------------------------------ work
@@ -260,6 +266,8 @@ def worker_done(db: Session, worker: User, a: Assignment, photos: list[str] | No
         raise AppError("err.job_closed", 409)
     proof = _photos(photos, required=True)
     note = _note(note)
+    if a.start_code_nonce and a.started_at is None:  # never arrived/started with the customer's code
+        raise AppError("err.start_code_required", 422)
     start_work(db, worker, a)
     a.worker_done_at, a.proof_photos, a.worker_done_note, a.rework_open = now(), proof, note, False
     add_event(db, a, "worker_done", "worker", note=note, photos=proof)
@@ -345,6 +353,14 @@ def maybe_auto_confirm(db: Session, a: Assignment, at: datetime | None = None) -
     Only ever applies to money that is HELD, never in a dispute and never on a released hire."""
     at = at or now()
     job = a.job
+    if a.kind == "refix":  # free visit: silence for 48 h confirms it (nothing to pay or rate)
+        due = auto_confirm_at(a)
+        if a.released_at is None and job.status == JobStatus.in_progress and due and at >= due:
+            transition(db, job, kind="job", field="status", new=JobStatus.completed, actor_id=None, reason="auto_confirm")
+            a.completed_at, a.auto_confirmed = at, True
+            add_event(db, a, "auto_confirmed", "system")
+            return True
+        return False
     if a.released_at is not None or a.escrow_status != EscrowState.held:
         return False
     due = auto_confirm_at(a)
@@ -370,8 +386,10 @@ def sweep_auto_confirm(db: Session, at: datetime | None = None) -> int:
     at = at or now()
     cutoff = at - timedelta(hours=AUTO_CONFIRM_HOURS)
     rows = db.scalars(select(Assignment).where(
-        Assignment.released_at.is_(None), Assignment.escrow_status == EscrowState.held,
-        ((Assignment.worker_done_at <= cutoff) & Assignment.rework_open.is_(False)) | (Assignment.completed_at <= cutoff))).all()
+        Assignment.released_at.is_(None),
+        ((Assignment.escrow_status == EscrowState.held)
+         & (((Assignment.worker_done_at <= cutoff) & Assignment.rework_open.is_(False)) | (Assignment.completed_at <= cutoff)))
+        | ((Assignment.kind == "refix") & (Assignment.worker_done_at <= cutoff) & Assignment.rework_open.is_(False)))).all()
     n = sum(1 for a in rows if maybe_auto_confirm(db, a, at))
     if n:
         db.flush()
@@ -411,6 +429,8 @@ def release_hire(db: Session, actor: User, a: Assignment, *, reason: str, reopen
         raise AppError("err.job_started", 409)
     if job.status != JobStatus.assigned:
         raise AppError("err.job_closed", 409)
+    if a.kind == "refix":  # a free re-fix never goes back on the market: it is simply cancelled
+        reopen = False
     paid = db.scalar(select(Payment.escrow_state).where(Payment.assignment_id == a.id)) == EscrowState.held
     refunded = _void_or_refund(db, a, actor.id)
     a.released_at, a.release_reason = now(), reason
@@ -516,6 +536,8 @@ def rate_worker(db: Session, customer: User, a: Assignment, *, quality: int, tim
         raise AppError("err.not_your_job", 403)
     if a.job.status != JobStatus.completed:
         raise AppError("err.job_not_completed", 409)
+    if a.kind == "refix":  # nothing to rate or pay on a free re-fix visit
+        raise AppError("err.validation", 422)
     _check_stars(quality, timeliness, behaviour, value_for_money)
     if db.scalar(select(Rating.id).where(Rating.assignment_id == a.id, Rating.direction == RatingDirection.customer_to_worker)):
         raise AppError("err.already_rated", 409)
@@ -588,6 +610,7 @@ def release_payment(db: Session, a: Assignment, actor_id, *, by_admin: bool = Fa
     wp.lifetime_earnings_paise += p.worker_payout_paise
     audit(db, actor_id=actor_id, action="payment.released", entity="payment", entity_id=p.id, ref=ref,
           payout=p.worker_payout_paise)
+    trust.auto_payout(db, a, p.worker_payout_paise)  # same-day pay: straight to UPI when the worker has one
     return p
 
 
@@ -611,6 +634,7 @@ def refund_or_split(db: Session, a: Assignment, admin: User, worker_share_pct: i
     a.escrow_status = new
     if worker_part:
         db.get(WorkerProfile, a.worker_id).lifetime_earnings_paise += worker_part
+        trust.auto_payout(db, a, worker_part)
     return p
 
 
@@ -624,7 +648,7 @@ def worker_balance(db: Session, worker_id: uuid.UUID) -> dict:
                      .join(Assignment, Assignment.id == Payment.assignment_id)
                      .where(Assignment.worker_id == worker_id, Payment.escrow_state == EscrowState.held)) or 0
     paid_out = db.scalar(select(func.coalesce(func.sum(Payout.amount_paise), 0))
-                         .where(Payout.worker_id == worker_id, Payout.status == "processed")) or 0
+                         .where(Payout.worker_id == worker_id, Payout.status.in_(["processed", "processing", "paid"]))) or 0
     released, held, paid_out = int(released), int(held), int(paid_out)  # SUM() returns Decimal
     return {"available_paise": released - paid_out, "held_paise": held, "paid_out_paise": paid_out,
             "total_earned_paise": released}
@@ -664,7 +688,7 @@ GEOFENCE_METERS = 300
 
 
 def attendance(db: Session, worker: User, a: Assignment, *, kind: str, lat: float, lng: float, at: datetime | None,
-               selfie_key: str | None, client_ref: str | None, offline: bool) -> Attendance:
+               selfie_key: str | None, client_ref: str | None, offline: bool, start_code: str | None = None) -> Attendance:
     """Check-in/out. Offline captures are replayed later with their ORIGINAL timestamp and a
     client_ref, so a flaky network can never create duplicate days. Outside the geofence we
     still record (never block someone from earning) but flag it for the contractor/admin."""
@@ -677,10 +701,26 @@ def attendance(db: Session, worker: User, a: Assignment, *, kind: str, lat: floa
     at = at or now()
     inside = services.maps().distance_km((lat, lng), (a.job.location_lat, a.job.location_lng)) * 1000 <= GEOFENCE_METERS
     if kind == "in":
+        # Start code. Online: must be right NOW (5 wrong tries lock the hire for 10 min). Offline: the worker typed
+        # it without a connection, so we cannot check yet; it is replayed with the check-in and verified HERE, when
+        # it syncs (same attempt counting). A wrong / missing code never starts the work: the row is kept as
+        # evidence ("failed" / "pending") and the worker re-enters the code with a connection (POST /start).
+        code_status = "not_required"
+        if trust.start_code_required(db, a, at):
+            if offline:
+                code_status = "pending" if not start_code else (
+                    "verified" if trust.verify_start_code(db, a, start_code, at, strict=False) else "failed")
+            else:
+                if not start_code:
+                    raise AppError("err.start_code_required", 422)
+                trust.verify_start_code(db, a, start_code, at)
+                code_status = "verified"
         row = Attendance(assignment_id=a.id, checkin_at=at, checkin_lat=lat, checkin_lng=lng,
-                         checkin_selfie_url=selfie_key, offline_synced=offline, client_ref=client_ref, geofence_ok=inside)
+                         checkin_selfie_url=selfie_key, offline_synced=offline, client_ref=client_ref, geofence_ok=inside,
+                         code_status=code_status)
         db.add(row)
-        start_work(db, worker, a)
+        if code_status in trust.code_ok_statuses():
+            start_work(db, worker, a)
     else:
         row = db.scalar(select(Attendance).where(Attendance.assignment_id == a.id, Attendance.checkout_at.is_(None))
                         .order_by(Attendance.checkin_at.desc()))
@@ -713,7 +753,7 @@ def raise_dispute(db: Session, user: User, a: Assignment, reason: str, *, auto: 
         raise AppError("err.job_closed", 409)
     if len(reason.strip()) < 5:
         raise AppError("err.validation", 422)
-    if a.escrow_status != EscrowState.held:
+    if a.escrow_status != EscrowState.held and a.kind != "refix":
         raise AppError("err.payment_not_held", 409)
     if user.id == a.worker_id and not (a.started_at or a.worker_done_at):
         raise AppError("err.too_early_to_dispute", 409)
@@ -737,7 +777,8 @@ def resolve_dispute(db: Session, admin: User, d: Dispute, *, worker_share_pct: i
     if d.status == DisputeStatus.resolved:
         raise AppError("err.already_resolved", 409)
     a = db.get(Assignment, d.assignment_id)
-    refund_or_split(db, a, admin, max(0, min(100, worker_share_pct)))
+    if a.kind != "refix":  # a free re-fix has no money to split
+        refund_or_split(db, a, admin, max(0, min(100, worker_share_pct)))
     if penalise:
         wp = db.get(WorkerProfile, a.worker_id)
         wp.strikes += 1
