@@ -1,6 +1,7 @@
 """Meta, media, role-scoped read endpoints (Phase 1 proves role routing against seed data;
 Phases 2–5 add the write flows), and dev-only helpers."""
 import hashlib
+import uuid
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import Response
@@ -163,6 +164,47 @@ def support_ticket(body: TicketIn, user: User = Depends(current_user), db: Sessi
     db.add(tk)
     db.commit()
     return {"id": str(tk.id), "reply": t("support.auto_reply", user.language_code)}
+
+
+class ChatIn(BaseModel):
+    to: uuid.UUID
+    body: str = Field(min_length=1, max_length=1000)
+
+
+def _chat_peers(db: Session, user: User, job_id: uuid.UUID, other: uuid.UUID):
+    """Chat is only between a job's customer and a worker who quoted on it (or admin reading)."""
+    from ..models import Bid, Job
+    job = db.get(Job, job_id)
+    if not job:
+        raise AppError("err.not_found", 404)
+    worker_id = other if user.id == job.customer_id else user.id
+    customer_id = job.customer_id
+    if user.id not in (customer_id, worker_id) or not db.scalar(
+            select(Bid.id).where(Bid.job_id == job.id, Bid.worker_id == worker_id)):
+        raise AppError("err.forbidden", 403)
+    return job, customer_id, worker_id
+
+
+@files.get("/jobs/{job_id}/chat")
+def chat_list(job_id: uuid.UUID, with_user: uuid.UUID = Query(alias="with"), user: User = Depends(current_user),
+              db: Session = Depends(get_db)):
+    from ..models import ChatMessage
+    job, c, w = _chat_peers(db, user, job_id, with_user)
+    rows = db.scalars(select(ChatMessage).where(ChatMessage.job_id == job.id,
+                                                ChatMessage.sender_id.in_([c, w]), ChatMessage.recipient_id.in_([c, w]))
+                      .order_by(ChatMessage.created_at)).all()
+    return [{"mine": m.sender_id == user.id, "body": m.body, "at": m.created_at.isoformat()} for m in rows]
+
+
+@files.post("/jobs/{job_id}/chat")
+def chat_send(job_id: uuid.UUID, body: ChatIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from ..models import ChatMessage
+    job, c, w = _chat_peers(db, user, job_id, body.to)
+    m = ChatMessage(job_id=job.id, sender_id=user.id, recipient_id=w if user.id == c else c, body=body.body.strip())
+    db.add(m)
+    db.commit()
+    services.realtime().publish(f"chat:{job.id}", "message", {"id": str(m.id)})
+    return {"ok": True}
 
 
 @files.post("/payments/webhook")

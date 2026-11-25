@@ -175,3 +175,16 @@ def test_upload_limits_and_audio_policy():
         "location_lat": 18.5, "location_lng": 73.8, "address_text": "Kothrud", "start_date": str(date.today()),
         "work_items": [{"trade": "mason", "audio_key": key, "audio_duration_sec": 300}]})
     assert long.json()["error"]["code"] == "err.audio_too_long"
+
+
+def test_chat_between_customer_and_bidder_only():
+    cust, worker, stranger = tok("9100000003"), tok("9200000005"), tok("9200000001")
+    job = next(j for j in client.get("/customer/jobs", headers=cust).json() if j["status"] == "bidding")
+    bid = client.get(f"/customer/jobs/{job['id']}", headers=cust).json()["bids"][0]
+    wid = bid["worker"]["id"]
+    assert client.post(f"/jobs/{job['id']}/chat", headers=cust, json={"to": wid, "body": "Kal aa sakte ho?"}).status_code == 200
+    me = client.get("/me", headers=worker).json()["id"]
+    if me == wid:
+        msgs = client.get(f"/jobs/{job['id']}/chat?with={job['id']}", headers=worker).json()
+        assert msgs and not msgs[-1]["mine"]
+    assert client.get(f"/jobs/{job['id']}/chat?with={wid}", headers=stranger).status_code == 403

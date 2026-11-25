@@ -160,3 +160,54 @@ class DemoChip extends StatelessWidget {
   Widget build(BuildContext context) => StatusPill(
       label: L.of(context).demoBanner, color: BC.info, bg: BC.infoSoft, icon: Icons.science_outlined);
 }
+
+class EmptyState extends StatelessWidget {
+  const EmptyState({super.key, required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+        child: Column(children: [
+          Container(
+            width: 96,
+            height: 96,
+            decoration: const BoxDecoration(color: BC.closedSoft, shape: BoxShape.circle),
+            child: Icon(icon, size: 44, color: BC.inkFaint),
+          ),
+          const SizedBox(height: 14),
+          Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, color: BC.inkSoft)),
+        ]),
+      );
+}
+
+/// Coloured info strip with an optional action — used for nudges, privacy notes, badges.
+class InfoBanner extends StatelessWidget {
+  const InfoBanner({super.key, required this.icon, required this.color, required this.text, this.action, this.onTap});
+  final IconData icon;
+  final Color color;
+  final String text;
+  final String? action;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) => Material(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(BC.r),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(BC.r),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Icon(icon, color: color, size: 26),
+              const SizedBox(width: 12),
+              Expanded(child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 15, height: 1.4))),
+              if (action != null) ...[
+                const SizedBox(width: 8),
+                Text(action!, style: TextStyle(color: color, fontWeight: FontWeight.w800, decoration: TextDecoration.underline)),
+              ],
+            ]),
+          ),
+        ),
+      );
+}

@@ -41,15 +41,22 @@ class AppState extends ChangeNotifier {
       s.token = null;
       s.user = null;
     }
+    // Phase-1 demo sessions used a token the new demo backend can't resolve → log in again.
+    if (AppConfig.isDemo && s.token != null && !s.token!.startsWith('demo:')) {
+      s.token = null;
+      s.user = null;
+    }
     s.api.token = s.token;
+    s.api.language = s.language ?? 'hi';
     return s;
   }
 
   Future<void> setLanguage(String code) async {
     language = code;
+    api.language = code;
     await _prefs.setString('language', code);
     notifyListeners();
-    if (loggedIn && !isDemo) {
+    if (loggedIn) {
       try {
         user = await api.setLanguage(code); // server-side SMS/errors switch too
         await _secure.write(key: 'user', value: jsonEncode(user!.toJson()));
@@ -60,6 +67,15 @@ class AppState extends ChangeNotifier {
   Future<void> setRoleIntent(String role) async {
     roleIntent = role;
     await _prefs.setString('roleIntent', role);
+    notifyListeners();
+  }
+
+  /// Refresh the cached user after a profile change (e.g. KYC level 1 sets name + level).
+  Future<void> updateUser({String? name, int? kycLevel}) async {
+    final u = user;
+    if (u == null) return;
+    user = SessionUser(id: u.id, phone: u.phone, role: u.role, language: u.language, name: name ?? u.name, kycLevel: kycLevel ?? u.kycLevel);
+    await _secure.write(key: 'user', value: jsonEncode(user!.toJson()));
     notifyListeners();
   }
 

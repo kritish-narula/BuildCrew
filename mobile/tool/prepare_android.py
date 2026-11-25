@@ -110,6 +110,11 @@ def patch_manifest() -> None:
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- "Update ready" notification on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Voice notes (customer), voice price input + voice help -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Job location (customer) and geofenced attendance (worker) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 '''
     m = sub_once(m, r"(<manifest[^>]*>)", r"\1" + perms.replace("\\", "\\\\"), "<manifest>")
     m = sub_once(m, r'android:label="[^"]*"', 'android:label="BuildCrew"', "label")
@@ -129,6 +134,15 @@ def patch_manifest() -> None:
         </provider>
     </application>'''
     m = sub_once(m, r"\s*</application>", provider.replace("\\", "\\\\"), "</application>")
+    queries = '''
+    <!-- Android 11+ package visibility: speech recognizer, phone dialer, WhatsApp/browser links -->
+    <queries>
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="tel" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
+    </queries>
+</manifest>'''
+    m = sub_once(m, r"\s*</manifest>\s*$", queries, "</manifest>")
     f.write_text(m)
 
 

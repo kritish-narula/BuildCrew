@@ -111,7 +111,7 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
 
 
 def job_card(db: Session, job: Job, lang: str) -> dict:
-    return {"id": str(job.id), "status": job.status.value, "locality": job.locality, "city": job.city,
+    return {"id": str(job.id), "customer_id": str(job.customer_id), "status": job.status.value, "locality": job.locality, "city": job.city,
             "address": job.address_text, "lat": job.location_lat, "lng": job.location_lng,
             "start_date": job.start_date.isoformat(), "created_at": job.created_at.isoformat(),
             "trades": [wi.trade.value for wi in job.work_items],

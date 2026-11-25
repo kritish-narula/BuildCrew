@@ -1,11 +1,15 @@
 import 'package:dio/dio.dart';
 
 import 'config.dart';
+import 'demo_api.dart';
+
+typedef Json = Map<String, dynamic>;
 
 class ApiException implements Exception {
   ApiException(this.code, this.message);
   final String code; // e.g. err.otp_invalid — message is already localised by the server
   final String message;
+  bool get isNetwork => code == 'network';
   @override
   String toString() => message;
 }
@@ -16,7 +20,7 @@ class SessionUser {
   final String? name;
   final int kycLevel;
 
-  factory SessionUser.fromJson(Map<String, dynamic> j) => SessionUser(
+  factory SessionUser.fromJson(Json j) => SessionUser(
         id: j['id'] as String,
         phone: j['phone'] as String,
         role: j['role'] as String,
@@ -24,8 +28,7 @@ class SessionUser {
         name: j['name'] as String?,
         kycLevel: (j['kyc_level'] as num?)?.toInt() ?? 0,
       );
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'phone': phone, 'role': role, 'language_code': language, 'name': name, 'kyc_level': kycLevel};
+  Json toJson() => {'id': id, 'phone': phone, 'role': role, 'language_code': language, 'name': name, 'kyc_level': kycLevel};
 }
 
 class AuthResult {
@@ -35,166 +38,190 @@ class AuthResult {
   final String homeRoute;
 }
 
-class FeedJob {
-  FeedJob(this.id, this.locality, this.trades, this.thumbnails, this.audioSeconds, this.audioKb, this.workCount,
-      this.distanceKm, this.postedAt, this.alreadyBid);
-  final String id, locality;
-  final List<String> trades, thumbnails;
-  final int? audioSeconds, audioKb;
-  final int workCount;
-  final double? distanceKm;
-  final DateTime postedAt;
-  final bool alreadyBid;
-
-  factory FeedJob.fromJson(Map<String, dynamic> j) {
-    final audio = j['audio'] as Map<String, dynamic>?;
-    return FeedJob(
-      j['id'] as String,
-      j['locality'] as String,
-      [for (final t in j['trades'] as List) (t as Map)['code'] as String],
-      [for (final u in j['thumbnails'] as List) u as String],
-      (audio?['total_seconds'] as num?)?.toInt(),
-      (audio?['total_kb'] as num?)?.toInt(),
-      (j['work_count'] as num).toInt(),
-      (j['distance_km'] as num?)?.toDouble(),
-      DateTime.parse(j['posted_at'] as String),
-      j['already_bid'] as bool? ?? false,
-    );
-  }
-}
-
-class CustomerJob {
-  CustomerJob(this.id, this.status, this.locality, this.bidCount, this.trades);
-  final String id, status, locality;
-  final int bidCount;
-  final List<String> trades;
-  factory CustomerJob.fromJson(Map<String, dynamic> j) => CustomerJob(j['id'] as String, j['status'] as String,
-      j['locality'] as String, (j['bid_count'] as num).toInt(), [for (final t in j['trades'] as List) t as String]);
-}
-
-/// The app talks to this interface only; [HttpApi] for a real backend, [DemoApi] otherwise.
+/// One interface for the whole app. [HttpApi] talks to the FastAPI backend; [DemoApi] is a
+/// complete on-device simulation (same JSON shapes, same rules) so the APK is fully usable
+/// before the backend is deployed. Screens never know which one they are using.
 abstract class Api {
+  set token(String? t);
+  set language(String lang);
+
+  // auth
   Future<void> requestOtp(String phone, String lang);
   Future<AuthResult> verifyOtp(String phone, String code, {String? role, required String lang});
   Future<SessionUser> setLanguage(String lang);
-  Future<List<FeedJob>> workerFeed();
-  Future<List<CustomerJob>> customerJobs();
-  set token(String? t);
+
+  // worker
+  Future<List<Json>> workerFeed();
+  Future<Json> workerJob(String id);
+  Future<Json> placeBid(String jobId, int priceInr, String clientRef);
+  Future<List<Json>> myBids();
+  Future<void> withdrawBid(String bidId);
+  Future<List<Json>> assignments();
+  Future<void> startWork(String assignmentId);
+  Future<Json> attendance(Json body);
+  Future<void> rateCustomer(String assignmentId, int clarity, int timelyPayment, String? comment);
+  Future<Json> earnings();
+  Future<Json> withdraw();
+  Future<Json> workerProfile();
+  Future<Json> labourCard();
+  Future<void> kycLevel1({required String name, required String upi, String? selfieKey, List<String>? trades});
+  Future<void> kycLevel2(String docType, String docKey);
+  Future<void> setOnline(bool online);
+
+  // customer
+  Future<List<Json>> customerJobs();
+  Future<Json> priceEstimate(List<String> trades, String? locality);
+  Future<Json> createJob(Json body);
+  Future<Json> customerJob(String id);
+  Future<Json> acceptBid(String jobId, String bidId);
+  Future<void> completeJob(String jobId);
+  Future<Json> rateWorker(String jobId, Json stars);
+  Future<void> cancelJob(String jobId);
+  Future<void> dispute(String jobId, String reason);
+  Future<List<Json>> payments();
+  Future<List<Json>> browseWorkers(String? trade);
+  Future<Json> workerPublic(String workerId);
+
+  // shared
+  Future<Json> upload(String kind, String filePath);
+  Future<String> transcribe(String key, String lang);
+  Future<List<Json>> chat(String jobId, String withUser);
+  Future<void> sendChat(String jobId, String to, String body);
+  Future<String> voiceQuery(String text);
+  Future<String> supportTicket(String subject, String? transcript);
 
   static Api create() => AppConfig.isDemo ? DemoApi() : HttpApi(AppConfig.apiBaseUrl);
 }
 
 class HttpApi implements Api {
   HttpApi(String baseUrl)
-      : _dio = Dio(BaseOptions(baseUrl: baseUrl, connectTimeout: const Duration(seconds: 12), receiveTimeout: const Duration(seconds: 20)));
+      : _dio = Dio(BaseOptions(baseUrl: baseUrl, connectTimeout: const Duration(seconds: 12), receiveTimeout: const Duration(seconds: 30)));
   final Dio _dio;
   String? _token;
   String _lang = 'hi';
 
   @override
   set token(String? t) => _token = t;
+  @override
+  set language(String lang) => _lang = lang;
 
-  Future<dynamic> _call(Future<Response<dynamic>> Function(Options o) fn) async {
-    final o = Options(headers: {
-      if (_token != null) 'Authorization': 'Bearer $_token',
-      'Accept-Language': _lang, // server localises every error to this
-    });
+  Options get _o => Options(headers: {
+        if (_token != null) 'Authorization': 'Bearer $_token',
+        'Accept-Language': _lang, // server localises every error into this language
+      });
+
+  Future<dynamic> _wrap(Future<Response<dynamic>> Function() fn) async {
     try {
-      return (await fn(o)).data;
+      return (await fn()).data;
     } on DioException catch (e) {
-      final err = (e.response?.data is Map) ? (e.response!.data as Map)['error'] as Map? : null;
+      final data = e.response?.data;
+      final err = data is Map ? data['error'] as Map? : null;
       if (err != null) throw ApiException(err['code'] as String, err['message'] as String);
       throw ApiException('network', '');
     }
   }
 
+  Future<dynamic> _get(String p, [Map<String, dynamic>? q]) => _wrap(() => _dio.get(p, queryParameters: q, options: _o));
+  Future<dynamic> _post(String p, [Object? body]) => _wrap(() => _dio.post(p, data: body, options: _o));
+  Future<dynamic> _patch(String p, Object body) => _wrap(() => _dio.patch(p, data: body, options: _o));
+  List<Json> _list(dynamic d) => [for (final x in d as List) Map<String, dynamic>.from(x as Map)];
+  Json _map(dynamic d) => Map<String, dynamic>.from(d as Map);
+
   @override
   Future<void> requestOtp(String phone, String lang) async {
     _lang = lang;
-    await _call((o) => _dio.post('/auth/otp/request', data: {'phone': phone, 'language_code': lang}, options: o));
+    await _post('/auth/otp/request', {'phone': phone, 'language_code': lang});
   }
 
   @override
   Future<AuthResult> verifyOtp(String phone, String code, {String? role, required String lang}) async {
     _lang = lang;
-    final j = await _call((o) => _dio.post('/auth/otp/verify',
-        data: {'phone': phone, 'code': code, 'role': role, 'language_code': lang}, options: o)) as Map<String, dynamic>;
-    return AuthResult(j['token'] as String, SessionUser.fromJson(j['user'] as Map<String, dynamic>), j['home_route'] as String);
+    final j = _map(await _post('/auth/otp/verify', {'phone': phone, 'code': code, 'role': role, 'language_code': lang}));
+    return AuthResult(j['token'] as String, SessionUser.fromJson(_map(j['user'])), j['home_route'] as String);
   }
 
   @override
   Future<SessionUser> setLanguage(String lang) async {
     _lang = lang;
-    final j = await _call((o) => _dio.patch('/me', data: {'language_code': lang}, options: o));
-    return SessionUser.fromJson(j as Map<String, dynamic>);
+    return SessionUser.fromJson(_map(await _patch('/me', {'language_code': lang})));
   }
 
   @override
-  Future<List<FeedJob>> workerFeed() async =>
-      [for (final j in await _call((o) => _dio.get('/worker/feed', options: o)) as List) FeedJob.fromJson(j as Map<String, dynamic>)];
+  Future<List<Json>> workerFeed() async => _list(await _get('/worker/feed'));
+  @override
+  Future<Json> workerJob(String id) async => _map(await _get('/worker/jobs/$id'));
+  @override
+  Future<Json> placeBid(String jobId, int priceInr, String clientRef) async =>
+      _map(await _post('/worker/bids', {'job_id': jobId, 'price_inr': priceInr, 'client_ref': clientRef}));
+  @override
+  Future<List<Json>> myBids() async => _list(await _get('/worker/bids'));
+  @override
+  Future<void> withdrawBid(String bidId) => _post('/worker/bids/$bidId/withdraw');
+  @override
+  Future<List<Json>> assignments() async => _list(await _get('/worker/assignments'));
+  @override
+  Future<void> startWork(String assignmentId) => _post('/worker/assignments/$assignmentId/start');
+  @override
+  Future<Json> attendance(Json body) async => _map(await _post('/worker/attendance', body));
+  @override
+  Future<void> rateCustomer(String assignmentId, int clarity, int timelyPayment, String? comment) =>
+      _post('/worker/assignments/$assignmentId/rate-customer', {'clarity': clarity, 'timely_payment': timelyPayment, 'comment': comment});
+  @override
+  Future<Json> earnings() async => _map(await _get('/worker/earnings'));
+  @override
+  Future<Json> withdraw() async => _map(await _post('/worker/withdraw'));
+  @override
+  Future<Json> workerProfile() async => _map(await _get('/worker/profile'));
+  @override
+  Future<Json> labourCard() async => _map(await _get('/worker/labour-card'));
+  @override
+  Future<void> kycLevel1({required String name, required String upi, String? selfieKey, List<String>? trades}) =>
+      _post('/worker/kyc/level1', {'name': name, 'upi_id': upi, 'selfie_key': selfieKey, 'trades': trades});
+  @override
+  Future<void> kycLevel2(String docType, String docKey) => _post('/worker/kyc/level2', {'doc_type': docType, 'doc_key': docKey});
+  @override
+  Future<void> setOnline(bool online) => _patch('/worker/profile', {'is_online': online});
 
   @override
-  Future<List<CustomerJob>> customerJobs() async => [
-        for (final j in await _call((o) => _dio.get('/customer/jobs', options: o)) as List)
-          CustomerJob.fromJson(j as Map<String, dynamic>)
-      ];
-}
-
-/// In-memory stand-in for the backend, mirroring backend/app/seed.py.
-/// Same phone numbers, same rules (OTP 123456, admins can't use the mobile app).
-class DemoApi implements Api {
+  Future<List<Json>> customerJobs() async => _list(await _get('/customer/jobs'));
   @override
-  set token(String? t) {}
-
-  static const _names = {
-    '9100000001': ('Priya Sharma', 'customer'),
-    '9100000002': ('Anil Deshmukh', 'customer'),
-    '9100000003': ('Neha Kulkarni', 'customer'),
-    '9000000001': ('Ops Admin', 'admin'),
-    '9200000001': ('Ramesh Pawar', 'worker'),
-    '9200000003': ('Imran Shaikh', 'worker'),
-    '9200000005': ('Venkat Rao', 'worker'),
-  };
-
-  Future<void> _lag() => Future.delayed(const Duration(milliseconds: 450));
-
+  Future<Json> priceEstimate(List<String> trades, String? locality) async =>
+      _map(await _get('/customer/price-estimate', {'trades': trades.join(','), if (locality != null) 'locality': locality}));
   @override
-  Future<void> requestOtp(String phone, String lang) => _lag();
+  Future<Json> createJob(Json body) async => _map(await _post('/customer/jobs', body));
+  @override
+  Future<Json> customerJob(String id) async => _map(await _get('/customer/jobs/$id'));
+  @override
+  Future<Json> acceptBid(String jobId, String bidId) async => _map(await _post('/customer/jobs/$jobId/bids/$bidId/accept'));
+  @override
+  Future<void> completeJob(String jobId) => _post('/customer/jobs/$jobId/complete');
+  @override
+  Future<Json> rateWorker(String jobId, Json stars) async => _map(await _post('/customer/jobs/$jobId/rate', stars));
+  @override
+  Future<void> cancelJob(String jobId) => _post('/customer/jobs/$jobId/cancel');
+  @override
+  Future<void> dispute(String jobId, String reason) => _post('/customer/jobs/$jobId/dispute', {'reason': reason});
+  @override
+  Future<List<Json>> payments() async => _list(await _get('/customer/payments'));
+  @override
+  Future<List<Json>> browseWorkers(String? trade) async => _list(await _get('/customer/workers', {if (trade != null) 'trade': trade}));
+  @override
+  Future<Json> workerPublic(String workerId) async => _map(await _get('/customer/workers/$workerId'));
 
   @override
-  Future<AuthResult> verifyOtp(String phone, String code, {String? role, required String lang}) async {
-    await _lag();
-    if (code != '123456') throw ApiException('err.otp_invalid', '');
-    final known = _names[phone];
-    final r = known?.$2 ?? (phone.startsWith('91') ? 'customer' : (role ?? 'worker'));
-    return AuthResult('demo-token', SessionUser(id: 'demo-$phone', phone: phone, role: r, language: lang, name: known?.$1, kycLevel: known == null ? 0 : 1),
-        r == 'worker' ? '/worker/jobs' : r == 'customer' ? '/customer/home' : '/admin');
-  }
-
+  Future<Json> upload(String kind, String filePath) async => _map(await _wrap(() => _dio.post('/media/upload',
+      data: FormData.fromMap({'kind': kind, 'file': MultipartFile.fromFileSync(filePath, filename: filePath.split('/').last)}),
+      options: _o)));
   @override
-  Future<SessionUser> setLanguage(String lang) async => throw UnimplementedError(); // AppState handles demo locally
-
+  Future<String> transcribe(String key, String lang) async =>
+      (_map(await _post('/media/transcribe', {'key': key, 'lang': lang})))['transcript'] as String;
   @override
-  Future<List<FeedJob>> workerFeed() async {
-    await _lag();
-    final now = DateTime.now();
-    String p(String s) => 'https://picsum.photos/seed/bc-$s/400/300';
-    return [
-      FeedJob('d1', 'Kothrud', ['plumber', 'mason'], [p('j1w0p0'), p('j1w0p1'), p('j1w1p0')], 24, 18, 2, 1.8,
-          now.subtract(const Duration(minutes: 40)), false),
-      FeedJob('d2', 'Baner', ['electrician', 'painter', 'helper'], [p('j2w0p0'), p('j2w1p0')], 37, 18, 3, 4.6,
-          now.subtract(const Duration(hours: 5)), false),
-      FeedJob('d3', 'Aundh', ['carpenter'], [p('j3w0p0')], null, null, 1, 6.2, now.subtract(const Duration(days: 1)), true),
-    ];
-  }
-
+  Future<List<Json>> chat(String jobId, String withUser) async => _list(await _get('/jobs/$jobId/chat', {'with': withUser}));
   @override
-  Future<List<CustomerJob>> customerJobs() async {
-    await _lag();
-    return [
-      CustomerJob('c1', 'bidding', 'Baner', 3, ['electrician', 'painter', 'helper']),
-      CustomerJob('c2', 'completed', 'Kothrud', 2, ['painter', 'painter']),
-      CustomerJob('c3', 'open', 'Kothrud', 0, ['plumber', 'mason']),
-    ];
-  }
+  Future<void> sendChat(String jobId, String to, String body) => _post('/jobs/$jobId/chat', {'to': to, 'body': body});
+  @override
+  Future<String> voiceQuery(String text) async => (_map(await _post('/voice/query', {'text': text})))['answer'] as String;
+  @override
+  Future<String> supportTicket(String subject, String? transcript) async =>
+      (_map(await _post('/support/tickets', {'subject': subject, 'transcript': transcript, 'channel': 'app'})))['reply'] as String;
 }
