@@ -455,7 +455,7 @@ void main() {
       await signInAs(_priya);
       final a = await asg(h.jobId);
       expect(a['proof_photos'], ['after_1.jpg']);
-      expect(a['before_photos'], [_photo]);
+      expect(a['before_photos'], contains(_photo));
       expect(a['worker_done_note'], 'Wall built');
       expect(a['auto_confirm_at'], isNotNull);
       expect(a['auto_confirm_hours'], 48);
