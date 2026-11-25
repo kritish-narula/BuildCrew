@@ -182,7 +182,9 @@ class ActiveWorkCard extends StatelessWidget {
     final l = L.of(context);
     final job = a['job'] as Json;
     final status = job['status'] as String;
+    final unpaid = (a['payment'] as Map?)?['escrow_state'] == 'created';
     final (label, icon) = switch (status) {
+      'assigned' when unpaid => (l.waitingForPayment, Icons.hourglass_top_rounded),
       'assigned' => (l.workAssigned, Icons.event_available_rounded),
       'in_progress' => (l.workInProgress, Icons.construction_rounded),
       _ => (l.rateCustomerCta, Icons.star_rounded),

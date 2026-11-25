@@ -47,5 +47,6 @@
  "err.not_checked_in": "Check in first.",
  "err.already_resolved": "Already resolved.",
  "voice.balance": "Your balance is {amount} rupees.",
- "kyc.l1_prompt": "A customer chose you! Add your name, photo and UPI ID to get paid."
+ "kyc.l1_prompt": "A customer chose you! Add your name, photo and UPI ID to get paid.",
+ "err.payment_pending": "The customer has not paid yet. Work starts after payment."
 }

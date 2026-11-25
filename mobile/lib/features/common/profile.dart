@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_state.dart';
 import '../../core/config.dart';
+import '../../core/demo_accounts.dart';
 import '../../core/speech.dart';
 import '../../core/theme.dart';
 import '../../core/updater.dart';
@@ -40,6 +41,52 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
       );
   final phone = AppConfig.supportPhone;
   return [
+    if (state.isDemo) ...[
+      Container(
+        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(color: BC.infoSoft, borderRadius: BorderRadius.circular(BC.r)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(l.switchAccount, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: BC.info)),
+          const SizedBox(height: 4),
+          Text(l.switchAccountSub, style: const TextStyle(color: BC.info)),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final (p, trade, name, role) in demoAccounts)
+              if (p != state.user?.phone)
+                ActionChip(
+                  backgroundColor: Colors.white,
+                  avatar: Icon(role == 'customer' ? Icons.home_work_rounded : TradeStyle.of(trade).icon,
+                      color: role == 'customer' ? BC.info : TradeStyle.of(trade).color, size: 20),
+                  label: Text('${name.split(' ').first} · ${role == 'customer' ? l.role_customer : tradeLabel(l, trade)}'),
+                  onPressed: () async {
+                    Navigator.of(context).popUntil((r) => r.isFirst);
+                    await state.switchAccount(p);
+                  },
+                ),
+          ]),
+          const SizedBox(height: 4),
+          TextButton.icon(
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (c) => AlertDialog(
+                  title: Text(l.resetDemo),
+                  content: Text(l.resetDemoSub),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(c, false), child: Text(l.cancel)),
+                    FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(l.resetDemo)),
+                  ],
+                ),
+              );
+              if (ok == true) await state.resetDemo();
+            },
+            icon: const Icon(Icons.restart_alt_rounded),
+            label: Text(l.resetDemo),
+          ),
+        ]),
+      ),
+    ],
     tile(Icons.record_voice_over_rounded, BC.brand, l.askByVoice, sub: l.askByVoiceSub, onTap: () => showVoiceHelp(context, state)),
     tile(Icons.call_rounded, BC.money, l.profileSupport, sub: phone, onTap: () => launchUrl(Uri.parse('tel:$phone'))),
     tile(Icons.chat_rounded, const Color(0xFF128C7E), l.whatsappSupport, sub: l.whatsappSupportSub,
@@ -49,7 +96,7 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
       listenable: Updater.instance,
       builder: (ctx, _) {
         final up = Updater.instance;
-        return tile(Icons.system_update_rounded, BC.info, l.profileUpdates, sub: l.versionLabel(up.currentVersion),
+        return tile(Icons.system_update_rounded, BC.info, l.profileUpdates, sub: '${l.versionLabel(up.currentVersion)} · build ${up.currentCode}',
             trailing: up.available != null ? const Icon(Icons.circle, color: BC.danger, size: 12) : null, onTap: () async {
           final info = await up.check(force: true);
           if (!context.mounted) return;

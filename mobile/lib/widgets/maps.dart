@@ -146,3 +146,60 @@ String? distanceFromMe(double lat, double lng) {
   if (p == null) return null;
   return LocationService.km(p.latitude, p.longitude, lat, lng).toStringAsFixed(1);
 }
+
+
+/// Customer's live view: the house, the worker's moving position and the line between them.
+class TrackingMap extends StatelessWidget {
+  const TrackingMap({super.key, required this.houseLat, required this.houseLng, this.workerLat, this.workerLng, this.height = 220});
+  final double houseLat, houseLng;
+  final double? workerLat, workerLng;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final house = LatLng(houseLat, houseLng);
+    final worker = workerLat == null ? null : LatLng(workerLat!, workerLng!);
+    final bounds = worker == null ? null : LatLngBounds.fromPoints([house, worker]);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(BC.r),
+      child: SizedBox(
+        height: height,
+        child: Stack(children: [
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: house,
+              initialZoom: 14,
+              initialCameraFit: bounds == null ? null : CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(48), maxZoom: 16),
+            ),
+            children: [
+              TileLayer(urlTemplate: _tiles, userAgentPackageName: 'com.buildcrew.app'),
+              if (worker != null) PolylineLayer(polylines: [Polyline(points: [worker, house], color: BC.info, strokeWidth: 4)]),
+              MarkerLayer(markers: [
+                Marker(
+                  point: house,
+                  width: 44,
+                  height: 44,
+                  child: Container(
+                    decoration: BoxDecoration(color: BC.brand, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3)),
+                    child: const Icon(Icons.home_rounded, color: Colors.white, size: 22),
+                  ),
+                ),
+                if (worker != null)
+                  Marker(
+                    point: worker,
+                    width: 44,
+                    height: 44,
+                    child: Container(
+                      decoration: BoxDecoration(color: BC.info, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3)),
+                      child: const Icon(Icons.two_wheeler_rounded, color: Colors.white, size: 22),
+                    ),
+                  ),
+              ]),
+            ],
+          ),
+          _attribution(),
+        ]),
+      ),
+    );
+  }
+}

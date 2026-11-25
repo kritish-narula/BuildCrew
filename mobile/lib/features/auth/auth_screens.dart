@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/app_state.dart';
+import '../../core/demo_accounts.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
@@ -83,7 +84,21 @@ class _PhoneScreenState extends State<PhoneScreen> {
               ]),
             ),
             const SizedBox(height: 16),
-            if (widget.state.isDemo) const DemoChip(),
+            if (widget.state.isDemo) ...[
+              const DemoChip(),
+              const SizedBox(height: 14),
+              Text(L.of(context).demoAccounts, style: const TextStyle(fontWeight: FontWeight.w700, color: BC.inkSoft)),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final (phone, trade, name, role) in demoAccounts)
+                  ActionChip(
+                    avatar: Icon(role == 'customer' ? Icons.home_work_rounded : TradeStyle.of(trade).icon,
+                        color: role == 'customer' ? BC.info : TradeStyle.of(trade).color, size: 20),
+                    label: Text('${name.split(' ').first} · ${role == 'customer' ? L.of(context).role_customer : tradeLabel(L.of(context), trade)}'),
+                    onPressed: () => setState(() => _c.text = '${phone.substring(0, 5)} ${phone.substring(5)}'),
+                  ),
+              ]),
+            ],
             const Spacer(),
             FilledButton(
               onPressed: _valid && !_busy ? _send : null,

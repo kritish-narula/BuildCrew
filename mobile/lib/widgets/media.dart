@@ -458,7 +458,14 @@ Future<String?> pickPhoto(BuildContext context, {bool cameraOnly = false}) async
   // Resized + recompressed on device: ~150–300 KB per photo instead of 3–5 MB.
   final x = await ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 72,
       preferredCameraDevice: cameraOnly ? CameraDevice.front : CameraDevice.rear);
-  return x?.path;
+  if (x == null) return null;
+  // Picker files live in the cache, which Android may clear. Keep our own copy so the photo
+  // survives until it is uploaded (and, in demo mode, so another login on this phone sees it).
+  final dir = Directory('${(await getApplicationDocumentsDirectory()).path}/photos');
+  await dir.create(recursive: true);
+  final ext = x.path.contains('.') ? x.path.split('.').last : 'jpg';
+  final kept = await File(x.path).copy('${dir.path}/${DateTime.now().microsecondsSinceEpoch}.$ext');
+  return kept.path;
 }
 
 // ------------------------------------------------------------------ ratings

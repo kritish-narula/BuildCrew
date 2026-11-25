@@ -47,5 +47,6 @@
  "err.not_checked_in": null,
  "err.already_resolved": null,
  "voice.balance": null,
- "kyc.l1_prompt": null
+ "kyc.l1_prompt": null,
+ "err.payment_pending": null
 }

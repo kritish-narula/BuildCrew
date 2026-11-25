@@ -142,3 +142,71 @@ for k, en, hi in S3:
     if ps:
         PH[k] = {"placeholders": {p: {"type": "int" if p in INT else "String"} for p in dict.fromkeys(ps)}}
 S += S3
+
+S4 = [
+("allDone","All done!","सब पूरा हो गया!"),
+("arrivedCheckIn","I've arrived — check in","मैं पहुँच गया — हाज़िरी लगाएँ"),
+("checkAndConfirm","Check the work, then confirm it's done.","काम देख लें, फिर पूरा होने की पुष्टि करें।"),
+("choosePaymentMethod","How do you want to pay?","आप कैसे भुगतान करना चाहते हैं?"),
+("continueToPay","Continue to payment","भुगतान पर आगे बढ़ें"),
+("customerPaidGo","Customer has paid — go to the site","ग्राहक ने भुगतान कर दिया — साइट पर जाएँ"),
+("customerPaidGoSub","Tap below when you leave. The customer will see how far you are.","निकलते समय नीचे दबाएँ। ग्राहक देख सकेंगे कि आप कितनी दूर हैं।"),
+("demoAccounts","Demo accounts — tap to fill (code 123456):","डेमो खाते — भरने के लिए दबाएँ (कोड 123456):"),
+("distanceEta","{km} km away · arriving in about {min} min","{km} कि.मी. दूर · लगभग {min} मिनट में पहुँचेंगे"),
+("downloadFromWebsite","Download from website instead","वेबसाइट से डाउनलोड करें"),
+("heldSafelyFor","{amount} is held safely. {name} will be paid after you rate the work.","{amount} सुरक्षित रखे गए हैं। काम की रेटिंग के बाद {name} को भुगतान होगा।"),
+("imOnMyWay","I'm on my way","मैं निकल रहा हूँ"),
+("paidOn","Paid on","भुगतान की तारीख़"),
+("payAmount","Pay {amount}","{amount} चुकाएँ"),
+("payCard","Debit / credit card","डेबिट / क्रेडिट कार्ड"),
+("payNetbanking","Net banking","नेट बैंकिंग"),
+("payNow","Pay now","अभी भुगतान करें"),
+("paySecurePage","On the bank's secure payment page","बैंक के सुरक्षित भुगतान पेज पर"),
+("payToConfirm","Pay to confirm {name}","{name} को पक्का करने के लिए भुगतान करें"),
+("payToConfirmSub","Money stays with BuildCrew until the work is done and you rate it.","काम पूरा होने और आपकी रेटिंग तक पैसा BuildCrew के पास रहेगा।"),
+("payUpi","UPI","UPI"),
+("payUpiSub","Any UPI app on this phone","इस फ़ोन का कोई भी UPI ऐप"),
+("payingFor","Paying for {name}'s work","{name} के काम का भुगतान"),
+("payment","Payment","भुगतान"),
+("paymentMethod","Method","तरीका"),
+("paymentReceived","Payment received","भुगतान मिल गया"),
+("paymentSecurityNote","Payments are processed by Razorpay. BuildCrew never sees or stores your card or bank details.","भुगतान Razorpay से होता है। BuildCrew आपका कार्ड या बैंक विवरण न देखता है, न सेव करता है।"),
+("paymentSuccessful","Payment successful","भुगतान सफल"),
+("processingPayment","Processing…","भुगतान हो रहा है…"),
+("reachedSite","You have reached the site","आप साइट पर पहुँच गए"),
+("receipt","Receipt","रसीद"),
+("receiptHeld","Held in escrow","सुरक्षित रखा गया"),
+("receiptReleased","Paid to {name}","{name} को भुगतान हुआ"),
+("refunded","Refunded","वापस किया"),
+("releasedOn","Paid to worker on","कारीगर को भुगतान"),
+("resetDemo","Reset demo data","डेमो डेटा रीसेट करें"),
+("resetDemoSub","Removes everything you posted or changed and restores the sample data.","आपने जो डाला या बदला वह हट जाएगा और सैंपल डेटा वापस आ जाएगा।"),
+("shareReceipt","Share receipt","रसीद शेयर करें"),
+("sharingLocation","On the way — sharing your location","रास्ते में — आपकी लोकेशन दिख रही है"),
+("switchAccount","Demo: switch account","डेमो: खाता बदलें"),
+("switchAccountSub","Try the other side instantly. Everything you post is shared between these accounts on this phone.","तुरंत दूसरी तरफ़ आज़माएँ। इस फ़ोन पर इन खातों में सब कुछ साझा है।"),
+("testModePayment","Demo payment — no real money is charged.","डेमो भुगतान — असली पैसा नहीं कटेगा।"),
+("totalPaid","Total paid","कुल भुगतान"),
+("trackWorker","Track {name}","{name} को ट्रैक करें"),
+("transactionId","Transaction ID","ट्रांज़ैक्शन ID"),
+("viewReceipt","View receipt","रसीद देखें"),
+("waitingCustomerConfirm","Waiting for customer to confirm","ग्राहक की पुष्टि का इंतज़ार"),
+("waitingCustomerConfirmSub","You'll be paid as soon as the customer confirms and rates.","ग्राहक की पुष्टि और रेटिंग होते ही आपको भुगतान होगा।"),
+("waitingForPayment","Waiting for customer payment","ग्राहक के भुगतान का इंतज़ार"),
+("waitingForPaymentSub","Don't start yet. We'll tell you as soon as the money is safely held.","अभी शुरू न करें। पैसा सुरक्षित होते ही हम बताएँगे।"),
+("workFinished","Work finished","काम पूरा हुआ"),
+("workLabel","Work","काम"),
+("workerAtSite","{name} is at your site","{name} आपकी साइट पर हैं"),
+("workerLabel","Worker","कारीगर"),
+("workerOnTheWay","{name} is on the way","{name} रास्ते में हैं"),
+("workerSaysDone","{name} says the work is finished","{name} कह रहे हैं काम पूरा हो गया"),
+("workerWillStart","{name} will set off soon","{name} जल्द निकलेंगे"),
+("workerWillStartSub","You'll see the distance and arrival time here.","दूरी और पहुँचने का समय यहाँ दिखेगा।"),
+]
+INT |= {"min"}
+for k, en, hi in S4:
+    import re as _re
+    ps = _re.findall(r"\{(\w+)\}", en)
+    if ps:
+        PH[k] = {"placeholders": {p: {"type": "int" if p in INT else "String"} for p in dict.fromkeys(ps)}}
+S += S4

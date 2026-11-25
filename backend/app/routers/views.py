@@ -88,7 +88,7 @@ def payment_view(p: Payment | None) -> dict | None:
     return {"id": str(p.id), "amount_inr": p.amount_paise / 100, "platform_fee_inr": p.platform_fee_paise / 100,
             "worker_payout_inr": p.worker_payout_paise / 100, "refund_inr": p.refund_paise / 100,
             "escrow_state": p.escrow_state.value, "released_at": p.released_at.isoformat() if p.released_at else None,
-            "ref": p.razorpay_ref}
+            "ref": p.razorpay_ref, "method": p.method, "paid_at": p.paid_at.isoformat() if p.paid_at else None}
 
 
 def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None:
@@ -101,7 +101,9 @@ def assignment_view(db: Session, a: Assignment | None, lang: str) -> dict | None
                for r in db.scalars(select(Rating).where(Rating.assignment_id == a.id))}
     att = db.scalars(select(Attendance).where(Attendance.assignment_id == a.id).order_by(Attendance.checkin_at)).all()
     bid = db.get(Bid, a.accepted_bid_id)
+    from ..domain.flows import tracking
     return {"id": str(a.id), "worker": worker_summary(db, a.worker), "price_inr": bid.quoted_price_paise / 100,
+            "tracking": tracking(a), "worker_done_at": a.worker_done_at.isoformat() if a.worker_done_at else None,
             "started_at": a.started_at.isoformat() if a.started_at else None,
             "completed_at": a.completed_at.isoformat() if a.completed_at else None,
             "payment": payment_view(p), "ratings": ratings,

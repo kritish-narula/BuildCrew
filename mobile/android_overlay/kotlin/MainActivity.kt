@@ -39,8 +39,12 @@ class MainActivity : FlutterActivity() {
                         setDataAndType(uri, "application/vnd.android.package-archive")
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    startActivity(intent)
-                    result.success(true)
+                    try {
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("install", e.message, null)
+                    }
                 }
                 else -> result.notImplemented()
             }

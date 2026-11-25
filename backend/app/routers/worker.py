@@ -148,6 +148,35 @@ def start(assignment_id: uuid.UUID, user: User = Depends(W), db: Session = Depen
     return {"ok": True}
 
 
+class LocIn(BaseModel):
+    lat: float | None = Field(default=None, ge=6, le=37.5)
+    lng: float | None = Field(default=None, ge=68, le=97.5)
+
+
+@router.post("/assignments/{assignment_id}/journey")
+def journey(assignment_id: uuid.UUID, body: LocIn, user: User = Depends(W), db: Session = Depends(get_db)):
+    """'I'm on my way' — starts live location sharing for the customer's ETA."""
+    flows.start_journey(db, user, _my_assignment(db, user, assignment_id), body.lat, body.lng)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/assignments/{assignment_id}/location")
+def location(assignment_id: uuid.UUID, body: LocIn, user: User = Depends(W), db: Session = Depends(get_db)):
+    if body.lat is None or body.lng is None:
+        raise AppError("err.validation", 422)
+    flows.update_location(db, user, _my_assignment(db, user, assignment_id), body.lat, body.lng)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/assignments/{assignment_id}/done")
+def done(assignment_id: uuid.UUID, user: User = Depends(W), db: Session = Depends(get_db)):
+    flows.worker_done(db, user, _my_assignment(db, user, assignment_id))
+    db.commit()
+    return {"ok": True}
+
+
 class AttendanceIn(BaseModel):
     assignment_id: uuid.UUID
     kind: str = Field(pattern="^(in|out)$")

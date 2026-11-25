@@ -88,11 +88,34 @@ def accept_bid(db: Session, customer: User, job: Job, bid: Bid) -> Assignment:
     db.flush()
     audit(db, actor_id=customer.id, action="payment.order_created", entity="payment", entity_id=p.id,
           amount=fees.customer_pays_paise)
-    if get_settings().payment_provider == "mock":
-        # Dev/demo: simulate the customer completing Checkout. In production the HELD state is
-        # set only by the signature-verified `payment.captured` webhook.
-        mark_held(db, p, a, actor_id=customer.id)
+    # Escrow stays CREATED until the customer completes the payment page (pay_escrow).
     return a
+
+
+def pay_escrow(db: Session, customer: User, a: Assignment, *, method: str, razorpay_payment_id: str | None = None,
+               signature: str | None = None) -> Payment:
+    """Customer pays quote + fee into escrow. Mock provider: the payment page's test mode.
+    Razorpay: the Checkout result is accepted ONLY if its HMAC signature verifies; the
+    `payment.captured` webhook is the second, independent confirmation."""
+    if a.job.customer_id != customer.id:
+        raise AppError("err.not_your_job", 403)
+    p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
+    if p.escrow_state == EscrowState.held:
+        return p  # idempotent: double-tap on "Pay" never charges twice
+    if get_settings().payment_provider != "mock":
+        if not (razorpay_payment_id and signature and
+                services.payment().verify_checkout_signature(p.razorpay_ref or "", razorpay_payment_id, signature)):
+            raise AppError("err.forbidden", 403)
+    mark_held(db, p, a, actor_id=customer.id)
+    p.method, p.paid_at = method, now()
+    services.realtime().publish(f"job:{a.job_id}", "paid", {})
+    return p
+
+
+def _require_paid(db: Session, a: Assignment) -> None:
+    p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
+    if not p or p.escrow_state == EscrowState.created:
+        raise AppError("err.payment_pending", 409)
 
 
 def mark_held(db: Session, p: Payment, a: Assignment, actor_id) -> None:
@@ -103,9 +126,56 @@ def mark_held(db: Session, p: Payment, a: Assignment, actor_id) -> None:
 # ------------------------------------------------------------------ work
 def start_work(db: Session, actor: User, a: Assignment) -> None:
     job = a.job
+    _require_paid(db, a)  # nobody starts work before the money is safely in escrow
     if job.status == JobStatus.assigned:
         transition(db, job, kind="job", field="status", new=JobStatus.in_progress, actor_id=actor.id)
         a.started_at = a.started_at or now()
+
+
+# ------------------------------------------------------------------ journey (live tracking)
+CITY_SPEED_KMH = 20  # two-wheeler in city traffic; used for the customer's ETA
+
+
+def start_journey(db: Session, worker: User, a: Assignment, lat: float | None, lng: float | None) -> None:
+    if a.worker_id != worker.id:
+        raise AppError("err.forbidden", 403)
+    _require_paid(db, a)
+    a.journey_started_at = a.journey_started_at or now()
+    if lat is not None and lng is not None:
+        update_location(db, worker, a, lat, lng)
+    audit(db, actor_id=worker.id, action="journey.started", entity="assignment", entity_id=a.id)
+
+
+def update_location(db: Session, worker: User, a: Assignment, lat: float, lng: float) -> None:
+    if a.worker_id != worker.id:
+        raise AppError("err.forbidden", 403)
+    a.worker_lat, a.worker_lng, a.worker_loc_at = lat, lng, now()
+    services.realtime().publish(f"job:{a.job_id}", "worker_location", {"lat": lat, "lng": lng})
+
+
+def tracking(a: Assignment) -> dict | None:
+    """Distance + ETA from the worker's last shared position to the customer's house."""
+    if not a.journey_started_at:
+        return None
+    out = {"journey_started_at": a.journey_started_at.isoformat(), "worker_lat": a.worker_lat, "worker_lng": a.worker_lng,
+           "updated_at": a.worker_loc_at.isoformat() if a.worker_loc_at else None, "distance_km": None, "eta_min": None,
+           "arrived": a.started_at is not None}
+    if a.worker_lat is not None:
+        km = services.maps().distance_km((a.worker_lat, a.worker_lng), (a.job.location_lat, a.job.location_lng))
+        out["distance_km"] = round(km, 2)
+        out["eta_min"] = max(1, round(km / CITY_SPEED_KMH * 60)) if km > 0.15 else 0
+        out["arrived"] = out["arrived"] or km <= 0.15
+    return out
+
+
+def worker_done(db: Session, worker: User, a: Assignment) -> None:
+    """Worker says the work is finished; the customer still confirms (complete_work) and rates."""
+    if a.worker_id != worker.id:
+        raise AppError("err.forbidden", 403)
+    start_work(db, worker, a)
+    a.worker_done_at = a.worker_done_at or now()
+    audit(db, actor_id=worker.id, action="work.worker_done", entity="assignment", entity_id=a.id)
+    services.realtime().publish(f"job:{a.job_id}", "worker_done", {})
 
 
 def complete_work(db: Session, customer: User, a: Assignment) -> None:

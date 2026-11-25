@@ -41,6 +41,10 @@ universal = ROOT / "build/app/outputs/flutter-apk/app-release.apk"
 if not universal.exists():
     sys.exit("universal APK missing")
 shutil.copy(universal, out_dir / "BuildCrew.apk")
+u = (out_dir / "BuildCrew.apk").read_bytes()
+# Fallback for phones whose per-CPU APK can't upgrade them (e.g. armv7 phone on a universal build).
+apks["universal"] = {"url": f"https://github.com/{repo}/releases/download/{tag}/BuildCrew.apk",
+                     "sha256": hashlib.sha256(u).hexdigest(), "size": len(u), "versionCode": 2000 + build}
 
 manifest = {"versionName": version, "build": build, "tag": tag, "minSupportedBuild": cfg.get("minSupportedBuild", 0),
             "notes": cfg["notes"], "apks": apks}

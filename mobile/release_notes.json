@@ -1,7 +1,7 @@
 {
   "minSupportedBuild": 0,
   "notes": {
-    "en": "Real work photos. Location fixed: maps on every job, your real address filled in automatically when posting, directions to the site, clear help when GPS is off, and work near where you actually are.",
-    "hi": "असली काम की फ़ोटो। लोकेशन ठीक की गई: हर काम पर नक्शा, काम डालते समय आपका असली पता अपने-आप भरेगा, साइट तक रास्ता, GPS बंद होने पर साफ़ मदद, और आप जहाँ हैं वहीं पास का काम।"
+    "en": "Full job flow: post work with photos → worker quotes → you accept and pay on the new payment page → track the worker live with distance and arrival time → worker finishes → you rate with stars → payment released with a receipt. Check-in error fixed. Demo accounts and account switching for presentations. More reliable updates.",
+    "hi": "पूरा काम का सफ़र: फ़ोटो के साथ काम डालें → कारीगर दाम बताए → आप मंज़ूर करें और नए भुगतान पेज पर भुगतान करें → कारीगर को दूरी और पहुँचने के समय के साथ लाइव देखें → काम पूरा → स्टार से रेटिंग → रसीद के साथ भुगतान। हाज़िरी की गड़बड़ी ठीक। डेमो खाते और खाता बदलना। अपडेट अब ज़्यादा भरोसेमंद।"
   }
 }

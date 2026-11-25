@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'config.dart';
+import 'demo_api.dart';
 
 /// App-wide session state. Drives routing (see router.dart): language → role → phone/OTP → home.
 ///
@@ -86,6 +87,19 @@ class AppState extends ChangeNotifier {
     await _secure.write(key: 'token', value: token);
     await _secure.write(key: 'user', value: jsonEncode(user!.toJson()));
     notifyListeners();
+  }
+
+  /// Demo/presentation helper: jump straight into another sample account (no OTP screen).
+  Future<void> switchAccount(String phone) async {
+    final r = await api.verifyOtp(phone, '123456', role: phone.startsWith('91') ? 'customer' : 'worker', lang: language ?? 'hi');
+    await signIn(r);
+  }
+
+  /// Demo only: wipe local sample data and start fresh.
+  Future<void> resetDemo() async {
+    final a = api;
+    if (a is DemoApi) await a.reset();
+    await signOut();
   }
 
   Future<void> signOut() async {

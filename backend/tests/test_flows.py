@@ -65,7 +65,21 @@ def test_full_lifecycle_with_mandatory_rating():
 
     # C3: accept → escrow HELD for quote + ₹30
     acc = client.post(f"/customer/jobs/{jid}/bids/{b1['id']}/accept", headers=cust).json()
-    assert acc["payment"]["escrow_state"] == "held" and acc["payment"]["amount_inr"] == 1530
+    assert acc["payment"]["escrow_state"] == "created" and acc["payment"]["amount_inr"] == 1530
+    asg = acc["assignment_id"]
+    # nobody starts before the money is in escrow
+    r = client.post(f"/worker/assignments/{asg}/journey", headers=plumber, json={})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "err.payment_pending"
+    paid = client.post(f"/customer/jobs/{jid}/pay", headers=cust, json={"method": "upi"}).json()
+    assert paid["escrow_state"] == "held" and paid["method"] == "upi" and paid["paid_at"]
+    assert client.post(f"/customer/jobs/{jid}/pay", headers=cust, json={"method": "upi"}).json()["escrow_state"] == "held"  # idempotent
+    # live tracking: worker ~3 km away → ETA ~9 min at 20 km/h; customer sees it
+    client.post(f"/worker/assignments/{asg}/journey", headers=plumber, json={"lat": 18.6250, "lng": 73.7604})
+    tr = client.get(f"/customer/jobs/{jid}", headers=cust).json()["assignment"]["tracking"]
+    assert 2.5 < tr["distance_km"] < 3.5 and 7 <= tr["eta_min"] <= 11 and not tr["arrived"]
+    client.post(f"/worker/assignments/{asg}/location", headers=plumber, json={"lat": 18.5987, "lng": 73.7605})
+    tr = client.get(f"/customer/jobs/{jid}", headers=cust).json()["assignment"]["tracking"]
+    assert tr["arrived"] and tr["eta_min"] == 0
     mine = client.get("/worker/bids", headers=tok("9200000004")).json()
     loser = next(b for b in mine if b["job"]["id"] == jid)
     assert loser["status"] == "rejected" and loser["message"]
@@ -78,7 +92,6 @@ def test_full_lifecycle_with_mandatory_rating():
     assert client.post(f"/customer/jobs/{jid}/rate", headers=cust, json=stars).status_code == 409
 
     # S9 attendance: offline check-in replayed twice → one row; geofence respected
-    asg = acc["assignment_id"]
     ref2 = uuid.uuid4().hex
     for _ in range(2):
         a = client.post("/worker/attendance", headers=plumber, json={"assignment_id": asg, "kind": "in", "lat": 18.5987,
@@ -86,6 +99,8 @@ def test_full_lifecycle_with_mandatory_rating():
         assert a.status_code == 200 and a.json()["geofence_ok"]
     far = client.post("/worker/attendance", headers=plumber, json={"assignment_id": asg, "kind": "out", "lat": 18.40, "lng": 73.70})
     assert far.json()["geofence_ok"] is False  # recorded, but flagged
+    assert client.post(f"/worker/assignments/{asg}/done", headers=plumber).status_code == 200
+    assert client.get(f"/customer/jobs/{jid}", headers=cust).json()["assignment"]["worker_done_at"]
 
     assert client.post(f"/customer/jobs/{jid}/complete", headers=cust).status_code == 200
     before = client.get("/worker/earnings", headers=plumber).json()["available_inr"]

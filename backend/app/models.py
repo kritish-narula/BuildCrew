@@ -172,6 +172,12 @@ class Assignment(Base):
     escrow_status: Mapped[EscrowState] = mapped_column(_enum(EscrowState), default=EscrowState.created)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Live tracking: worker taps "I'm on my way" → phone shares location → customer sees ETA.
+    journey_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    worker_lat: Mapped[float | None] = mapped_column(Float)
+    worker_lng: Mapped[float | None] = mapped_column(Float)
+    worker_loc_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    worker_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # worker says "finished"
 
     job: Mapped[Job] = relationship()
     worker: Mapped[User] = relationship()
@@ -225,6 +231,8 @@ class Payment(Base):
     razorpay_ref: Mapped[str | None] = mapped_column(String(80))       # order id
     transfer_ref: Mapped[str | None] = mapped_column(String(80))       # Route on-hold transfer id
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    method: Mapped[str | None] = mapped_column(String(20))       # upi | card | netbanking
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     refund_paise: Mapped[int] = mapped_column(BigInteger, default=0)  # used by refund/split
 
 

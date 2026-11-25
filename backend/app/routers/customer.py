@@ -168,6 +168,22 @@ def accept(job_id: uuid.UUID, bid_id: uuid.UUID, user: User = Depends(C), db: Se
                          "amount_paise": p.amount_paise}}
 
 
+class PayIn(BaseModel):
+    method: str = Field(pattern="^(upi|card|netbanking)$")
+    razorpay_payment_id: str | None = None
+    razorpay_signature: str | None = None
+
+
+@router.post("/jobs/{job_id}/pay")
+def pay(job_id: uuid.UUID, body: PayIn, user: User = Depends(C), db: Session = Depends(get_db)):
+    """Payment page → money into escrow. Amount is NOT accepted from the client."""
+    job = _own(db, user, job_id)
+    p = flows.pay_escrow(db, user, _assignment(db, job), method=body.method,
+                         razorpay_payment_id=body.razorpay_payment_id, signature=body.razorpay_signature)
+    db.commit()
+    return payment_view(p)
+
+
 @router.post("/jobs/{job_id}/complete")
 def complete(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
     job = _own(db, user, job_id)

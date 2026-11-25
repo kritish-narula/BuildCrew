@@ -60,6 +60,11 @@ abstract class Api {
   Future<void> startWork(String assignmentId);
   Future<Json> attendance(Json body);
   Future<void> rateCustomer(String assignmentId, int clarity, int timelyPayment, String? comment);
+  /// "I'm on my way" → customer sees live distance + ETA. Then position updates while travelling.
+  Future<void> startJourney(String assignmentId, double? lat, double? lng);
+  Future<void> sendLocation(String assignmentId, double lat, double lng);
+  /// Worker says the work is finished (customer confirms + rates).
+  Future<void> markDone(String assignmentId);
   Future<Json> earnings();
   Future<Json> withdraw();
   Future<Json> workerProfile();
@@ -77,6 +82,8 @@ abstract class Api {
   Future<Json> createJob(Json body);
   Future<Json> customerJob(String id);
   Future<Json> acceptBid(String jobId, String bidId);
+  /// Payment page: quote + fee into escrow. Returns the payment (with method, paid_at, ref).
+  Future<Json> payJob(String jobId, String method);
   Future<void> completeJob(String jobId);
   Future<Json> rateWorker(String jobId, Json stars);
   Future<void> cancelJob(String jobId);
@@ -170,6 +177,14 @@ class HttpApi implements Api {
   Future<void> rateCustomer(String assignmentId, int clarity, int timelyPayment, String? comment) =>
       _post('/worker/assignments/$assignmentId/rate-customer', {'clarity': clarity, 'timely_payment': timelyPayment, 'comment': comment});
   @override
+  Future<void> startJourney(String assignmentId, double? lat, double? lng) =>
+      _post('/worker/assignments/$assignmentId/journey', {'lat': lat, 'lng': lng});
+  @override
+  Future<void> sendLocation(String assignmentId, double lat, double lng) =>
+      _post('/worker/assignments/$assignmentId/location', {'lat': lat, 'lng': lng});
+  @override
+  Future<void> markDone(String assignmentId) => _post('/worker/assignments/$assignmentId/done');
+  @override
   Future<Json> earnings() async => _map(await _get('/worker/earnings'));
   @override
   Future<Json> withdraw() async => _map(await _post('/worker/withdraw'));
@@ -198,6 +213,8 @@ class HttpApi implements Api {
   Future<Json> customerJob(String id) async => _map(await _get('/customer/jobs/$id'));
   @override
   Future<Json> acceptBid(String jobId, String bidId) async => _map(await _post('/customer/jobs/$jobId/bids/$bidId/accept'));
+  @override
+  Future<Json> payJob(String jobId, String method) async => _map(await _post('/customer/jobs/$jobId/pay', {'method': method}));
   @override
   Future<void> completeJob(String jobId) => _post('/customer/jobs/$jobId/complete');
   @override

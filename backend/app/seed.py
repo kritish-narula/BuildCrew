@@ -195,7 +195,11 @@ def run(do_reset: bool = False):
         fees = compute_fees(bid.quoted_price_paise)
         db.add(Payment(assignment_id=a.id, amount_paise=fees.customer_pays_paise, platform_fee_paise=fees.platform_fee_paise,
                        worker_payout_paise=fees.worker_payout_paise, escrow_state=escrow,
-                       razorpay_ref=f"order_mock_seed{str(a.id)[:8]}"))
+                       razorpay_ref=f"order_mock_seed{str(a.id)[:8]}", method="upi",
+                       paid_at=bid.created_at + timedelta(hours=1) if escrow != EscrowState.created else None))
+        if started:  # worker travelled and is on site
+            a.journey_started_at = started - timedelta(minutes=25)
+            a.worker_lat, a.worker_lng, a.worker_loc_at = job.location_lat, job.location_lng, started
         audit(db, actor_id=job.customer_id, action="bid.accepted", entity="bid", entity_id=bid.id, seed=True)
         return a
 

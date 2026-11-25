@@ -88,7 +88,7 @@ class Updater extends ChangeNotifier {
   /// Returns the update if a newer build exists. Network failures are silent (offline is normal).
   Future<UpdateInfo?> check({bool force = false}) async {
     if (!Platform.isAndroid) return null;
-    if (!force && _lastCheck != null && DateTime.now().difference(_lastCheck!) < const Duration(hours: 6)) {
+    if (!force && _lastCheck != null && DateTime.now().difference(_lastCheck!) < const Duration(minutes: 20)) {
       return available;
     }
     try {
@@ -98,22 +98,28 @@ class Updater extends ChangeNotifier {
       final m = res.data!;
       final abi = await _channel.invokeMethod<String>('abi') ?? 'arm64-v8a';
       final apks = (m['apks'] as Map).cast<String, dynamic>();
-      final apk = (apks[abi] ?? apks['arm64-v8a'] ?? apks.values.first) as Map;
-      final code = (apk['versionCode'] as num).toInt();
-      // Split-per-ABI builds encode versionCode as abi*1000 + build; compare the build part.
-      final myBuild = currentCode % 1000;
-      final newBuild = code % 1000;
-      if (newBuild <= myBuild) {
+      // Pick the small per-CPU APK if it is newer than what's installed; otherwise the
+      // universal APK. Comparing full versionCodes means Android will always accept it.
+      Map? pick;
+      for (final key in [abi, 'universal']) {
+        final e = apks[key] as Map?;
+        if (e != null && (e['versionCode'] as num).toInt() > currentCode) {
+          pick = e;
+          break;
+        }
+      }
+      if (pick == null) {
         available = null;
       } else {
+        final build = (m['build'] as num?)?.toInt() ?? 0;
         available = UpdateInfo(
           versionName: m['versionName'] as String,
-          versionCode: code,
-          url: apk['url'] as String,
-          sha256: (apk['sha256'] as String).toLowerCase(),
-          sizeBytes: (apk['size'] as num).toInt(),
+          versionCode: (pick['versionCode'] as num).toInt(),
+          url: pick['url'] as String,
+          sha256: (pick['sha256'] as String).toLowerCase(),
+          sizeBytes: (pick['size'] as num).toInt(),
           notes: ((m['notes'] as Map?) ?? {}).map((k, v) => MapEntry(k as String, v as String)),
-          required: myBuild < ((m['minSupportedBuild'] as num?)?.toInt() ?? 0),
+          required: build > 0 && ((m['minSupportedBuild'] as num?)?.toInt() ?? 0) > (currentCode % 1000),
         );
       }
       notifyListeners();
@@ -178,13 +184,35 @@ class Updater extends ChangeNotifier {
       }
       _set(UpdateStage.installing);
       await _channel.invokeMethod('install', {'path': file.path});
+      _waitingForInstaller = true;
     } catch (e) {
       debugPrint('update failed: $e');
       _set(UpdateStage.failed);
     }
   }
 
+  bool _waitingForInstaller = false;
+
   Future<void> openInstallPermissionSettings() => _channel.invokeMethod('openInstallSettings');
+
+  /// Called when the app returns to the foreground. After the user allowed "install unknown
+  /// apps" we continue automatically (no second tap, no loop back to Settings). If they came
+  /// back from the installer without updating, reset so the button works again.
+  Future<void> onResume() async {
+    if (stage == UpdateStage.needsPermission) {
+      final ok = await _channel.invokeMethod<bool>('canInstall') ?? false;
+      if (ok) {
+        _set(UpdateStage.idle);
+        await start();
+      }
+    } else if (stage == UpdateStage.installing && _waitingForInstaller) {
+      _waitingForInstaller = false;
+      _set(UpdateStage.idle);
+    }
+  }
+
+  /// Last resort: open the release page so the user can download the APK in the browser.
+  static const releasePage = 'https://github.com/kritish-narula/BuildCrew/releases/latest';
 
   void cancel() {
     _cancel?.cancel();

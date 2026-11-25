@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
@@ -42,7 +43,10 @@ class _UpdateAwareState extends State<UpdateAware> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {
-    if (s == AppLifecycleState.resumed) _check();
+    if (s == AppLifecycleState.resumed) {
+      u.onResume();
+      _check();
+    }
   }
 
   Future<void> _check() async {
@@ -184,10 +188,7 @@ class _UpdateSheetBody extends StatelessWidget {
           const SizedBox(height: 8),
           if (u.stage == UpdateStage.needsPermission)
             FilledButton.icon(
-              onPressed: () async {
-                await u.openInstallPermissionSettings();
-                u.stage = UpdateStage.idle; // user returns → tap Update again
-              },
+              onPressed: u.openInstallPermissionSettings, // continues by itself when the user comes back
               icon: const Icon(Icons.settings_rounded),
               label: Text(l.openSettings),
             )
@@ -196,6 +197,12 @@ class _UpdateSheetBody extends StatelessWidget {
               onPressed: busy ? null : u.start,
               icon: const Icon(Icons.download_rounded),
               label: Text(u.stage == UpdateStage.failed || u.stage == UpdateStage.tampered ? l.retry : l.updateNow),
+            ),
+          if (u.stage == UpdateStage.failed || u.stage == UpdateStage.tampered)
+            TextButton.icon(
+              onPressed: () => launchUrl(Uri.parse(Updater.releasePage), mode: LaunchMode.externalApplication),
+              icon: const Icon(Icons.open_in_browser_rounded),
+              label: Text(L.of(context).downloadFromWebsite),
             ),
           if (!info.required) ...[
             const SizedBox(height: 8),
