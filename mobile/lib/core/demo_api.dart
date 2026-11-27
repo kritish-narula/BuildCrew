@@ -1688,19 +1688,58 @@ class DemoApi implements Api {
     return {
       ..._jobCard(j),
       'work_items': [for (var i = 0; i < items.length; i++) _item((items[i] as Map).cast<String, dynamic>(), i, _lang)],
-      'bids': [
+      'bids': _withMatching(d, j, isTeam, [
         for (final b in bids)
           {'id': b['id'], 'price_inr': b['price'], 'status': b['status'], 'created_at': b['created_at'], 'worker': _workerSummary(d, b['worker_id'] as String),
             if (isTeam) ...teamBid(b),
             'warranty_days': _warrantyDays(_quoteTrades(d, j, b['worker_id'] as String)),
             'fair': DemoPricing.fairCheck(b['price'] as num, _pricingItems(j), _cityOf(d, j), _user(d, b['worker_id'] as String)['trades'] as List,
                 (_levelOf(_user(d, b['worker_id'] as String))['fair_multiplier'] as num).toDouble())}
-      ],
+      ]),
       'direct': _directView(d, j),
       'assignment': a == null ? null : _assignmentView(d, a, viewer: 'customer'), 'fee_inr': fee,
       'no_quotes_24h': _noQuotes24h(d, j), 'nudged_at': j['nudged_at'],
       if (isTeam) 'team': _roster(d, j),
     };
+  }
+
+  // ---- best match (mirror of backend routers/customer.py `_add_matching`; scoring lives in DemoMatching) ----
+  /// Adds match_score / match_reasons / distance_km / can_come_today / best_match to every quote of a single job.
+  List<Json> _withMatching(Json d, Json j, bool isTeam, List<Json> rows) {
+    if (isTeam) return rows;
+    final sched = DateTime.tryParse((j['scheduled_for'] as String?) ?? '')?.toLocal() ?? DateTime.tryParse('${j['start_date']}');
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final jobIsToday = sched != null && !DateTime(sched.year, sched.month, sched.day).isAfter(today);
+    final created = DateTime.tryParse('${j['created_at']}');
+    for (final r in rows) {
+      final wid = (r['worker'] as Json)['id'] as String;
+      final u = _user(d, wid);
+      double? km;
+      if (u['lat'] is num && u['lng'] is num && j['lat'] is num && j['lng'] is num) km = double.parse(_dist(u, j).toStringAsFixed(1));
+      final at = DateTime.tryParse('${r['created_at']}');
+      final resp = (created != null && at != null) ? max(0, at.difference(created).inSeconds) / 60.0 : null;
+      var busy = false;
+      if (jobIsToday) {
+        for (final a in _all(d, 'assignments')) {
+          if (a['worker_id'] != wid || a['released_at'] != null || a['job_id'] == j['id']) continue;
+          final oj = _row(d, 'jobs', a['job_id'] as String);
+          if (oj['status'] != 'assigned' && oj['status'] != 'in_progress') continue;
+          final od = DateTime.tryParse((oj['scheduled_for'] as String?) ?? '')?.toLocal() ?? DateTime.tryParse('${oj['start_date']}');
+          if (od != null && !DateTime(od.year, od.month, od.day).isAfter(today)) busy = true;
+        }
+      }
+      final w = r['worker'] as Json;
+      final facts = MatchFacts(
+          verdict: (r['fair'] as Map)['verdict'] as String, rating: ((u['rating'] as num?) ?? 0).toDouble(), ratingCount: (u['rating_count'] as int?) ?? 0,
+          completedJobs: (w['completed_jobs'] as num).toInt(), distanceKm: km, police: w['police_verified'] == true, level: w['level'] as String, responseMin: resp);
+      r['match_score'] = DemoMatching.score(facts);
+      r['match_reasons'] = DemoMatching.reasons(facts);
+      r['distance_km'] = km;
+      r['can_come_today'] = DemoMatching.canComeToday(jobIsToday: jobIsToday, distanceKm: km, busyToday: busy);
+    }
+    DemoMatching.markBest(rows);
+    return rows;
   }
 
   @override
@@ -2496,6 +2535,84 @@ class DemoLevels {
       cursor = cursor.subtract(const Duration(days: 7));
     }
     return {'weeks': n, 'alive_this_week': alive};
+  }
+}
+
+/// The facts one quote is scored on (see DemoMatching).
+class MatchFacts {
+  const MatchFacts({required this.verdict, required this.rating, required this.ratingCount, required this.completedJobs, required this.distanceKm,
+      required this.police, required this.level, required this.responseMin});
+  final String verdict, level;
+  final double rating;
+  final int ratingCount, completedJobs;
+  final double? distanceKm, responseMin;
+  final bool police;
+}
+
+/// Mirror of backend/app/domain/matching.py ("Best match" for quotes) - keep both in sync.
+/// Score 0-100 = fair price 30 + rating 25 + distance 15 + jobs done 10 + police 10 + level 5 + response time 5.
+class DemoMatching {
+  static const todayRadiusKm = 10.0;
+  static const minQuotesForBest = 2;
+
+  static double ratingPoints(double rating, int count) {
+    if (count <= 0) return 8.0;
+    final pts = ((rating - 3.0) / 2.0).clamp(0.0, 1.0) * 25.0;
+    return count < 3 ? pts * 0.6 : pts;
+  }
+
+  static double distancePoints(double? km) {
+    if (km == null) return 5.0;
+    if (km <= 2) return 15.0;
+    if (km >= 15) return 0.0;
+    return 15.0 * (15.0 - km) / 13.0;
+  }
+
+  static double responsePoints(double? min) {
+    if (min == null) return 2.0;
+    if (min <= 30) return 5.0;
+    if (min <= 120) return 3.5;
+    if (min <= 24 * 60) return 2.0;
+    return 0.0;
+  }
+
+  static int score(MatchFacts f) {
+    const fair = {'fair': 30.0, 'high': 10.0, 'below_min_wage': 12.0};
+    const lvl = {'helper': 0.0, 'semi_skilled': 2.0, 'skilled': 3.5, 'master': 5.0};
+    final total = (fair[f.verdict] ?? 0.0) + ratingPoints(f.rating, f.ratingCount) + distancePoints(f.distanceKm) +
+        min(max(f.completedJobs, 0), 50) / 50.0 * 10.0 + (f.police ? 10.0 : 0.0) + (lvl[f.level] ?? 0.0) + responsePoints(f.responseMin);
+    return total.clamp(0.0, 100.0).round();
+  }
+
+  /// Most important first, at most 4: `{code, value?}` (the app writes the words).
+  static List<Json> reasons(MatchFacts f) {
+    final out = <Json>[];
+    if (f.verdict == 'fair') out.add({'code': 'fair'});
+    if (f.ratingCount > 0 && f.rating >= 4.0) out.add({'code': 'rating', 'value': double.parse(f.rating.toStringAsFixed(1))});
+    if (f.distanceKm != null && f.distanceKm! <= 5) out.add({'code': 'distance', 'value': f.distanceKm});
+    if (f.police) out.add({'code': 'police'});
+    if (f.level == 'skilled' || f.level == 'master') out.add({'code': 'level', 'value': f.level});
+    if (f.completedJobs >= 20) out.add({'code': 'jobs', 'value': f.completedJobs});
+    if (f.responseMin != null && f.responseMin! <= 60) out.add({'code': 'fast'});
+    return out.take(4).toList();
+  }
+
+  static bool canComeToday({required bool jobIsToday, required double? distanceKm, required bool busyToday}) =>
+      jobIsToday && !busyToday && distanceKm != null && distanceKm <= todayRadiusKm;
+
+  /// Exactly one pending quote gets best_match (highest score, cheaper on a tie) when there are at least two.
+  static void markBest(List<Json> rows) {
+    for (final r in rows) {
+      r['best_match'] = false;
+    }
+    final pending = rows.where((r) => r['status'] == 'pending').toList();
+    if (pending.length < minQuotesForBest) return;
+    var best = pending.first;
+    for (final r in pending.skip(1)) {
+      final c = (r['match_score'] as int).compareTo(best['match_score'] as int);
+      if (c > 0 || (c == 0 && (r['price_inr'] as num) < (best['price_inr'] as num))) best = r;
+    }
+    best['best_match'] = true;
   }
 }
 

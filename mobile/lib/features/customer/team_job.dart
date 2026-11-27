@@ -102,7 +102,7 @@ class _TeamJobScreenState extends State<TeamJobScreen> {
       body: job == null
           ? (_error != null
               ? Center(child: OutlinedButton(onPressed: _load, child: Text(l.retry)))
-              : const Center(child: CircularProgressIndicator(color: BC.brand)))
+              : const SkeletonList(count: 3, itemHeight: 140))
           : RefreshIndicator(color: BC.brand, onRefresh: _load, child: _body(l, job)),
     );
   }
@@ -233,7 +233,7 @@ class _ApplicantTile extends StatelessWidget {
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(l.perDay(inr(wage)), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
-            Text(inr(wage * days), style: BC.caption),
+            MoneyText(wage * days, size: MoneySize.s, color: BC.inkSoft),
           ]),
         ]),
         const SizedBox(height: 8),
@@ -402,7 +402,7 @@ class _SettleWorkerScreenState extends State<SettleWorkerScreen> {
             const SizedBox(height: 4),
             FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(inr(wage * worked), style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
+              child: MoneyText(wage * worked, size: MoneySize.xl, color: Colors.white),
             ),
             const SizedBox(height: 6),
             Text(worked == 0 ? l.teamNoShowRefund : l.teamUnworkedRefund(inr(wage * (planned - worked))), style: const TextStyle(color: Colors.white70, fontSize: 14)),

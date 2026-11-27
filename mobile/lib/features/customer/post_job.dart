@@ -14,8 +14,11 @@ import '../../widgets/common.dart';
 import '../../widgets/fair_price.dart';
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
+import '../../widgets/photo_pick.dart';
 import '../../widgets/schedule.dart';
 import 'customer_home.dart' show customerRoute;
+import 'job_templates.dart';
+import 'post_example.dart';
 
 const trades = ['mason', 'plumber', 'electrician', 'carpenter', 'painter', 'helper'];
 
@@ -40,6 +43,8 @@ class WorkDraft {
   bool get rulesMet => photos.length >= minPhotos && descLength >= minDescription;
   int? get wageInr => int.tryParse(wage.text.replaceAll(RegExp(r'[^0-9]'), ''));
   String? audioKey; // set once uploaded
+  String? starter, starterLang; // text (and its language) put in by a job template, while the customer has not changed it
+  bool get isUntouchedStarter => starter != null && text.text == starter && photos.isEmpty && audio == null;
   bool uploading = false, transcribing = false, uploadFailed = false;
   bool get hasContent => photos.isNotEmpty || text.text.trim().isNotEmpty || audio != null;
 }
@@ -74,6 +79,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
   bool _posting = false, _locating = false;
 
   String get _lang => widget.state.language ?? 'hi';
+
+  /// The API's date field (yyyy-MM-dd). Never shown to anyone.
+  static String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   String? _directId, _directName; // hire again: offered to this worker exclusively for 2 hours
 
@@ -183,6 +191,24 @@ class _PostJobScreenState extends State<PostJobScreen> {
     setState(() {
       _slot = 'exact';
       _time = t;
+    });
+  }
+
+  /// One tap on a common job: trade + starter text, straight on to "describe" where the customer edits it and adds photos.
+  void _applyTemplate(JobTemplate t) {
+    final l = L.of(context);
+    final text = templateText(l, t.id);
+    setState(() {
+      _works.removeWhere((w) => w.isUntouchedStarter); // tapped another template: replace, do not pile up cards
+      var w = _works.where((x) => x.trade == t.trade && x.text.text.trim().isEmpty).firstOrNull;
+      if (w == null) {
+        w = WorkDraft(t.trade);
+        _works.add(w);
+      }
+      w.text.text = text;
+      w.starter = text;
+      w.starterLang = templateLang(l);
+      _step = 1;
     });
   }
 
@@ -342,7 +368,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
           'trade': w.trade,
           'text_description': w.text.text.trim().isEmpty ? null : w.text.text.trim(),
           'transcript': null,
-          'description_language': _lang,
+          'description_language': (w.starter != null && w.text.text.trim() == w.starter!.trim()) ? w.starterLang : _lang,
           'audio_key': w.audioKey,
           'audio_duration_sec': w.audio?.seconds,
           'audio_size_bytes': w.audio?.bytes,
@@ -353,7 +379,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       await widget.state.api.createJob({
         'location_lat': _point!.latitude, 'location_lng': _point!.longitude, 'address_text': _address.text.trim(),
         'city': _city.isEmpty ? _area.text.trim() : _city, 'locality': _area.text.trim(),
-        'start_date': _start.toIso8601String().substring(0, 10), 'work_items': items,
+        'start_date': _ymd(_start), 'work_items': items,
         'scheduled_for': _scheduledFor!.toUtc().toIso8601String(), 'time_slot': _slot,
         if (widget.team) 'kind': 'team',
         if (_directId != null && !widget.team) 'direct_worker_id': _directId,
@@ -447,38 +473,76 @@ class _PostJobScreenState extends State<PostJobScreen> {
   }
 
   // ---------------------------------------------------------------- step 1
-  Widget _tradesStep(L l) => GridView.count(
-        padding: const EdgeInsets.all(16),
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.25,
-        children: [
-          for (final t in trades)
-            Builder(builder: (ctx) {
-              final on = _works.any((w) => w.trade == t);
-              final s = TradeStyle.of(t);
-              return Material(
-                color: on ? s.color.withValues(alpha: 0.12) : Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.rLg), side: BorderSide(color: on ? s.color : BC.line, width: on ? 2.5 : 1.2)),
+  Widget _tradesStep(L l) => ListView(padding: const EdgeInsets.all(16), children: [
+        // FAST PATH: a common job in one tap (trade + a starter description to edit).
+        Row(children: [
+          const Icon(Icons.bolt_rounded, color: BC.brand),
+          const SizedBox(width: 6),
+          Expanded(child: Text(l.cxQuickStart, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleLarge)),
+        ]),
+        const SizedBox(height: 10),
+        GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, mainAxisExtent: 76),
+          children: [
+            for (final t in jobTemplates)
+              Material(
+                key: ValueKey('tpl${t.id}'),
+                color: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r), side: const BorderSide(color: BC.line, width: 1.2)),
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(BC.rLg),
-                  onTap: () => _toggleTrade(t),
-                  child: Stack(children: [
-                    Center(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(s.icon, size: 48, color: s.color),
-                        const SizedBox(height: 8),
-                        Text(tradeLabel(l, t), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                      ]),
-                    ),
-                    if (on) Positioned(top: 10, right: 10, child: Icon(Icons.check_circle_rounded, color: s.color, size: 28)),
-                  ]),
+                  borderRadius: BorderRadius.circular(BC.r),
+                  onTap: () => _applyTemplate(t),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(children: [
+                      IconBadge(t.icon, color: TradeStyle.of(t.trade).color, size: 36),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(templateTitle(l, t.id), maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, height: 1.25))),
+                    ]),
+                  ),
                 ),
-              );
-            }),
-        ],
-      );
+              ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Text(l.cxOrPickTrade, style: context.tt.titleLarge),
+        const SizedBox(height: 10),
+        GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, mainAxisSpacing: 10, crossAxisSpacing: 10, mainAxisExtent: 92),
+          children: [
+            for (final t in trades)
+              Builder(builder: (ctx) {
+                final on = _works.any((w) => w.trade == t);
+                final s = TradeStyle.of(t);
+                return Material(
+                  color: on ? s.color.withValues(alpha: 0.12) : Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r), side: BorderSide(color: on ? s.color : BC.line, width: on ? 2.5 : 1.2)),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(BC.r),
+                    onTap: () => _toggleTrade(t),
+                    child: Stack(children: [
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(s.icon, size: 34, color: s.color),
+                            const SizedBox(height: 6),
+                            FittedBox(fit: BoxFit.scaleDown, child: Text(tradeLabel(l, t), maxLines: 1, softWrap: false, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
+                          ]),
+                        ),
+                      ),
+                      if (on) Positioned(top: 4, right: 4, child: Icon(Icons.check_circle_rounded, color: s.color, size: 20)),
+                    ]),
+                  ),
+                );
+              }),
+          ],
+        ),
+      ]);
 
   // ---------------------------------------------------------------- step 2
   Widget _describeStep(L l) => ListView(padding: const EdgeInsets.all(16), children: [
@@ -486,6 +550,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
           InfoBanner(icon: Icons.replay_circle_filled_rounded, color: BC.brandDark, text: l.hireAgainPrefilled(_directName!)),
           const SizedBox(height: 14),
         ],
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
+            key: const ValueKey('seeExample'),
+            onPressed: () => showPostExample(context),
+            icon: const Icon(Icons.lightbulb_outline_rounded),
+            label: Text(l.cxSeeExample),
+          ),
+        ),
         for (final (i, w) in _works.indexed) ...[
           _WorkCardEditor(
             index: i,
@@ -551,11 +624,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
           minLines: 2,
           maxLines: 3,
           style: const TextStyle(fontSize: 17),
-          decoration: InputDecoration(labelText: l.fullAddress, hintText: l.fullAddressHint, prefixIcon: const Icon(Icons.home_rounded)),
+          decoration: InputDecoration(labelText: l.fullAddress, hintText: l.fullAddressHint, prefixIcon: const Icon(Icons.home_rounded), suffixIcon: InfoTip(text: l.addressPrivacy)),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 8),
-        Text(l.addressPrivacy, style: const TextStyle(color: BC.inkSoft)),
         const SizedBox(height: 20),
         Text(l.startDate, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
@@ -574,7 +645,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
               ChoiceChip(
                 selected: custom,
                 avatar: const Icon(Icons.calendar_month_rounded, size: 20),
-                label: BtnLabel(custom ? '${_day.day}/${_day.month}' : l.pickDate),
+                label: BtnLabel(custom ? dayText(l, _day) : l.pickDate),
                 onSelected: (_) async {
                   final d = await showDatePicker(context: context, firstDate: DateTime(today.year, today.month, today.day), lastDate: today.add(const Duration(days: 90)), initialDate: _day);
                   if (d != null) _pickDay(d);
@@ -615,7 +686,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   // ---------------------------------------------------------------- step 4
   Widget _priceStep(L l) {
     final e = _estimate;
-    if (e == null) return const Center(child: CircularProgressIndicator(color: BC.brand));
+    if (e == null) return const SkeletonList(count: 3, itemHeight: 90);
     final items = (e['items'] as List).cast<Json>();
     return ListView(padding: const EdgeInsets.all(16), children: [
       Container(
@@ -624,10 +695,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(l.fairPriceTitle, style: const TextStyle(fontWeight: FontWeight.w700, color: BC.money, fontSize: 16)),
           const SizedBox(height: 6),
-          FittedBox(
-            child: Text(inrRange(e['total_low_inr'] as num, e['total_high_inr'] as num),
-                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: BC.money, fontFeatures: BC.tabular)),
-          ),
+          MoneyText.range(e['total_low_inr'] as num, e['total_high_inr'] as num, size: MoneySize.xl, color: BC.money),
           const SizedBox(height: 4),
           Text(l.fairPriceSub(_area.text.trim()), style: const TextStyle(color: BC.inkSoft)),
         ]),
@@ -641,13 +709,17 @@ class _PostJobScreenState extends State<PostJobScreen> {
             leading: Icon(TradeStyle.of(it['trade'] as String).icon, color: TradeStyle.of(it['trade'] as String).color, size: 32),
             title: Text(tradeLabel(l, it['trade'] as String), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
             subtitle: Text(l.basedOnJobs(it['samples'] as int)),
-            trailing: Text(inrRange(it['low_inr'] as num, it['high_inr'] as num),
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, fontFeatures: BC.tabular)),
+            trailing: MoneyText.range(it['low_inr'] as num, it['high_inr'] as num, size: MoneySize.s, alignment: AlignmentDirectional.centerEnd),
           ),
         ),
       const SizedBox(height: 8),
-      InfoBanner(icon: Icons.lock_rounded, color: BC.info, text: l.howPaymentWorks(inr(e['platform_fee_inr'] as num))),
-      const SizedBox(height: 16),
+      Row(children: [
+        const Icon(Icons.lock_rounded, color: BC.info, size: 20),
+        const SizedBox(width: 8),
+        Expanded(child: Text(l.cxPayIsSafe, style: context.tt.titleSmall!.copyWith(color: BC.info))),
+        InfoTip(title: l.cxPayIsSafe, text: l.howPaymentWorks(inr(e['platform_fee_inr'] as num))),
+      ]),
+      const SizedBox(height: 8),
       Text(l.summary, style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 6),
       for (final (i, w) in _works.indexed)
@@ -696,7 +768,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   // ---------------------------------------------------------------- team: step 4 (daily wage + cost)
   Widget _wageStep(L l) {
-    if (_estimate == null) return const Center(child: CircularProgressIndicator(color: BC.brand));
+    if (_estimate == null) return const SkeletonList(count: 3, itemHeight: 90);
     final fee = 30; // flat fee per worker (same as the server)
     var wages = 0, workers = 0;
     for (final w in _works) {
@@ -748,10 +820,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(l.teamCostTitle, style: const TextStyle(fontWeight: FontWeight.w700, color: BC.money, fontSize: 16)),
           const SizedBox(height: 4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(inr(wages + fee * workers), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w700, color: BC.money, fontFeatures: BC.tabular)),
-          ),
+          MoneyText(wages + fee * workers, size: MoneySize.xl, color: BC.money),
           const SizedBox(height: 4),
           Text(l.teamCostSub(inr(wages), inr(fee * workers)), style: const TextStyle(color: BC.inkSoft)),
         ]),
@@ -837,9 +906,10 @@ class _WorkCardEditor extends StatelessWidget {
                 InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: () async {
-                    final p = await pickPhoto(context);
-                    if (p != null) {
-                      draft.photos.add(p);
+                    // several photos from the gallery in one go (max 5 per work)
+                    final ps = await pickPhotos(context, remaining: 5 - draft.photos.length);
+                    if (ps.isNotEmpty) {
+                      draft.photos.addAll(ps);
                       onChanged();
                     }
                   },
@@ -877,9 +947,9 @@ class _WorkCardEditor extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           // Live counter "32/50" + why we ask.
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Text(l.pjDescHelper, style: const TextStyle(fontSize: 13, color: BC.inkSoft, height: 1.3))),
-            const SizedBox(width: 8),
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            InfoTip(text: l.pjDescHelper),
+            const Spacer(),
             Text('${draft.descLength}/$minDescription',
                 style: TextStyle(fontWeight: FontWeight.w700, fontFeatures: BC.tabular, color: draft.descLength >= minDescription ? BC.money : BC.danger)),
           ]),

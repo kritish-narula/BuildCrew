@@ -7,6 +7,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import 'customer_home.dart' show customerRoute;
 import '../../widgets/media.dart';
+import '../../widgets/schedule.dart';
 import '../worker/assignment_screen.dart' show EscrowLine;
 import '../../widgets/trust_widgets.dart';
 import '../worker/growth_ui.dart' show LevelCard;
@@ -175,7 +176,7 @@ class WorkerProfileScreen extends StatelessWidget {
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       StarBadge(h['rating'] as num),
-                      Text('${h['locality']} · ${h['date']}', style: const TextStyle(color: BC.inkSoft)),
+                      Text('${h['locality']} · ${humanDate(l, h['date'] as String?) ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BC.inkSoft)),
                       if (h['comment'] != null) Text('“${h['comment']}”', style: const TextStyle(fontStyle: FontStyle.italic)),
                     ]),
                   ),
@@ -216,7 +217,8 @@ class PaymentsScreen extends StatelessWidget {
                             child: Text('${(p['trades'] as List).map((t) => tradeLabel(l, t as String)).join(', ')} · ${p['locality']}',
                                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                           ),
-                          Text(inr(p['amount_inr'] as num), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
+                          const SizedBox(width: 8),
+                          MoneyText(p['amount_inr'] as num, size: MoneySize.l, alignment: AlignmentDirectional.centerEnd),
                         ]),
                         if (p['worker_name'] != null) Text(p['worker_name'] as String, style: const TextStyle(color: BC.inkSoft)),
                         if (((p['warranty_days'] as num?) ?? 0) > 0) Padding(padding: const EdgeInsets.only(top: 6), child: WarrantyChip((p['warranty_days'] as num).toInt())),

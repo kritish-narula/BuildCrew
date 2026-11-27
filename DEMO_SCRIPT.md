@@ -17,7 +17,7 @@ Demo mode needs no server. All demo accounts share the data on the phone, so wha
 ## The full story
 
 1. **Customer posts work** (Priya)
-   - *Post a Job* → tap **Mason** → add 2 photos → type an instruction → **Record voice note** → check the transcript.
+   - *Post a Job* → tap a common job (e.g. **Compound wall**, or pick **Mason**; **See an example** shows a good post) → add 2 photos (several at once from the gallery) → type an instruction → **Record voice note** → check the transcript.
    - Next: the map opens at your location and the address fills itself → choose a date → see the **fair price** → **Post job**.
 2. **Mason sees it and quotes**
    - Profile → switch to **Ramesh (mason)**. Your job is at the top of *Jobs* with your photos, 🔊 voice note and distance.
@@ -25,7 +25,7 @@ Demo mode needs no server. All demo accounts share the data on the phone, so wha
    - **Fair Wage Shield:** the price box shows the fair range for this job. Type a very low price (e.g. ₹500) to see the minimum-wage warning.
 3. **Customer accepts and pays**
    - Switch to **Priya** → open the job.
-   - Ramesh's quote appears next to quotes from other sample workers. Each quote is labelled **Fair price**, **Below minimum wage** or **Higher than usual**. Sort by price or rating, open his profile, or chat.
+   - Ramesh's quote appears next to quotes from other sample workers. Each quote is labelled **Fair price**, **Below minimum wage** or **Higher than usual**. One quote is marked **Best match** with a one-line why (fair price, rating, distance, police verified) and some show **Can come today**. Sort by best match, price, rating or verified, open his profile, or chat. The job screen shows a 5-step progress header with "what happens next".
    - **Chat:** send Ramesh a message, switch to Ramesh — the chat icon at the top of *Jobs* shows an unread badge. Reply, switch back: it's in Priya's **Messages** tab.
    - Priya's **Bookings** tab lists every job as Open (getting quotes), Ongoing or Past.
    - **Accept** → **Continue to payment** → the payment page shows price + ₹30 fee → choose UPI → **Pay**.

@@ -55,6 +55,11 @@ class BC {
   /// Tabular figures — use ONLY on numbers / money so digits line up.
   static const tabular = [FontFeature.tabularFigures()];
 
+  /// THE money text style (one weight, tabular figures): every rupee amount uses it via `MoneyText`
+  /// (widgets/common.dart). Sizes: s 15 · m 18 · l 24 · xl 34.
+  static TextStyle moneyText(double size, [Color? color]) =>
+      TextStyle(fontSize: size, fontWeight: FontWeight.w700, height: 1.25, fontFeatures: tabular, color: color);
+
   /// Soft shadow for raised cards (very light; borders do most of the work).
   static const softShadow = [BoxShadow(color: Color(0x0F1C1917), blurRadius: 12, offset: Offset(0, 4))];
 

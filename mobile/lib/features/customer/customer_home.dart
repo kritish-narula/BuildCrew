@@ -5,6 +5,7 @@ import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import '../../widgets/job_progress.dart';
 import '../../widgets/media.dart';
 import '../../widgets/schedule.dart';
 import '../../widgets/trust_widgets.dart';
@@ -118,11 +119,12 @@ class BookingCard extends StatelessWidget {
       summary = l.teamFilled((team['filled'] as num?)?.toInt() ?? 0, (team['headcount'] as num?)?.toInt() ?? 0);
     } else if (isOpen) {
       summary = l.workersQuoted(bids);
-    } else if (worker != null) {
-      summary = price == null ? worker : '$worker · ${inr(price)}';
     } else {
-      summary = '';
+      summary = worker ?? '';
     }
+    // Hired + agreed price: "Ramesh · ₹1,200" with the price in the one money style.
+    final showPrice = !isTeam && !isOpen && worker != null && price != null;
+    final progress = (isTeam || bookingGroup(job) == BookingGroup.past) ? null : jobProgress(l, job);
 
     return Card(
       margin: EdgeInsets.zero,
@@ -162,14 +164,20 @@ class BookingCard extends StatelessWidget {
               if (summary.isNotEmpty) ...[
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(summary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.end,
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isOpen && bids == 0 ? BC.inkSoft : BC.ink)),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    Flexible(
+                      child: Text(summary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isOpen && bids == 0 ? BC.inkSoft : BC.ink)),
+                    ),
+                    if (showPrice) ...[const SizedBox(width: 6), MoneyText(price, size: MoneySize.s)],
+                  ]),
                 ),
               ],
             ]),
+            if (progress != null) ...[const SizedBox(height: 10), JobProgressBar(info: progress)],
             if (next != null) ...[
               const SizedBox(height: 10),
               Container(
@@ -290,7 +298,7 @@ class CustomerHomeTab extends StatelessWidget {
         color = BC.money;
       }
       if (text != null) {
-        out.add(InfoBanner(icon: icon, color: color, text: text, action: action, onTap: () => onOpenJob(id)));
+        out.add(_ActionCard(icon: icon, color: color, text: text, action: action, onTap: () => onOpenJob(id)));
         out.add(const SizedBox(height: 10));
       }
     }
@@ -306,6 +314,7 @@ class CustomerHomeTab extends StatelessWidget {
     final contractor = onPostTeam != null;
     final org = state.user?.orgName ?? '';
     final sites = (all ?? const <Json>[]).where((j) => isTeamJob(j) && isActiveSite(j)).toList();
+    final hasJobs = all != null && all.isNotEmpty;
     return Scaffold(
       appBar: AppBar(title: Text(contractor && org.isNotEmpty ? org : (name.isEmpty ? l.appName : l.hello(name)), maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: RefreshIndicator(
@@ -315,30 +324,42 @@ class CustomerHomeTab extends StatelessWidget {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
-            if (contractor) _PostHero(onTap: onPostTeam!, team: true) else _PostHero(onTap: onPost),
-            const SizedBox(height: 12),
-            if (contractor) ...[
-              OutlinedButton.icon(
-                onPressed: onPost,
-                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                icon: const Icon(Icons.add_task_rounded),
-                label: Text(l.postSingleJob, maxLines: 1, overflow: TextOverflow.ellipsis),
+            // 1. WHAT DO I NEED TO DO NOW? (only when there is something: waiting for payment, work to check, quotes to compare...)
+            if (all == null && failed)
+              EmptyState(icon: Icons.cloud_off_rounded, text: l.errorNetwork, actions: [PrimaryButton(expand: false, icon: Icons.refresh_rounded, label: l.retry, onPressed: onReload)])
+            else if (all == null)
+              const SkeletonList(count: 2, itemHeight: 76, padding: EdgeInsets.only(bottom: 8), shrink: true)
+            else if (attention.isNotEmpty) ...[
+              SectionHeader(l.attentionTitle, padding: const EdgeInsets.fromLTRB(2, 0, 2, 8)),
+              ...attention,
+              const SizedBox(height: 8),
+            ] else if (hasJobs) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(color: BC.moneySoft, borderRadius: BorderRadius.circular(BC.r)),
+                child: Row(children: [
+                  const Icon(Icons.check_circle_rounded, color: BC.money),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(l.allCaughtUp, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BC.money))),
+                ]),
               ),
-              const SizedBox(height: 12),
             ],
-            OutlinedButton.icon(
-              onPressed: onBrowse,
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-              icon: const Icon(Icons.groups_rounded),
-              label: Text(l.browseWorkers, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-            if (onHireAgain != null) YourWorkersRow(state: state, jobs: jobs, onHireAgain: onHireAgain!),
-            const SizedBox(height: 24),
             if (contractor && org.isEmpty && onAddBusiness != null) ...[
               InfoBanner(icon: Icons.business_rounded, color: BC.info, text: l.bizNameBanner, action: l.bizNameAdd, onTap: onAddBusiness),
               const SizedBox(height: 16),
             ],
+            // 2. THEN: START SOMETHING NEW
+            if (contractor) _PostHero(onTap: onPostTeam!, team: true) else _PostHero(onTap: onPost),
+            const SizedBox(height: 12),
+            if (contractor) ...[
+              SecondaryButton(onPressed: onPost, icon: Icons.add_task_rounded, label: l.postSingleJob),
+              const SizedBox(height: 12),
+            ],
+            SecondaryButton(onPressed: onBrowse, icon: Icons.groups_rounded, label: l.browseWorkers),
+            if (onHireAgain != null) YourWorkersRow(state: state, jobs: jobs, onHireAgain: onHireAgain!),
             if (contractor && all != null) ...[
+              const SizedBox(height: 20),
               SectionHeader(l.teamSitesTitle, padding: const EdgeInsets.fromLTRB(2, 0, 2, 8)),
               if (sites.isEmpty)
                 Container(
@@ -349,41 +370,48 @@ class CustomerHomeTab extends StatelessWidget {
                 )
               else
                 for (final j in sites) ...[TeamSiteCard(job: j, onTap: () => onOpenJob(j['id'] as String)), const SizedBox(height: 12)],
-              const SizedBox(height: 8),
             ],
-            if (all == null && failed)
-              Center(child: OutlinedButton(onPressed: onReload, child: Text(l.retry)))
-            else if (all == null)
-              const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: BC.brand)))
-            else if (all.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(BC.r), border: Border.all(color: BC.line)),
-                child: Text(l.noJobsYet, style: const TextStyle(fontSize: 16, color: BC.inkSoft)),
-              )
-            else ...[
-              Text(l.attentionTitle, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 10),
-              if (attention.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(BC.r), border: Border.all(color: BC.line)),
-                  child: Row(children: [
-                    const Icon(Icons.check_circle_outline_rounded, color: BC.money),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(l.allCaughtUp, style: const TextStyle(fontSize: 15, color: BC.inkSoft))),
-                  ]),
-                )
-              else
-                ...attention,
-              const SizedBox(height: 6),
-              TextButton(onPressed: onSeeBookings, child: Text(l.seeAllBookings)),
+            if (hasJobs) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(onPressed: onSeeBookings, icon: const Icon(Icons.assignment_outlined), label: Text(l.seeAllBookings)),
             ],
           ],
         ),
       ),
     );
   }
+}
+
+/// One thing that needs the customer NOW: big icon, one sentence, one coloured action. The whole card is the button.
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({required this.icon, required this.color, required this.text, required this.onTap, this.action});
+  final IconData icon;
+  final Color color;
+  final String text;
+  final String? action;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: AppCard(
+          onTap: onTap,
+          shadow: true,
+          borderColor: color.withValues(alpha: 0.45),
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            IconBadge(icon, color: color, size: 48, solid: true),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleSmall),
+                if (action != null)
+                  Text(action!, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.labelLarge!.copyWith(color: color, fontWeight: FontWeight.w800)),
+              ]),
+            ),
+            Icon(Icons.chevron_right_rounded, color: color),
+          ]),
+        ),
+      );
 }
 
 class _PostHero extends StatelessWidget {
@@ -453,30 +481,25 @@ class CustomerBookingsTab extends StatelessWidget {
   final VoidCallback onPost;
   final ValueChanged<Json>? onHireAgain; // job -> prefilled Post a Job for the worker who did it
 
-  Widget _list(BuildContext context, L l, BookingGroup g, String empty, {bool withPost = false}) {
+  Widget _list(BuildContext context, L l, BookingGroup g, String empty) {
     final all = jobs;
     if (all == null) {
       return failed
-          ? Center(child: OutlinedButton(onPressed: onReload, child: Text(l.retry)))
-          : const Center(child: CircularProgressIndicator(color: BC.brand));
+          ? EmptyState(icon: Icons.cloud_off_rounded, text: l.errorNetwork, actions: [PrimaryButton(expand: false, icon: Icons.refresh_rounded, label: l.retry, onPressed: onReload)])
+          : const SkeletonList(count: 4);
     }
     final items = all.where((j) => bookingGroup(j) == g).toList();
     return RefreshIndicator(
       color: BC.brand,
       onRefresh: onReload,
       child: items.isEmpty
+          // Every empty list says what to do next.
           ? ListView(physics: const AlwaysScrollableScrollPhysics(), children: [
-              EmptyState(icon: Icons.inbox_outlined, text: empty),
-              if (withPost)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: FilledButton.icon(
-                    onPressed: onPost,
-                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                    icon: const Icon(Icons.add_rounded),
-                    label: BtnLabel(l.postJob),
-                  ),
-                ),
+              EmptyState(
+                icon: Icons.inbox_outlined,
+                text: empty,
+                actions: [PrimaryButton(expand: false, icon: Icons.add_rounded, label: l.postJob, onPressed: onPost)],
+              ),
             ])
           : ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -518,7 +541,7 @@ class CustomerBookingsTab extends StatelessWidget {
           ),
         ),
         body: TabBarView(children: [
-          _list(context, l, BookingGroup.open, l.bookingsEmptyOpen, withPost: true),
+          _list(context, l, BookingGroup.open, l.bookingsEmptyOpen),
           _list(context, l, BookingGroup.ongoing, l.bookingsEmptyOngoing),
           _list(context, l, BookingGroup.past, l.bookingsEmptyPast),
         ]),

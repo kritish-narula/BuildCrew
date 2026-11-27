@@ -134,7 +134,9 @@ class ContractorTeamTab extends StatelessWidget {
     final all = jobs;
     Widget body;
     if (all == null) {
-      body = failed ? Center(child: OutlinedButton(onPressed: onReload, child: Text(l.retry))) : const Center(child: CircularProgressIndicator(color: BC.brand));
+      body = failed
+          ? EmptyState(icon: Icons.cloud_off_rounded, text: l.errorNetwork, actions: [PrimaryButton(expand: false, icon: Icons.refresh_rounded, label: l.retry, onPressed: onReload)])
+          : const SkeletonList(count: 3, itemHeight: 150);
     } else {
       final teams = all.where(isTeamJob).toList();
       final running = teams.where((j) => j['status'] == 'assigned' || j['status'] == 'in_progress').toList();
@@ -149,7 +151,7 @@ class ContractorTeamTab extends StatelessWidget {
         onRefresh: onReload,
         child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
           PrimaryButton(onPressed: onPostTeam, icon: Icons.group_add_rounded, label: l.postTeamJob),
-          if (teams.isEmpty) EmptyState(icon: Icons.groups_outlined, text: l.teamNoSites),
+          if (teams.isEmpty) EmptyState(icon: Icons.groups_outlined, text: l.teamNoSites, actions: [Text(l.cxTeamEmptyHint, textAlign: TextAlign.center, style: BC.subtle)]),
           ...section(l.teamSectionRunning, running),
           ...section(l.teamSectionHiring, hiring),
           ...section(l.teamSectionPast, past),
