@@ -716,7 +716,7 @@ class _VoiceAmountButtonState extends State<VoiceAmountButton> {
       _heard = '';
     });
     await _stt.listen(
-      localeId: '${widget.lang}_IN',
+      localeId: widget.lang == 'en_IN' ? 'en_IN' : '${widget.lang}_IN',
       listenFor: const Duration(seconds: 8),
       onResult: (r) {
         if (!mounted) return;

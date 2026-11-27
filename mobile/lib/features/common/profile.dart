@@ -206,7 +206,7 @@ class _VoiceHelpState extends State<_VoiceHelp> {
     if (!mounted) return;
     setState(() => _listening = true);
     await _stt.listen(
-      localeId: '${widget.state.language ?? 'hi'}_IN',
+      localeId: (widget.state.language ?? 'hi') == 'en_IN' ? 'en_IN' : '${widget.state.language ?? 'hi'}_IN',
       listenFor: const Duration(seconds: 8),
       onResult: (r) {
         if (!mounted) return;
