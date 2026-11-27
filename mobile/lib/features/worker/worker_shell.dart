@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../common/notifications.dart';
 import '../../core/api.dart';
 import '../../core/app_state.dart';
 import '../../core/location.dart';
@@ -268,6 +269,7 @@ class _JobsTabState extends State<JobsTab> {
                 ]),
               ),
               const SizedBox(width: 4),
+              NotificationBell(state: state),
               ChatInboxButton(state: state),
               ReadButton(text: '${l.jobsNear}. ${l.jobsNearSub(jobs.length)}', lang: lang),
             ]),

@@ -10,7 +10,7 @@ class Speaker {
 
   static const _locales = {
     'hi': 'hi-IN', 'bn': 'bn-IN', 'te': 'te-IN', 'mr': 'mr-IN', 'ta': 'ta-IN', 'gu': 'gu-IN',
-    'kn': 'kn-IN', 'ml': 'ml-IN', 'or': 'or-IN', 'pa': 'pa-IN', 'as': 'as-IN', 'en': 'en-IN',
+    'kn': 'kn-IN', 'ml': 'ml-IN', 'or': 'or-IN', 'pa': 'pa-IN', 'as': 'as-IN', 'en': 'en-IN', 'en_IN': 'en-IN',
   };
 
   Future<bool> say(String text, String lang) async {

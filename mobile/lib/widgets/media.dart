@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../core/net_image.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -37,8 +38,7 @@ class AppImage extends StatelessWidget {
     if (u == null || u.isEmpty) return ph();
     if (u.startsWith('http')) {
       if (!allowNetwork) return ph();
-      return Image.network(u, fit: fit, width: width, height: height, errorBuilder: (_, __, ___) => ph(),
-          loadingBuilder: (_, c, p) => p == null ? c : Container(width: width, height: height, color: BC.closedSoft));
+      return NetImage(u, fit: fit, width: width, height: height, placeholder: ph()); // disk-cached, decoded at drawn size
     }
     return Image.file(File(u), fit: fit, width: width, height: height, errorBuilder: (_, __, ___) => ph());
   }
