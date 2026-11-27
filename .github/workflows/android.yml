@@ -83,7 +83,8 @@ jobs:
           # Universal APK for first-time installs from the release page (one file for every phone).
           # versionCode 2000+run: same as this run's arm64 build and below the next run's, so a
           # phone can move between the universal and per-CPU APKs without a "downgrade" error.
-          flutter build apk --release --tree-shake-icons \
+          # phones only (32/64-bit ARM): x86_64 is emulators/Chromebooks, which get their own per-CPU APK
+          flutter build apk --release --tree-shake-icons --target-platform android-arm,android-arm64 \
             --build-name="$VERSION" --build-number=$((2000 + ${{ github.run_number }})) \
             --obfuscate --split-debug-info=build/symbols-universal \
             --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }} \
