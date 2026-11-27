@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
@@ -8,6 +9,7 @@ import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
 import '../../widgets/fair_price.dart';
+import '../../widgets/job_progress.dart';
 import 'customer_home.dart' show customerRoute;
 import '../../widgets/maps.dart';
 import '../../widgets/media.dart';
@@ -19,6 +21,7 @@ import '../worker/assignment_screen.dart' show EscrowLine;
 import '../worker/job_detail.dart' show WorkItemView;
 import '../worker/worker_shell.dart' show badgeLabel, initials;
 import 'payment.dart';
+import 'post_job.dart' show hireAgain;
 import 'workers.dart';
 
 /// C3 bid comparison → C4 tracking stepper → C5 mandatory rating → C6 escrow status.
@@ -31,7 +34,7 @@ class CustomerJobScreen extends StatefulWidget {
 }
 
 class _CustomerJobScreenState extends State<CustomerJobScreen> {
-  String _sort = 'price'; // price | rating | verified (police-verified workers first)
+  String _sort = 'best'; // best (match score) | price | rating | verified (police-verified workers first)
   Json? _job;
   Object? _error;
   late final Poller _poller;
@@ -106,10 +109,10 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
       builder: (c) => AlertDialog(
         title: Text(l.hireName(w['name'] as String)),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _line(l.workerPrice, inr(price)),
-          _line(l.platformFee, inr(fee)),
+          _line(l.workerPrice, price),
+          _line(l.platformFee, fee),
           const Divider(height: 24),
-          _line(l.youPay, inr(price + fee), bold: true),
+          _line(l.youPay, price + fee, bold: true),
           const SizedBox(height: 14),
           InfoBanner(icon: Icons.lock_rounded, color: BC.money, text: l.escrowExplain),
         ]),
@@ -135,12 +138,12 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
     await _load();
   }
 
-  Widget _line(String a, String b, {bool bold = false}) => Padding(
+  Widget _line(String a, num amount, {bool bold = false}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(children: [
           Text(a, style: TextStyle(fontSize: 16, fontWeight: bold ? FontWeight.w700 : FontWeight.w500)),
           const Spacer(),
-          Text(b, style: TextStyle(fontSize: bold ? 20 : 16, fontWeight: bold ? FontWeight.w700 : FontWeight.w600, fontFeatures: BC.tabular)),
+          MoneyText(amount, size: bold ? MoneySize.m : MoneySize.s),
         ]),
       );
 
@@ -149,13 +152,36 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
     final l = L.of(context);
     final job = _job;
     return Scaffold(
-      appBar: AppBar(title: Text(l.yourJob)),
+      appBar: AppBar(title: Text(l.yourJob), actions: [
+        // Always a way out to Home, however deep the customer has gone (receipt, rating, re-fix job...).
+        IconButton(tooltip: l.navHome, icon: const Icon(Icons.home_outlined), onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
+      ]),
       body: job == null
           ? (_error != null
-              ? Center(child: OutlinedButton(onPressed: _load, child: Text(l.retry)))
-              : const Center(child: CircularProgressIndicator(color: BC.brand)))
+              ? EmptyState(icon: Icons.cloud_off_rounded, text: errorText(l, _error!), actions: [PrimaryButton(expand: false, icon: Icons.refresh_rounded, label: l.retry, onPressed: _load)])
+              : const SkeletonList(count: 3, itemHeight: 130))
           : RefreshIndicator(color: BC.brand, onRefresh: _load, child: _body(l, job)),
     );
+  }
+
+  /// "Today, 9 AM" / "Sat 30 Nov, Morning 8–11"; falls back to the start day for old jobs without a time.
+  String? _when(L l, Json job) => scheduleText(l, job['scheduled_for'] as String?, job['time_slot'] as String?) ?? humanDate(l, job['start_date'] as String?);
+
+  Future<void> _share(Json job) async {
+    final l = L.of(context);
+    final trades = (job['trades'] as List).toSet().map((t) => tradeLabel(l, t as String)).join(', ');
+    await Share.share(l.cxShareJobText(trades, '${job['locality'] ?? ''}'));
+  }
+
+  Future<void> _cancelOpen(Json job) async {
+    final l = L.of(context);
+    if (!await askConfirm(context, l.cancelJob, l.cxCancelOpenBody, l.cancelJob, danger: true) || !mounted) return;
+    try {
+      await state.api.cancelJob(job['id'] as String);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
   }
 
   Widget _body(L l, Json job) {
@@ -163,34 +189,61 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
     final a = job['assignment'] as Json?;
     final bids = [...(job['bids'] as List).cast<Json>()];
     bool police(Json b) => (b['worker'] as Json)['police_verified'] == true;
-    if (_sort == 'rating') {
-      // best rated first; at equal rating the police-verified worker ranks higher
-      bids.sort((x, y) {
-        final c = ((y['worker'] as Json)['rating'] as num).compareTo((x['worker'] as Json)['rating'] as num);
-        return c != 0 ? c : (police(y) ? 1 : 0).compareTo(police(x) ? 1 : 0);
-      });
-    } else if (_sort == 'verified') {
-      bids.sort((x, y) {
-        final c = (police(y) ? 1 : 0).compareTo(police(x) ? 1 : 0);
-        return c != 0 ? c : (x['price_inr'] as num).compareTo(y['price_inr'] as num);
-      });
+    num priceOf(Json b) => b['price_inr'] as num;
+    int scoreOf(Json b) => (b['match_score'] as num?)?.toInt() ?? 0;
+    int byPrice(Json x, Json y) => priceOf(x).compareTo(priceOf(y));
+    switch (_sort) {
+      case 'rating':
+        // best rated first; at equal rating the police-verified worker ranks higher
+        bids.sort((x, y) {
+          final c = ((y['worker'] as Json)['rating'] as num).compareTo((x['worker'] as Json)['rating'] as num);
+          return c != 0 ? c : (police(y) ? 1 : 0).compareTo(police(x) ? 1 : 0);
+        });
+      case 'verified':
+        bids.sort((x, y) {
+          final c = (police(y) ? 1 : 0).compareTo(police(x) ? 1 : 0);
+          return c != 0 ? c : byPrice(x, y);
+        });
+      case 'price':
+        bids.sort(byPrice);
+      default: // best match first (the server marks the winner; same order here, cheaper first on a tie)
+        bids.sort((x, y) {
+          final c = scoreOf(y).compareTo(scoreOf(x));
+          return c != 0 ? c : byPrice(x, y);
+        });
+    }
+    num? minPrice;
+    for (final b in bids) {
+      if (minPrice == null || priceOf(b) < minPrice) minPrice = priceOf(b);
     }
     final refix = a != null && a['kind'] == 'refix';
     final direct = (job['direct'] as Map?)?.cast<String, dynamic>();
     final items = (job['work_items'] as List).cast<Json>();
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
+    final info = refix ? null : jobProgress(l, job);
+    final when = _when(l, job);
+    return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
+      if (info != null) ...[JobProgressHeader(info: info), const SizedBox(height: 14)],
       Wrap(spacing: 8, runSpacing: 8, children: [for (final t in (job['trades'] as List).toSet()) TradeChip(t as String)]),
       const SizedBox(height: 8),
-      Text('📍 ${job['locality']} · ${scheduleText(l, job['scheduled_for'] as String?, job['time_slot'] as String?) ?? l.startsOn(job['start_date'] as String)}',
-          style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600)),
+      Row(children: [
+        const Icon(Icons.place_outlined, size: 18, color: BC.inkSoft),
+        const SizedBox(width: 4),
+        Expanded(child: Text('${job['locality'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600, fontSize: 15))),
+      ]),
+      if (when != null) ...[
+        const SizedBox(height: 2),
+        Row(children: [
+          const Icon(Icons.event_available_rounded, size: 18, color: BC.inkSoft),
+          const SizedBox(width: 4),
+          Expanded(child: Text(when, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600, fontSize: 15))),
+        ]),
+      ],
       const SizedBox(height: 14),
       if (refix) ...[
         InfoBanner(icon: Icons.build_circle_rounded, color: BC.info, text: l.refixCustomerSub((a!['worker'] as Json)['name'] as String)),
         const SizedBox(height: 14),
       ],
       if (a != null) ...[
-        if (!refix) _Tracker(status: status, assignment: a),
-        if (!refix) const SizedBox(height: 14),
         ValueListenableBuilder<bool>(
           valueListenable: _acting,
           builder: (_, acting, __) => _NextStep(
@@ -199,9 +252,7 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
               reload: _load),
         ),
       ] else if (status == 'open' || status == 'bidding') ...[
-        Text(l.workersQuoted(bids.length), style: Theme.of(context).textTheme.titleLarge),
         if (direct != null) ...[
-          const SizedBox(height: 10),
           InfoBanner(
             icon: direct['state'] == 'pending' ? Icons.hourglass_top_rounded : Icons.groups_rounded,
             color: direct['state'] == 'pending' ? BC.info : BC.inkSoft,
@@ -211,54 +262,28 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
               _ => l.directExpired(((direct['worker'] as Map)['name'] as String).split(' ').first),
             },
           ),
-        ],
-        if (bids.length > 1) ...[
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 4, children: [
-            for (final (code, label) in [('price', l.sortPrice), ('rating', l.sortRating), ('verified', l.sortVerified)])
-              ChoiceChip(label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis), selected: _sort == code, onSelected: (_) => setState(() => _sort = code)),
-          ]),
-        ],
-        const SizedBox(height: 10),
-        if (bids.isEmpty) InfoBanner(icon: Icons.hourglass_top_rounded, color: const Color(0xFF92400E), text: l.waitingForQuotes),
-        if (job['no_quotes_24h'] == true) ...[
           const SizedBox(height: 10),
-          AppCard(
-            color: BC.pendingSoft,
-            borderColor: BC.pending.withValues(alpha: 0.5),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(children: [
-                const Icon(Icons.lightbulb_rounded, color: BC.pendingInk),
-                const SizedBox(width: 8),
-                Expanded(child: Text(l.noQuotesTitle, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: BC.pendingInk))),
-              ]),
-              const SizedBox(height: 6),
-              Text(l.noQuotesBody, style: BC.subtle),
-              const SizedBox(height: 10),
-              SecondaryButton(icon: Icons.notifications_active_rounded, label: l.remindWorkers, onPressed: () => _nudge(job)),
-            ]),
-          ),
         ],
-        for (final (i, b) in bids.indexed) ...[
+        if (bids.length > 1)
+          Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            for (final (code, label) in [('best', l.cxBestMatch), ('price', l.sortPrice), ('rating', l.sortRating), ('verified', l.sortVerified)])
+              ChoiceChip(label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis), selected: _sort == code, onSelected: (_) => setState(() => _sort = code)),
+            InfoTip(title: l.cxBestMatch, text: l.cxBestMatchInfo),
+          ]),
+        if (bids.isEmpty) _NoQuotes(longWait: job['no_quotes_24h'] == true, onNudge: () => _nudge(job), onShare: () => _share(job)),
+        for (final b in bids) ...[
+          const SizedBox(height: 10),
           _BidCard(
             bid: b,
-            lowest: _sort == 'price' && i == 0 && bids.length > 1,
+            lowest: bids.length > 1 && priceOf(b) == minPrice,
             onAccept: () => _accept(job, b),
             onChat: () => openChat(context, state, jobId: job['id'] as String, withUser: (b['worker'] as Json)['id'] as String, title: (b['worker'] as Json)['name'] as String),
             onProfile: () => Navigator.of(context).push(customerRoute<void>(builder: (_) => WorkerProfileScreen(state: state, workerId: (b['worker'] as Json)['id'] as String))),
           ),
-          const SizedBox(height: 10),
         ],
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
         TextButton.icon(
-          onPressed: () async {
-            try {
-              await state.api.cancelJob(job['id'] as String);
-              if (mounted) Navigator.pop(context);
-            } catch (e) {
-              if (mounted) showError(context, e);
-            }
-          },
+          onPressed: () => _cancelOpen(job),
           icon: const Icon(Icons.cancel_outlined, color: BC.danger),
           label: Text(l.cancelJob, style: const TextStyle(color: BC.danger)),
         ),
@@ -274,54 +299,48 @@ class _CustomerJobScreenState extends State<CustomerJobScreen> {
   }
 }
 
-/// Assigned → In progress → Completed → Rated → Paid
-class _Tracker extends StatelessWidget {
-  const _Tracker({required this.status, required this.assignment});
-  final String status;
-  final Json assignment;
+/// No quotes yet: what is happening + three things the customer can do right now (never a dead end).
+class _NoQuotes extends StatelessWidget {
+  const _NoQuotes({required this.longWait, required this.onNudge, required this.onShare});
+  final bool longWait;
+  final VoidCallback onNudge, onShare;
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
-    final rated = (assignment['ratings'] as Map)['customer_to_worker'] != null;
-    final paid = (assignment['payment'] as Map?)?['escrow_state'] == 'released';
-    final reached = switch (status) {
-      'assigned' => 0,
-      'in_progress' => 1,
-      'completed' => paid ? 4 : (rated ? 3 : 2),
-      _ => 1,
-    };
-    final steps = [
-      (l.stepAssigned, Icons.handshake_rounded),
-      (l.stepInProgress, Icons.construction_rounded),
-      (l.stepCompleted, Icons.task_alt_rounded),
-      (l.stepRated, Icons.star_rounded),
-      (l.stepPaid, Icons.payments_rounded),
-    ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-        child: Row(children: [
-          for (var i = 0; i < steps.length; i++)
-            Expanded(
-              child: Column(children: [
-                Row(children: [
-                  Expanded(child: Container(height: 3, color: i == 0 ? Colors.transparent : (i <= reached ? BC.money : BC.line))),
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: i <= reached ? BC.money : BC.closedSoft,
-                    child: Icon(steps[i].$2, size: 20, color: i <= reached ? Colors.white : BC.inkFaint),
-                  ),
-                  Expanded(child: Container(height: 3, color: i == steps.length - 1 ? Colors.transparent : (i < reached ? BC.money : BC.line))),
-                ]),
-                const SizedBox(height: 6),
-                Text(steps[i].$1, textAlign: TextAlign.center, maxLines: 2,
-                    style: TextStyle(fontSize: 12, fontWeight: i == reached ? FontWeight.w700 : FontWeight.w600, color: i <= reached ? BC.ink : BC.inkFaint)),
-              ]),
-            ),
+    return AppCard(
+      color: longWait ? BC.pendingSoft : BC.card,
+      borderColor: longWait ? BC.pending.withValues(alpha: 0.5) : BC.line,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(longWait ? Icons.lightbulb_rounded : Icons.hourglass_top_rounded, color: BC.pendingInk),
+          const SizedBox(width: 8),
+          Expanded(child: Text(longWait ? l.noQuotesTitle : l.cxNoQuotesYet, style: context.tt.titleLarge!.copyWith(color: BC.pendingInk))),
+          InfoTip(title: l.cxQuoteTipsTitle, text: l.cxQuoteTips),
         ]),
-      ),
+        const SizedBox(height: 12),
+        PrimaryButton(icon: Icons.notifications_active_rounded, label: l.remindWorkers, onPressed: onNudge),
+        const SizedBox(height: 10),
+        SecondaryButton(icon: Icons.share_rounded, label: l.cxShareJob, onPressed: onShare),
+      ]),
     );
   }
+}
+
+/// Yes/No dialog, ONLY for things that cannot be undone (cancel, send back, report). Everything else just happens.
+Future<bool> askConfirm(BuildContext context, String title, String body, String yes, {bool danger = false}) async {
+  final l = L.of(context);
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: Text(title),
+      content: Text(body),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(l.cancel)),
+        FilledButton(onPressed: () => Navigator.pop(c, true), style: danger ? FilledButton.styleFrom(backgroundColor: BC.danger) : null, child: Text(yes)),
+      ],
+    ),
+  );
+  return ok == true;
 }
 
 /// ONE card that always says what happens next and offers the one action that matters.
@@ -349,21 +368,26 @@ class _NextStep extends StatelessWidget {
     final codeView = (a['start_code'] as Map?)?.cast<String, dynamic>();
     final att = (a['attendance'] as List).cast<Json>();
 
+    // The progress header above already says WHAT is happening (title + what comes next); this card holds the
+    // worker, the facts and the one action. Re-fix visits have no header, so they keep their own title.
     Widget hero({required IconData icon, required Color color, required String title, String? sub, Widget? child, Widget? action}) => Container(
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(BC.rLg), border: Border.all(color: color.withValues(alpha: 0.35))),
+          decoration: BoxDecoration(color: BC.card, borderRadius: BorderRadius.circular(BC.rLg), border: Border.all(color: color.withValues(alpha: 0.35))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              CircleAvatar(radius: 24, backgroundColor: color, child: Icon(icon, color: Colors.white)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-                  if (sub != null) Text(sub, style: const TextStyle(color: BC.inkSoft, fontSize: 15)),
-                ]),
-              ),
-            ]),
-            if (child != null) ...[const SizedBox(height: 14), child],
+            if (refix)
+              Row(children: [
+                CircleAvatar(radius: 24, backgroundColor: color, child: Icon(icon, color: Colors.white)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                    if (sub != null) Text(sub, style: const TextStyle(color: BC.inkSoft, fontSize: 15)),
+                  ]),
+                ),
+              ])
+            else if (sub != null)
+              Text(sub, style: const TextStyle(color: BC.inkSoft, fontSize: 15, height: 1.4)),
+            if (child != null) ...[if (refix || sub != null) const SizedBox(height: 14), child],
             if (action != null) ...[const SizedBox(height: 14), action],
           ]),
         );
@@ -377,23 +401,22 @@ class _NextStep extends StatelessWidget {
           StarBadge(w['rating'] as num, count: w['rating_count'] as int),
         ]),
       ),
-      Text(inr(a['price_inr'] as num), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
+      MoneyText(a['price_inr'] as num, size: MoneySize.l),
     ]);
 
     late final Widget main;
     if (status == 'disputed') {
-      main = hero(icon: Icons.gavel_rounded, color: BC.danger, title: l.statusDisputed, sub: l.disputeOpenCustomer);
+      main = hero(icon: Icons.gavel_rounded, color: BC.danger, title: l.statusDisputed, child: workerRow);
     } else if (escrow == 'created') {
       main = hero(
         icon: Icons.account_balance_wallet_rounded,
         color: BC.brand,
         title: l.payToConfirm(name),
-        sub: l.payToConfirmSub,
         child: workerRow,
         action: FilledButton.icon(onPressed: onPay, style: FilledButton.styleFrom(backgroundColor: BC.money), icon: const Icon(Icons.lock_rounded), label: BtnLabel(l.payNow)),
       );
     } else if (status == 'assigned' && tr == null) {
-      main = hero(icon: Icons.schedule_rounded, color: BC.info, title: l.workerWillStart(name), sub: l.workerWillStartSub, child: workerRow);
+      main = hero(icon: Icons.schedule_rounded, color: BC.info, title: l.workerWillStart(name), child: workerRow);
     } else if (status == 'assigned' && tr != null && tr['arrived'] != true) {
       main = hero(
         icon: Icons.two_wheeler_rounded,
@@ -430,7 +453,6 @@ class _NextStep extends StatelessWidget {
           icon: Icons.task_alt_rounded,
           color: BC.money,
           title: l.workerSaysDone(name),
-          sub: l.checkAndConfirm,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             workerRow,
             const SizedBox(height: 12),
@@ -450,7 +472,7 @@ class _NextStep extends StatelessWidget {
             ],
           ]),
           action: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            PrimaryButton(color: BC.money, icon: Icons.task_alt_rounded, label: l.yesWorkDone, busy: acting, onPressed: () => _confirmDone(context)),
+            PrimaryButton(color: BC.money, icon: Icons.task_alt_rounded, label: l.yesWorkDone, busy: acting, onPressed: () => _confirmDone(context, ask: false)),
             const SizedBox(height: 10),
             SecondaryButton(icon: Icons.replay_rounded, label: l.notDoneSendBack, onPressed: acting ? null : () => _sendBack(context, name)),
           ]),
@@ -490,15 +512,14 @@ class _NextStep extends StatelessWidget {
         child: a['auto_confirmed'] == true && escrow == 'released'
             ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [workerRow, const SizedBox(height: 10), InfoBanner(icon: Icons.timer_rounded, color: BC.money, text: l.autoReleasedCustomer)])
             : workerRow,
-        action: pay == null
-            ? null
-            : OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).push(customerRoute<void>(
-                    builder: (_) => ReceiptScreen(
-                        payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>(), warrantyDays: (warranty?['days'] as num?)?.toInt() ?? 0))),
-                icon: const Icon(Icons.receipt_long_rounded),
-                label: BtnLabel(l.viewReceipt),
-              ),
+        action: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // The end of a job is never a dead end: hire the same worker again, or go back to Home.
+          PrimaryButton(icon: Icons.replay_circle_filled_rounded, label: l.hireAgain, onPressed: () => _hireAgain(context)),
+          if (pay != null) ...[
+            const SizedBox(height: 10),
+            SecondaryButton(icon: Icons.receipt_long_rounded, label: l.viewReceipt, onPressed: () => _openReceipt(context, pay, name, warranty)),
+          ],
+        ]),
       );
     }
 
@@ -520,12 +541,7 @@ class _NextStep extends StatelessWidget {
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(BC.r), border: Border.all(color: BC.line)),
           child: Row(children: [
             Expanded(child: EscrowLine(state: escrow, amount: escrow == 'held' ? pay['amount_inr'] as num : pay['worker_payout_inr'] as num)),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(customerRoute<void>(
-                  builder: (_) => ReceiptScreen(
-                      payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>(), warrantyDays: (warranty?['days'] as num?)?.toInt() ?? 0))),
-              child: Text(l.receipt),
-            ),
+            TextButton(onPressed: () => _openReceipt(context, pay, name, warranty), child: Text(l.receipt)),
           ]),
         ),
       ],
@@ -593,6 +609,21 @@ class _NextStep extends StatelessWidget {
     ]);
   }
 
+  /// Receipt with a way forward (the receipt screen itself belongs to payments): hire again, or back to Home.
+  void _openReceipt(BuildContext context, Json pay, String name, Map<String, dynamic>? warranty) {
+    Navigator.of(context).push(customerRoute<void>(
+        builder: (_) => _ReceiptWithNext(
+              state: state,
+              jobId: job['id'] as String,
+              child: ReceiptScreen(payment: pay, workerName: name, trades: (job['trades'] as List).cast<String>(), warrantyDays: (warranty?['days'] as num?)?.toInt() ?? 0),
+            )));
+  }
+
+  Future<void> _hireAgain(BuildContext context) async {
+    final posted = await hireAgain(context, state, jobId: job['id'] as String);
+    if (posted == true && context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+  }
+
   /// One action at a time; polling pauses meanwhile; errors become friendly snackbars.
   Future<void> _guard(BuildContext context, Future<void> Function() fn) async {
     if (busy.value) return;
@@ -613,21 +644,8 @@ class _NextStep extends StatelessWidget {
       ..showSnackBar(SnackBar(backgroundColor: color, content: Text(text, style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.white))));
   }
 
-  Future<bool> _ask(BuildContext context, String title, String body, String yes, {bool danger = false}) async {
-    final l = L.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(l.cancel)),
-          FilledButton(onPressed: () => Navigator.pop(c, true), style: danger ? FilledButton.styleFrom(backgroundColor: BC.danger) : null, child: Text(yes)),
-        ],
-      ),
-    );
-    return ok == true;
-  }
+  Future<bool> _ask(BuildContext context, String title, String body, String yes, {bool danger = false}) =>
+      askConfirm(context, title, body, yes, danger: danger);
 
   Future<void> _sendBack(BuildContext context, String name) async {
     final l = L.of(context);
@@ -673,20 +691,11 @@ class _NextStep extends StatelessWidget {
     });
   }
 
-  Future<void> _confirmDone(BuildContext context) async {
+  /// [ask]: a confirmation question only when the worker has NOT said "finished" yet (the customer might have
+  /// tapped by mistake). When the worker finished, "Yes, work is done" is already the explicit answer.
+  Future<void> _confirmDone(BuildContext context, {bool ask = true}) async {
     final l = L.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(l.workDoneQ),
-        content: Text(l.workDoneSub),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(l.cancel)),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(l.yesDone)),
-        ],
-      ),
-    );
-    if (ok != true || !context.mounted) return;
+    if (ask && (!await _ask(context, l.workDoneQ, l.workDoneSub, l.yesDone) || !context.mounted)) return;
     await _guard(context, () async {
       await state.api.completeJob(job['id'] as String);
       await reload();
@@ -723,6 +732,31 @@ class _NextStep extends StatelessWidget {
   }
 }
 
+/// "Fair price · 4.8★ · 1.2 km · Police verified" from the server's `match_reasons`.
+String matchWhy(L l, Json bid) {
+  final out = <String>[];
+  for (final r in ((bid['match_reasons'] as List?) ?? const []).cast<Map>()) {
+    final v = r['value'];
+    switch (r['code']) {
+      case 'fair':
+        out.add(l.cxFairPrice);
+      case 'rating':
+        out.add('${(v as num).toStringAsFixed(1)}★');
+      case 'distance':
+        out.add(l.cxKmAway((v as num).toStringAsFixed(1)));
+      case 'police':
+        out.add(l.policeVerified);
+      case 'level':
+        out.add(levelLabel(l, v as String?));
+      case 'jobs':
+        out.add(l.jobsDone((v as num).toInt()));
+      case 'fast':
+        out.add(l.cxRepliesFast);
+    }
+  }
+  return out.join(' · ');
+}
+
 class _BidCard extends StatelessWidget {
   const _BidCard({required this.bid, required this.lowest, required this.onAccept, required this.onChat, required this.onProfile});
   final Json bid;
@@ -733,76 +767,141 @@ class _BidCard extends StatelessWidget {
     final l = L.of(context);
     final w = bid['worker'] as Json;
     final badges = (w['badges'] as List).cast<String>();
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          InkWell(
-            onTap: onProfile,
-            child: Row(children: [
-              CircleAvatar(radius: 26, backgroundColor: BC.brand, child: Text(initials(w['name'] as String), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Flexible(child: Text(w['name'] as String, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-                    WorkerMarks(w),
-                  ]),
-                  Row(children: [
-                    StarBadge(w['rating'] as num),
-                    Flexible(child: Text('  ·  ${l.jobsDone((w['completed_jobs'] as num).toInt())}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600))),
-                  ]),
-                ]),
-              ),
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(inr(bid['price_inr'] as num), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, fontFeatures: BC.tabular)),
-                if (lowest) StatusPill(label: l.lowest, color: BC.money, bg: BC.moneySoft),
+    final best = bid['best_match'] == true;
+    final today = bid['can_come_today'] == true;
+    final km = (bid['distance_km'] as num?)?.toDouble();
+    final why = best ? matchWhy(l, bid) : '';
+    return AppCard(
+      padding: EdgeInsets.zero,
+      borderColor: best ? BC.money : BC.line,
+      shadow: best,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (best)
+          Container(
+            key: const ValueKey('bestMatch'),
+            color: BC.moneySoft,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.workspace_premium_rounded, color: BC.money, size: 22),
+                const SizedBox(width: 6),
+                Expanded(child: Text(l.cxBestMatch, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium!.copyWith(color: BC.money, fontWeight: FontWeight.w800))),
               ]),
+              if (why.isNotEmpty) Text(why, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.bodyMedium!.copyWith(color: BC.inkSoft)),
             ]),
           ),
-          if (bid['fair'] is Map) ...[
-            const SizedBox(height: 10),
-            FairBidBadge(fair: (bid['fair'] as Map).cast<String, dynamic>()),
-          ],
-          if ((w['level'] != null && w['level'] != 'helper') || ((bid['warranty_days'] as num?) ?? 0) > 0) ...[
-            const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              LevelChip(w['level'] as String?),
-              WarrantyChip(((bid['warranty_days'] as num?) ?? 0).toInt()),
-            ]),
-          ],
-          if (badges.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final b in badges)
-                StatusPill(label: '🏅 ${badgeLabel(l, b, w['rating'] as num, w['rating_count'] as int)}', color: const Color(0xFFB45309), bg: BC.pendingSoft),
-            ]),
-          ],
-          const SizedBox(height: 12),
-          Row(children: [
-            SizedBox(
-              width: 52,
-              height: 52,
-              child: IconButton.outlined(
-                onPressed: onChat,
-                tooltip: l.chat,
-                style: IconButton.styleFrom(side: const BorderSide(color: BC.line), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r))),
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-              ),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            InkWell(
+              onTap: onProfile,
+              child: Row(children: [
+                CircleAvatar(radius: 26, backgroundColor: BC.brand, child: Text(initials(w['name'] as String), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Flexible(child: Text(w['name'] as String, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+                      WorkerMarks(w),
+                    ]),
+                    Row(children: [
+                      StarBadge(w['rating'] as num),
+                      Flexible(child: Text('  ·  ${l.jobsDone((w['completed_jobs'] as num).toInt())}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: BC.inkSoft, fontWeight: FontWeight.w600))),
+                    ]),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  MoneyText(bid['price_inr'] as num, size: MoneySize.l, alignment: AlignmentDirectional.centerEnd),
+                  if (lowest) StatusPill(label: l.lowest, color: BC.money, bg: BC.moneySoft),
+                ]),
+              ]),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: bid['status'] == 'pending' ? onAccept : null,
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                icon: const Icon(Icons.handshake_rounded),
-                label: Text(l.accept, maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (bid['fair'] is Map) ...[
+              const SizedBox(height: 10),
+              FairBidBadge(fair: (bid['fair'] as Map).cast<String, dynamic>()),
+            ],
+            if (today || km != null || (w['level'] != null && w['level'] != 'helper') || ((bid['warranty_days'] as num?) ?? 0) > 0) ...[
+              const SizedBox(height: 8),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                if (today) StatusPill(key: const ValueKey('canComeToday'), label: l.cxCanComeToday, color: BC.info, bg: BC.infoSoft, icon: Icons.bolt_rounded),
+                if (km != null) StatusPill(label: l.cxKmAway(km.toStringAsFixed(1)), color: BC.inkSoft, bg: BC.closedSoft, icon: Icons.near_me_rounded),
+                LevelChip(w['level'] as String?),
+                WarrantyChip(((bid['warranty_days'] as num?) ?? 0).toInt()),
+              ]),
+            ],
+            if (badges.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final b in badges)
+                  StatusPill(label: '🏅 ${badgeLabel(l, b, w['rating'] as num, w['rating_count'] as int)}', color: const Color(0xFFB45309), bg: BC.pendingSoft),
+              ]),
+            ],
+            const SizedBox(height: 12),
+            Row(children: [
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: IconButton.outlined(
+                  onPressed: onChat,
+                  tooltip: l.chat,
+                  style: IconButton.styleFrom(side: const BorderSide(color: BC.line), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r))),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: bid['status'] == 'pending' ? onAccept : null,
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52), backgroundColor: best ? BC.money : null),
+                  icon: const Icon(Icons.handshake_rounded),
+                  label: Text(l.accept, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ]),
           ]),
-        ]),
-      ),
+        ),
+      ]),
     );
+  }
+}
+
+/// The receipt (owned by the payments screen) with a way forward under it: back to Home, or hire the same worker again.
+class _ReceiptWithNext extends StatelessWidget {
+  const _ReceiptWithNext({required this.state, required this.jobId, required this.child});
+  final AppState state;
+  final String jobId;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    return Column(children: [
+      Expanded(child: child),
+      Material(
+        color: Colors.white,
+        elevation: 6,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: Row(children: [
+              Expanded(child: SecondaryButton(icon: Icons.home_rounded, label: l.cxBackHome, onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst))),
+              const SizedBox(width: 10),
+              Expanded(
+                child: PrimaryButton(
+                  icon: Icons.replay_circle_filled_rounded,
+                  label: l.hireAgain,
+                  onPressed: () async {
+                    final posted = await hireAgain(context, state, jobId: jobId);
+                    if (posted == true && context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+                  },
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    ]);
   }
 }
 
@@ -931,10 +1030,7 @@ class _WarrantyCard extends StatefulWidget {
 class _WarrantyCardState extends State<_WarrantyCard> {
   bool _busy = false;
 
-  String _date(String iso) {
-    final d = DateTime.parse(iso).toLocal();
-    return '${d.day}/${d.month}/${d.year}';
-  }
+  String _date(String iso) => humanDate(L.of(context), iso) ?? '';
 
   Future<void> _report() async {
     final l = L.of(context);

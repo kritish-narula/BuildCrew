@@ -2282,5 +2282,231 @@
   "wkFaqC10Q": "What if the worker does not come?",
   "@wkFaqC10Q": {},
   "wkFaqC10A": "Report it on the job screen or call support. Your money is refunded in full.",
-  "@wkFaqC10A": {}
+  "@wkFaqC10A": {},
+  "cxMoreInfo": "More info",
+  "@cxMoreInfo": {},
+  "cxBackHome": "Back to home",
+  "@cxBackHome": {},
+  "cxStepOf": "Step {n} of {total}",
+  "@cxStepOf": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "cxWhatNext": "What happens next",
+  "@cxWhatNext": {},
+  "cxStepQuotes": "Quotes",
+  "@cxStepQuotes": {},
+  "cxStepHire": "Hire & pay",
+  "@cxStepHire": {},
+  "cxStepWork": "Work",
+  "@cxStepWork": {},
+  "cxStepCheck": "Check",
+  "@cxStepCheck": {},
+  "cxStepDone": "Done",
+  "@cxStepDone": {},
+  "cxPrWaitingQuotes": "Waiting for quotes",
+  "@cxPrWaitingQuotes": {},
+  "cxPrWaitingNext": "Nearby workers are being told. Prices usually come within an hour.",
+  "@cxPrWaitingNext": {},
+  "cxPrQuotesReady": "{n, plural, =1{1 quote is ready} other{{n} quotes are ready}}",
+  "@cxPrQuotesReady": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "cxPrQuotesNext": "Compare them and pick one worker.",
+  "@cxPrQuotesNext": {},
+  "cxPrPayNext": "Pay now. Your money stays safe with BuildCrew until the work is done.",
+  "@cxPrPayNext": {},
+  "cxPrComingSoon": "{name} will come soon",
+  "@cxPrComingSoon": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cxPrComingNext": "You will see the distance and arrival time here.",
+  "@cxPrComingNext": {},
+  "cxPrArrivingNext": "When the worker arrives, tell them the 4-digit start code.",
+  "@cxPrArrivingNext": {},
+  "cxPrWorking": "{name} is working",
+  "@cxPrWorking": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cxPrWorkingNext": "When the work is done, you will check it and pay.",
+  "@cxPrWorkingNext": {},
+  "cxPrFixing": "{name} is fixing it",
+  "@cxPrFixing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cxPrFixingNext": "You will check the work again when it is done.",
+  "@cxPrFixingNext": {},
+  "cxPrCheck": "Check {name}'s work",
+  "@cxPrCheck": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cxPrCheckNext": "Happy? Confirm and rate to pay. Not happy? Send it back.",
+  "@cxPrCheckNext": {},
+  "cxPrRate": "Rate {name} to pay",
+  "@cxPrRate": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cxPrRateNext": "Your rating sends the money to the worker.",
+  "@cxPrRateNext": {},
+  "cxPrDoneNext": "Your receipt and guarantee are below. Need the same work again? Hire again.",
+  "@cxPrDoneNext": {},
+  "cxPrDisputed": "Problem reported",
+  "@cxPrDisputed": {},
+  "cxPrDisputedNext": "Our team will contact you within 24 hours. Your money stays safe.",
+  "@cxPrDisputedNext": {},
+  "cxBestMatch": "Best match",
+  "@cxBestMatch": {},
+  "cxBestMatchInfo": "Best match looks at a fair price, rating, jobs done, distance, police verification, skill level and how fast the worker replied. The cheapest quote is not always the best one.",
+  "@cxBestMatchInfo": {},
+  "cxCanComeToday": "Can come today",
+  "@cxCanComeToday": {},
+  "cxFairPrice": "Fair price",
+  "@cxFairPrice": {},
+  "cxKmAway": "{km} km",
+  "@cxKmAway": {
+    "placeholders": {
+      "km": {
+        "type": "String"
+      }
+    }
+  },
+  "cxRepliesFast": "Replies fast",
+  "@cxRepliesFast": {},
+  "cxNoQuotesYet": "No quotes yet",
+  "@cxNoQuotesYet": {},
+  "cxQuoteTipsTitle": "Get quotes faster",
+  "@cxQuoteTipsTitle": {},
+  "cxQuoteTips": "Add a voice note and more photos, keep the date flexible, and remind nearby workers. You can also share the job with workers you know.",
+  "@cxQuoteTips": {},
+  "cxShareJob": "Share job",
+  "@cxShareJob": {},
+  "cxShareJobText": "{trades} work needed in {place}. Send your price on the BuildCrew app.",
+  "@cxShareJobText": {
+    "placeholders": {
+      "trades": {
+        "type": "String"
+      },
+      "place": {
+        "type": "String"
+      }
+    }
+  },
+  "cxCancelOpenBody": "Workers who quoted will be told. You can post the job again any time.",
+  "@cxCancelOpenBody": {},
+  "cxQuickStart": "Pick a common job",
+  "@cxQuickStart": {},
+  "cxOrPickTrade": "Or choose the kind of work",
+  "@cxOrPickTrade": {},
+  "cxSeeExample": "See an example",
+  "@cxSeeExample": {},
+  "cxPickSeveral": "Choose photos from gallery",
+  "@cxPickSeveral": {},
+  "cxPickSeveralSub": "You can pick up to {n} at once",
+  "@cxPickSeveralSub": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "cxExTitle": "A good job post",
+  "@cxExTitle": {},
+  "cxExPhoto1": "Photo 1: the whole tap",
+  "@cxExPhoto1": {},
+  "cxExPhoto2": "Photo 2: close-up of the leak",
+  "@cxExPhoto2": {},
+  "cxExText": "Kitchen tap leaks all day, water drips under the sink too. The tap is about 5 years old. Please check the pipe and change the tap if needed.",
+  "@cxExText": {},
+  "cxExVoice": "Voice note 0:20",
+  "@cxExVoice": {},
+  "cxExTip1": "2 or more photos: one wide, one close-up",
+  "@cxExTip1": {},
+  "cxExTip2": "Say what is broken, how big and where",
+  "@cxExTip2": {},
+  "cxExTip3": "A voice note in your own language helps",
+  "@cxExTip3": {},
+  "cxGotIt": "Got it",
+  "@cxGotIt": {},
+  "cxPayIsSafe": "Your payment is safe",
+  "@cxPayIsSafe": {},
+  "cxTeamEmptyHint": "Post a team job to hire masons, helpers and more for your site.",
+  "@cxTeamEmptyHint": {},
+  "tplTapLeakTitle": "Tap leaking",
+  "@tplTapLeakTitle": {},
+  "tplTapLeakText": "The tap is leaking water all day. Please check the tap and the pipe below it, then repair or change what is needed.",
+  "@tplTapLeakText": {},
+  "tplFanFittingTitle": "Fan fitting",
+  "@tplFanFittingTitle": {},
+  "tplFanFittingText": "I need a new ceiling fan fitted in the room. The hook and the wire point are there. Please fit it and test the speed.",
+  "@tplFanFittingText": {},
+  "tplSwitchSocketTitle": "Switch / socket repair",
+  "@tplSwitchSocketTitle": {},
+  "tplSwitchSocketText": "A switch or socket in the room is not working and sometimes sparks. Please check the wiring and repair or change it.",
+  "@tplSwitchSocketText": {},
+  "tplWallPaintTitle": "Wall painting (1 room)",
+  "@tplWallPaintTitle": {},
+  "tplWallPaintText": "I want one room painted, walls only. Small cracks need filling first. Please do primer and two coats of paint.",
+  "@tplWallPaintText": {},
+  "tplDoorRepairTitle": "Door repair",
+  "@tplDoorRepairTitle": {},
+  "tplDoorRepairText": "The wooden door is loose and does not close properly. Please fix the hinges and the lock, and set the door straight.",
+  "@tplDoorRepairText": {},
+  "tplFurnitureTitle": "Bed / furniture repair",
+  "@tplFurnitureTitle": {},
+  "tplFurnitureText": "My bed frame is broken and wobbles. Please repair it, tighten the joints and fix any loose or damaged wooden parts.",
+  "@tplFurnitureText": {},
+  "tplCompoundWallTitle": "Compound wall",
+  "@tplCompoundWallTitle": {},
+  "tplCompoundWallText": "I need a brick compound wall built in front of the plot, about 30 feet long. Material will be arranged by me.",
+  "@tplCompoundWallText": {},
+  "tplTileFixingTitle": "Tile fixing",
+  "@tplTileFixingTitle": {},
+  "tplTileFixingText": "I need floor tiles fixed in one room, about 100 sq ft. Tiles are bought. Please level the floor and fix them neatly.",
+  "@tplTileFixingText": {},
+  "tplPlasterTitle": "Plaster / seepage",
+  "@tplPlasterTitle": {},
+  "tplPlasterText": "Damp patches and peeling plaster on the wall, mostly near the floor. Please find the cause, repair and re-plaster the wall.",
+  "@tplPlasterText": {},
+  "tplBathroomFitTitle": "Bathroom fitting",
+  "@tplBathroomFitTitle": {},
+  "tplBathroomFitText": "I need bathroom fittings fixed: a new wash basin, a shower and a flush tank. All items are bought and ready at home.",
+  "@tplBathroomFitText": {},
+  "tplNewWiringTitle": "New wiring point",
+  "@tplNewWiringTitle": {},
+  "tplNewWiringText": "I need one or two new electric points added in the room for a TV and a charger, with switch and socket on the wall.",
+  "@tplNewWiringText": {},
+  "tplHelperDayTitle": "Helper for a day",
+  "@tplHelperDayTitle": {},
+  "tplHelperDayText": "I need one helper for a full day to shift furniture, carry material and clean up the work area after the work is done.",
+  "@tplHelperDayText": {}
 }

@@ -1,0 +1,354 @@
+{
+  "cxMoreInfo": {
+    "en": "More info",
+    "hi": "और जानकारी"
+  },
+  "cxBackHome": {
+    "en": "Back to home",
+    "hi": "होम पर जाएँ"
+  },
+  "cxStepOf": {
+    "en": "Step {n} of {total}",
+    "hi": "चरण {n} / {total}",
+    "placeholders": {
+      "n": "int",
+      "total": "int"
+    }
+  },
+  "cxWhatNext": {
+    "en": "What happens next",
+    "hi": "आगे क्या होगा"
+  },
+  "cxStepQuotes": {
+    "en": "Quotes",
+    "hi": "कोट"
+  },
+  "cxStepHire": {
+    "en": "Hire & pay",
+    "hi": "हायर और पेमेंट"
+  },
+  "cxStepWork": {
+    "en": "Work",
+    "hi": "काम"
+  },
+  "cxStepCheck": {
+    "en": "Check",
+    "hi": "जाँच"
+  },
+  "cxStepDone": {
+    "en": "Done",
+    "hi": "पूरा"
+  },
+  "cxPrWaitingQuotes": {
+    "en": "Waiting for quotes",
+    "hi": "कोट का इंतज़ार"
+  },
+  "cxPrWaitingNext": {
+    "en": "Nearby workers are being told. Prices usually come within an hour.",
+    "hi": "आस-पास के कारीगरों को बताया जा रहा है। दाम आमतौर पर एक घंटे में आ जाते हैं।"
+  },
+  "cxPrQuotesReady": {
+    "en": "{n, plural, =1{1 quote is ready} other{{n} quotes are ready}}",
+    "hi": "{n, plural, =1{1 कोट आ गया} other{{n} कोट आ गए}}",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "cxPrQuotesNext": {
+    "en": "Compare them and pick one worker.",
+    "hi": "तुलना करें और एक कारीगर चुनें।"
+  },
+  "cxPrPayNext": {
+    "en": "Pay now. Your money stays safe with BuildCrew until the work is done.",
+    "hi": "अभी पेमेंट करें। काम पूरा होने तक आपका पैसा BuildCrew के पास सुरक्षित रहता है।"
+  },
+  "cxPrComingSoon": {
+    "en": "{name} will come soon",
+    "hi": "{name} जल्द आएँगे",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "cxPrComingNext": {
+    "en": "You will see the distance and arrival time here.",
+    "hi": "दूरी और पहुँचने का समय यहीं दिखेगा।"
+  },
+  "cxPrArrivingNext": {
+    "en": "When the worker arrives, tell them the 4-digit start code.",
+    "hi": "पहुँचने पर कारीगर को 4 अंकों का स्टार्ट कोड बताएँ।"
+  },
+  "cxPrWorking": {
+    "en": "{name} is working",
+    "hi": "{name} काम कर रहे हैं",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "cxPrWorkingNext": {
+    "en": "When the work is done, you will check it and pay.",
+    "hi": "काम पूरा होने पर आप जाँचेंगे और पेमेंट करेंगे।"
+  },
+  "cxPrFixing": {
+    "en": "{name} is fixing it",
+    "hi": "{name} इसे ठीक कर रहे हैं",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "cxPrFixingNext": {
+    "en": "You will check the work again when it is done.",
+    "hi": "काम पूरा होने पर आप उसे फिर से जाँचेंगे।"
+  },
+  "cxPrCheck": {
+    "en": "Check {name}'s work",
+    "hi": "{name} का काम जाँचें",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "cxPrCheckNext": {
+    "en": "Happy? Confirm and rate to pay. Not happy? Send it back.",
+    "hi": "ठीक है? पुष्टि करें और रेटिंग दें। ठीक नहीं? वापस भेजें।"
+  },
+  "cxPrRate": {
+    "en": "Rate {name} to pay",
+    "hi": "पेमेंट के लिए {name} को रेटिंग दें",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "cxPrRateNext": {
+    "en": "Your rating sends the money to the worker.",
+    "hi": "आपकी रेटिंग से पैसा कारीगर को मिलेगा।"
+  },
+  "cxPrDoneNext": {
+    "en": "Your receipt and guarantee are below. Need the same work again? Hire again.",
+    "hi": "रसीद और गारंटी नीचे हैं। वही काम फिर चाहिए? दोबारा हायर करें।"
+  },
+  "cxPrDisputed": {
+    "en": "Problem reported",
+    "hi": "समस्या दर्ज हुई"
+  },
+  "cxPrDisputedNext": {
+    "en": "Our team will contact you within 24 hours. Your money stays safe.",
+    "hi": "हमारी टीम 24 घंटे में आपसे बात करेगी। आपका पैसा सुरक्षित है।"
+  },
+  "cxBestMatch": {
+    "en": "Best match",
+    "hi": "सबसे बढ़िया"
+  },
+  "cxBestMatchInfo": {
+    "en": "Best match looks at a fair price, rating, jobs done, distance, police verification, skill level and how fast the worker replied. The cheapest quote is not always the best one.",
+    "hi": "\"सबसे बढ़िया\" में सही दाम, रेटिंग, किए गए काम, दूरी, पुलिस वेरिफ़िकेशन, स्किल लेवल और जवाब की रफ़्तार देखी जाती है। सबसे सस्ता कोट हमेशा सबसे अच्छा नहीं होता।"
+  },
+  "cxCanComeToday": {
+    "en": "Can come today",
+    "hi": "आज आ सकते हैं"
+  },
+  "cxFairPrice": {
+    "en": "Fair price",
+    "hi": "सही दाम"
+  },
+  "cxKmAway": {
+    "en": "{km} km",
+    "hi": "{km} किमी",
+    "placeholders": {
+      "km": "String"
+    }
+  },
+  "cxRepliesFast": {
+    "en": "Replies fast",
+    "hi": "जल्दी जवाब देते हैं"
+  },
+  "cxNoQuotesYet": {
+    "en": "No quotes yet",
+    "hi": "अभी कोई कोट नहीं"
+  },
+  "cxQuoteTipsTitle": {
+    "en": "Get quotes faster",
+    "hi": "जल्दी कोट पाएँ"
+  },
+  "cxQuoteTips": {
+    "en": "Add a voice note and more photos, keep the date flexible, and remind nearby workers. You can also share the job with workers you know.",
+    "hi": "आवाज़ में बताएँ और ज़्यादा फ़ोटो जोड़ें, तारीख़ थोड़ी लचीली रखें और आस-पास के कारीगरों को याद दिलाएँ। जान-पहचान के कारीगरों को जॉब शेयर भी कर सकते हैं।"
+  },
+  "cxShareJob": {
+    "en": "Share job",
+    "hi": "जॉब शेयर करें"
+  },
+  "cxShareJobText": {
+    "en": "{trades} work needed in {place}. Send your price on the BuildCrew app.",
+    "hi": "{place} में {trades} का काम चाहिए। BuildCrew ऐप पर अपना दाम भेजें।",
+    "placeholders": {
+      "trades": "String",
+      "place": "String"
+    }
+  },
+  "cxCancelOpenBody": {
+    "en": "Workers who quoted will be told. You can post the job again any time.",
+    "hi": "जिन कारीगरों ने कोट भेजा है उन्हें बता दिया जाएगा। आप जॉब दोबारा डाल सकते हैं।"
+  },
+  "cxQuickStart": {
+    "en": "Pick a common job",
+    "hi": "आम काम चुनें"
+  },
+  "cxOrPickTrade": {
+    "en": "Or choose the kind of work",
+    "hi": "या काम का प्रकार चुनें"
+  },
+  "cxSeeExample": {
+    "en": "See an example",
+    "hi": "उदाहरण देखें"
+  },
+  "cxPickSeveral": {
+    "en": "Choose photos from gallery",
+    "hi": "गैलरी से फ़ोटो चुनें"
+  },
+  "cxPickSeveralSub": {
+    "en": "You can pick up to {n} at once",
+    "hi": "एक साथ {n} तक चुन सकते हैं",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "cxExTitle": {
+    "en": "A good job post",
+    "hi": "एक अच्छी जॉब पोस्ट"
+  },
+  "cxExPhoto1": {
+    "en": "Photo 1: the whole tap",
+    "hi": "फ़ोटो 1: पूरा नल"
+  },
+  "cxExPhoto2": {
+    "en": "Photo 2: close-up of the leak",
+    "hi": "फ़ोटो 2: लीक की पास से फ़ोटो"
+  },
+  "cxExText": {
+    "en": "Kitchen tap leaks all day, water drips under the sink too. The tap is about 5 years old. Please check the pipe and change the tap if needed.",
+    "hi": "रसोई का नल दिनभर टपकता है, सिंक के नीचे भी पानी गिरता है। नल करीब 5 साल पुराना है। पाइप देखें और ज़रूरत हो तो नल बदलें।"
+  },
+  "cxExVoice": {
+    "en": "Voice note 0:20",
+    "hi": "आवाज़ नोट 0:20"
+  },
+  "cxExTip1": {
+    "en": "2 or more photos: one wide, one close-up",
+    "hi": "2 या ज़्यादा फ़ोटो: एक दूर से, एक पास से"
+  },
+  "cxExTip2": {
+    "en": "Say what is broken, how big and where",
+    "hi": "बताएँ क्या टूटा है, कितना बड़ा और कहाँ"
+  },
+  "cxExTip3": {
+    "en": "A voice note in your own language helps",
+    "hi": "अपनी भाषा में आवाज़ नोट मदद करता है"
+  },
+  "cxGotIt": {
+    "en": "Got it",
+    "hi": "समझ गया"
+  },
+  "cxPayIsSafe": {
+    "en": "Your payment is safe",
+    "hi": "आपका पेमेंट सुरक्षित है"
+  },
+  "cxTeamEmptyHint": {
+    "en": "Post a team job to hire masons, helpers and more for your site.",
+    "hi": "अपनी साइट के लिए मिस्त्री, हेल्पर आदि की टीम जॉब डालें।"
+  },
+  "tplTapLeakTitle": {
+    "en": "Tap leaking",
+    "hi": "नल से पानी टपकना"
+  },
+  "tplTapLeakText": {
+    "en": "The tap is leaking water all day. Please check the tap and the pipe below it, then repair or change what is needed.",
+    "hi": "नल से दिनभर पानी टपक रहा है। कृपया नल और नीचे का पाइप देखकर ज़रूरत हो तो ठीक करें या बदल दें।"
+  },
+  "tplFanFittingTitle": {
+    "en": "Fan fitting",
+    "hi": "पंखा लगवाना"
+  },
+  "tplFanFittingText": {
+    "en": "I need a new ceiling fan fitted in the room. The hook and the wire point are there. Please fit it and test the speed.",
+    "hi": "कमरे में नया सीलिंग पंखा लगवाना है। हुक और वायर पॉइंट पहले से है। कृपया पंखा लगाकर स्पीड चलाकर देख लें।"
+  },
+  "tplSwitchSocketTitle": {
+    "en": "Switch / socket repair",
+    "hi": "स्विच / सॉकेट ठीक करना"
+  },
+  "tplSwitchSocketText": {
+    "en": "A switch or socket in the room is not working and sometimes sparks. Please check the wiring and repair or change it.",
+    "hi": "कमरे का एक स्विच या सॉकेट काम नहीं कर रहा और कभी-कभी चिंगारी देता है। वायरिंग देखकर ठीक करें या बदलें।"
+  },
+  "tplWallPaintTitle": {
+    "en": "Wall painting (1 room)",
+    "hi": "दीवार पेंट (1 कमरा)"
+  },
+  "tplWallPaintText": {
+    "en": "I want one room painted, walls only. Small cracks need filling first. Please do primer and two coats of paint.",
+    "hi": "एक कमरे की दीवारें पेंट करवानी हैं। छोटी दरारें पहले भरनी हैं। कृपया प्राइमर और दो कोट पेंट कर दें।"
+  },
+  "tplDoorRepairTitle": {
+    "en": "Door repair",
+    "hi": "दरवाज़ा ठीक करना"
+  },
+  "tplDoorRepairText": {
+    "en": "The wooden door is loose and does not close properly. Please fix the hinges and the lock, and set the door straight.",
+    "hi": "लकड़ी का दरवाज़ा ढीला है और ठीक से बंद नहीं होता। कृपया कब्ज़े और ताला ठीक करके दरवाज़ा सीधा कर दें।"
+  },
+  "tplFurnitureTitle": {
+    "en": "Bed / furniture repair",
+    "hi": "बेड / फ़र्नीचर ठीक करना"
+  },
+  "tplFurnitureText": {
+    "en": "My bed frame is broken and wobbles. Please repair it, tighten the joints and fix any loose or damaged wooden parts.",
+    "hi": "मेरे बेड का फ्रेम टूटा है और हिलता है। कृपया जोड़ कसकर और ढीले या टूटे लकड़ी के हिस्से ठीक कर दें।"
+  },
+  "tplCompoundWallTitle": {
+    "en": "Compound wall",
+    "hi": "बाउंड्री दीवार"
+  },
+  "tplCompoundWallText": {
+    "en": "I need a brick compound wall built in front of the plot, about 30 feet long. Material will be arranged by me.",
+    "hi": "प्लॉट के सामने करीब 30 फ़ीट लंबी ईंटों की बाउंड्री दीवार बनवानी है। सामान की व्यवस्था मैं खुद करूँगा।"
+  },
+  "tplTileFixingTitle": {
+    "en": "Tile fixing",
+    "hi": "टाइल लगवाना"
+  },
+  "tplTileFixingText": {
+    "en": "I need floor tiles fixed in one room, about 100 sq ft. Tiles are bought. Please level the floor and fix them neatly.",
+    "hi": "एक कमरे में करीब 100 वर्ग फ़ीट फ़र्श की टाइलें लगवानी हैं। टाइल्स ख़रीदी हुई हैं। फ़र्श समतल करके साफ़ लगाएँ।"
+  },
+  "tplPlasterTitle": {
+    "en": "Plaster / seepage",
+    "hi": "प्लास्टर / सीलन"
+  },
+  "tplPlasterText": {
+    "en": "Damp patches and peeling plaster on the wall, mostly near the floor. Please find the cause, repair and re-plaster the wall.",
+    "hi": "दीवार पर सीलन के धब्बे हैं और प्लास्टर उखड़ रहा है, ज़्यादातर नीचे की तरफ़। कारण देखकर मरम्मत और दोबारा प्लास्टर करें।"
+  },
+  "tplBathroomFitTitle": {
+    "en": "Bathroom fitting",
+    "hi": "बाथरूम फिटिंग"
+  },
+  "tplBathroomFitText": {
+    "en": "I need bathroom fittings fixed: a new wash basin, a shower and a flush tank. All items are bought and ready at home.",
+    "hi": "बाथरूम की फिटिंग करवानी है: नया वॉश बेसिन, शावर और फ्लश टैंक। सारा सामान ख़रीदकर घर पर रखा है।"
+  },
+  "tplNewWiringTitle": {
+    "en": "New wiring point",
+    "hi": "नया वायरिंग पॉइंट"
+  },
+  "tplNewWiringText": {
+    "en": "I need one or two new electric points added in the room for a TV and a charger, with switch and socket on the wall.",
+    "hi": "कमरे में टीवी और चार्जर के लिए एक या दो नए बिजली पॉइंट लगवाने हैं, दीवार पर स्विच और सॉकेट के साथ।"
+  },
+  "tplHelperDayTitle": {
+    "en": "Helper for a day",
+    "hi": "एक दिन के लिए हेल्पर"
+  },
+  "tplHelperDayText": {
+    "en": "I need one helper for a full day to shift furniture, carry material and clean up the work area after the work is done.",
+    "hi": "पूरे दिन के लिए एक हेल्पर चाहिए जो फ़र्नीचर शिफ्ट करे, सामान उठाए और काम के बाद जगह साफ़ करे।"
+  }
+}

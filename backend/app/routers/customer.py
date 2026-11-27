@@ -11,7 +11,7 @@ from .. import services
 from ..audit import audit
 from ..config import get_settings
 from ..db import get_db
-from ..domain import flows, levels, pricing, team, trust
+from ..domain import flows, levels, matching, pricing, team, trust
 from ..domain.notify import notify_nearby_workers
 from ..domain.state import transition
 from ..enums import AudioUploadState, BidStatus, EscrowState, JobStatus, Role, Trade
@@ -241,6 +241,32 @@ def wage_suggestion(trades: str, city: str | None = None, user: User = Depends(C
     return {"city": city, "items": [pricing.day_wage_range(c, city) for c in dict.fromkeys(codes)]}
 
 
+def _add_matching(db: Session, job: Job, bids: list[Bid], rows: list[dict]) -> None:
+    """Best-match fields per quote: match_score, best_match, match_reasons, distance_km, can_come_today."""
+    today = flows.today_ist()
+    at = job.scheduled_for.astimezone(team.IST).date() if job.scheduled_for else job.start_date
+    job_is_today = at <= today
+    for b, row in zip(bids, rows):
+        wp = b.worker.worker_profile
+        km = None
+        if wp.home_lat is not None and wp.home_lng is not None:
+            km = round(services.maps().distance_km((wp.home_lat, wp.home_lng), (job.location_lat, job.location_lng)), 1)
+        resp = max(0.0, (b.created_at - job.created_at).total_seconds() / 60.0)
+        busy = False
+        if job_is_today:
+            other = db.execute(select(Job.scheduled_for, Job.start_date).join(Assignment, Assignment.job_id == Job.id)
+                               .where(Assignment.worker_id == b.worker_id, Assignment.released_at.is_(None),
+                                      Assignment.job_id != job.id,
+                                      Job.status.in_([JobStatus.assigned, JobStatus.in_progress]))).all()
+            busy = any((s.astimezone(team.IST).date() if s else d) <= today for s, d in other)
+        facts = dict(verdict=row["fair"]["verdict"], rating=wp.overall_rating, rating_count=wp.rating_count,
+                     completed_jobs=wp.completed_jobs, distance_km=km, police_verified=row["worker"]["police_verified"],
+                     level=row["worker"]["level"], response_min=resp)
+        row.update({"match_score": matching.score(**facts), "match_reasons": matching.reasons(**facts),
+                    "distance_km": km, "can_come_today": matching.can_come_today(job_is_today=job_is_today, distance_km=km, busy_today=busy)})
+    matching.mark_best(rows)
+
+
 @router.get("/jobs/{job_id}")
 def job_detail(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends(get_db)):
     """C3/C4. Work items, bids for comparison, assignment tracking + escrow + ratings."""
@@ -261,6 +287,8 @@ def job_detail(job_id: uuid.UUID, user: User = Depends(C), db: Session = Depends
            "direct": trust.direct_view(db, job),
            "assignment": assignment_view(db, a, user.language_code, viewer="customer") if job.kind != "team" else None,
            "fee_inr": get_settings().platform_fee_flat_inr}
+    if job.kind != "team":
+        _add_matching(db, job, bids, out["bids"])
     if job.kind == "team":
         out["team"] = team.roster(db, job, user.language_code)
         for b_out, b in zip(out["bids"], bids):

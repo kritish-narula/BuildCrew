@@ -441,6 +441,12 @@ List<_Screen> _extraScreens(String lang) => [
         if (f.evaluate().isNotEmpty) await t.enterText(f.first, 'Kitchen tap is leaking badly'); // short: counter + reason
         await _pumpFor(t, 600);
       }, scrollBottom: true),
+      // ---- customer UX: starter text from a template, the "See an example" sheet, and a job that waits for the rating
+      _Screen('customer_post_example', _priya, () => PostJobScreen(state: state), act: (t) async {
+        await _tap(t, find.byType(InkWell)); // first common job -> describe step with the starter text
+        await _tap(t, find.byKey(const ValueKey('seeExample')));
+      }),
+      _Screen('customer_job_rating_due', _neha, () => CustomerJobScreen(state: state, jobId: 'j5'), scrollBottom: true),
     ];
 
 /// Worker, onboarding, auth, profile and help screens: must work with big system fonts.

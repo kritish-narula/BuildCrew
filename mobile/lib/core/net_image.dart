@@ -20,7 +20,7 @@ class NetImage extends StatelessWidget {
       width: width,
       height: height,
       fit: fit,
-      memCacheWidth: width != null && width.isFinite ? (width * dpr).round() : 800,
+      memCacheWidth: (width != null && width!.isFinite) ? (width! * dpr).round() : 800,
       fadeInDuration: const Duration(milliseconds: 150),
       fadeOutDuration: Duration.zero,
       placeholder: (_, __) => bg,

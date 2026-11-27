@@ -1,5 +1,6 @@
 import 'dart:async';
 import '../core/net_image.dart';
+import '../core/speech.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';

@@ -8,6 +8,7 @@ import '../core/error_text.dart';
 import '../core/speech.dart';
 import '../core/theme.dart';
 import '../l10n/gen/app_localizations.dart';
+import 'media.dart' show inr;
 
 /// Trade identity: every trade has ONE icon and ONE colour used everywhere, so a worker
 /// recognises "plumbing work" from the picture before reading any word.
@@ -375,9 +376,15 @@ class DemoChip extends StatelessWidget {
 }
 
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.text});
+  const EmptyState({super.key, required this.icon, required this.text, this.title, this.actions = const <Widget>[]});
   final IconData icon;
   final String text;
+
+  /// Optional bold one-liner above [text].
+  final String? title;
+
+  /// What the user can DO here (buttons). An empty state without a next step is a dead end.
+  final List<Widget> actions;
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
@@ -389,8 +396,146 @@ class EmptyState extends StatelessWidget {
             child: Icon(icon, size: 40, color: BC.inkFaint),
           ),
           const SizedBox(height: 16),
+          if (title != null) ...[
+            Text(title!, textAlign: TextAlign.center, style: context.tt.titleLarge),
+            const SizedBox(height: 6),
+          ],
           Text(text, textAlign: TextAlign.center, style: context.tt.bodyLarge!.copyWith(color: BC.inkSoft)),
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            for (final a in actions) ...[a, const SizedBox(height: 10)],
+          ],
         ]),
+      );
+}
+
+// ------------------------------------------------------------------ money
+/// Sizes of [MoneyText]: s 15 (lists, chips) · m 18 (rows, cards) · l 24 (prices on a card) · xl 34 (the one big number).
+enum MoneySize { s, m, l, xl }
+
+/// Every rupee amount in the app: ₹ + Indian grouping (`inr()`), one weight, tabular figures so columns line up.
+/// `MoneyText(1250, size: MoneySize.l)` -> "₹1,250". `MoneyText.range(500, 700)` -> "₹500 – ₹700".
+/// Shrinks (never wraps) when the space is tight.
+class MoneyText extends StatelessWidget {
+  const MoneyText(this.amount, {super.key, this.size = MoneySize.m, this.color, this.strike = false, this.alignment = AlignmentDirectional.centerStart})
+      : high = null;
+
+  /// A fair-price range; one number when [low] >= [high].
+  const MoneyText.range(num low, num this.high, {super.key, this.size = MoneySize.m, this.color, this.strike = false, this.alignment = AlignmentDirectional.centerStart})
+      : amount = low;
+
+  final num? amount, high;
+  final MoneySize size;
+  final Color? color;
+  final bool strike;
+  final AlignmentGeometry alignment;
+
+  static double fontSizeOf(MoneySize s) => switch (s) { MoneySize.s => 15, MoneySize.m => 18, MoneySize.l => 24, MoneySize.xl => 34 };
+
+  /// The text that is shown (also handy for semantics and tests).
+  String get label {
+    final lo = amount ?? 0, hi = high;
+    return hi == null || lo >= hi ? inr(lo) : '${inr(lo)} – ${inr(hi)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final base = BC.moneyText(fontSizeOf(size), color ?? BC.ink);
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: alignment,
+      child: Text(label, maxLines: 1, softWrap: false, style: strike ? base.copyWith(decoration: TextDecoration.lineThrough) : base),
+    );
+  }
+}
+
+// ------------------------------------------------------------------ loading skeletons
+/// Grey pulsing placeholder rows shown instead of a spinner while a list loads (the layout does not jump when data arrives).
+class SkeletonList extends StatefulWidget {
+  const SkeletonList({super.key, this.count = 3, this.itemHeight = 112, this.padding = const EdgeInsets.fromLTRB(16, 12, 16, 16), this.shrink = false});
+  final int count;
+  final double itemHeight;
+  final EdgeInsetsGeometry padding;
+
+  /// Inside another scroll view: take only the height needed.
+  final bool shrink;
+  @override
+  State<SkeletonList> createState() => _SkeletonListState();
+}
+
+class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Widget _bar(Color c, double w, double h) => Container(width: w, height: h, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(6)));
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Widget>[
+      for (var i = 0; i < widget.count; i++)
+        AnimatedBuilder(
+          animation: _c,
+          builder: (_, __) {
+            final c = Color.lerp(BC.line, BC.closedSoft, _c.value)!;
+            return Container(
+              height: widget.itemHeight,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: BC.card, borderRadius: BorderRadius.circular(BC.rMd), border: Border.all(color: BC.line)),
+              child: Row(children: [
+                Container(width: 48, height: 48, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                    FractionallySizedBox(widthFactor: 0.6, child: _bar(c, double.infinity, 14)),
+                    const SizedBox(height: 10),
+                    FractionallySizedBox(widthFactor: 0.9, child: _bar(c, double.infinity, 12)),
+                    const SizedBox(height: 8),
+                    FractionallySizedBox(widthFactor: 0.4, child: _bar(c, double.infinity, 12)),
+                  ]),
+                ),
+              ]),
+            );
+          },
+        ),
+    ];
+    if (widget.shrink) return Padding(padding: widget.padding, child: Column(children: children));
+    return ListView(physics: const NeverScrollableScrollPhysics(), padding: widget.padding, children: children);
+  }
+}
+
+// ------------------------------------------------------------------ explanations behind an (i)
+/// Small (i) button: the long explanation lives in a bottom sheet instead of cluttering the screen.
+class InfoTip extends StatelessWidget {
+  const InfoTip({super.key, required this.text, this.title});
+  final String text;
+  final String? title;
+  @override
+  Widget build(BuildContext context) => IconButton(
+        tooltip: L.of(context).cxMoreInfo,
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        icon: const Icon(Icons.info_outline_rounded, size: 22, color: BC.inkSoft),
+        onPressed: () => showModalBottomSheet<void>(
+          context: context,
+          showDragHandle: true,
+          builder: (c) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (title != null) ...[Text(title!, style: c.tt.titleLarge), const SizedBox(height: 8)],
+                Text(text, style: c.tt.bodyLarge!.copyWith(color: BC.inkSoft)),
+                const SizedBox(height: 16),
+                SecondaryButton(label: L.of(c).ok, onPressed: () => Navigator.pop(c)),
+              ]),
+            ),
+          ),
+        ),
       );
 }
 
