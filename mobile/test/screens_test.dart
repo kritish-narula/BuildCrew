@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:buildcrew/core/api.dart';
 import 'package:buildcrew/core/app_state.dart';
 import 'package:buildcrew/core/outbox.dart';
+import 'package:buildcrew/core/sync.dart';
 import 'package:buildcrew/core/theme.dart';
 import 'package:buildcrew/core/updater.dart';
 import 'package:buildcrew/features/auth/auth_screens.dart';
@@ -284,6 +285,7 @@ Future<void> _runScreens(WidgetTester t, List<_Screen> screens, String lang, dou
         // dispose the screen so its polling timers die, then let in-flight DemoApi lags finish
         try {
           await t.pumpWidget(const SizedBox());
+          SyncService.current?.stop(); // switchAccount / sign-in restarts it
           await _pumpFor(t, 3000);
         } catch (_) {}
       }
@@ -492,6 +494,8 @@ void main() {
     _installMocks();
     await _loadFonts();
     state = await AppState.load(); // DemoApi-backed (no API_BASE_URL defined in tests)
+    // no background sync in widget tests: its timers would outlive each screen (Pollers fall back to their own ticks)
+    SyncService.current?.stop();
     // Outbox owns a never-cancelled periodic timer: start it here, outside any fake-async test zone.
     await Outbox.instance.init(state.api);
     // A short conversation on job j3 (Priya <-> Harpreet): customer 2 msgs, worker 1 reply.
