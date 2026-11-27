@@ -10,6 +10,7 @@ for f in sorted(d.glob("app_*.arb")):
     if arb["@@locale"] in ("en",):
         continue
     missing = [k for k in en if k not in arb]
-    english = [k for k in en if arb.get(k) == en[k] and k != "appName"]
+    # Hinglish keeps many English loan words (Open, Payment, Chat), so identical text is not a gap there.
+    english = [] if arb["@@locale"] == "en_IN" else [k for k in en if arb.get(k) == en[k] and k != "appName"]
     print(f"{arb['@@locale']}: {len(en) - len(missing) - len(english)}/{len(en)} translated"
           + (f" · {len(english)} English placeholders" if english else ""))

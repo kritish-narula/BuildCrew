@@ -5,6 +5,10 @@ import 'demo_api.dart';
 
 typedef Json = Map<String, dynamic>;
 
+/// Hinglish (`en_IN`) is a UI-only language. The server has no Roman-Hindi text, so every API
+/// call sends `hi` instead (descriptions are translated to Hindi server-side).
+String wireLang(String code) => code == 'en_IN' ? 'hi' : code;
+
 class ApiException implements Exception {
   ApiException(this.code, this.message);
   final String code; // e.g. err.otp_invalid — message is already localised by the server
@@ -171,7 +175,7 @@ class HttpApi implements Api {
   @override
   set token(String? t) => _token = t;
   @override
-  set language(String lang) => _lang = lang;
+  set language(String lang) => _lang = wireLang(lang);
 
   Options get _o => Options(headers: {
         if (_token != null) 'Authorization': 'Bearer $_token',
@@ -197,16 +201,16 @@ class HttpApi implements Api {
 
   @override
   Future<void> requestOtp(String phone, String lang) async {
-    _lang = lang;
-    await _post('/auth/otp/request', {'phone': phone, 'language_code': lang});
+    _lang = wireLang(lang);
+    await _post('/auth/otp/request', {'phone': phone, 'language_code': wireLang(lang)});
   }
 
   @override
   Future<AuthResult> verifyOtp(String phone, String code, {String? role, required String lang}) async {
-    _lang = lang;
+    _lang = wireLang(lang);
     final contractor = role == 'contractor'; // a customer account of type contractor
     final j = _map(await _post('/auth/otp/verify', {
-      'phone': phone, 'code': code, 'role': contractor ? 'customer' : role, 'language_code': lang,
+      'phone': phone, 'code': code, 'role': contractor ? 'customer' : role, 'language_code': wireLang(lang),
       if (contractor) 'customer_type': 'contractor',
     }));
     return AuthResult(j['token'] as String, SessionUser.fromJson(_map(j['user'])), j['home_route'] as String);
@@ -214,8 +218,8 @@ class HttpApi implements Api {
 
   @override
   Future<SessionUser> setLanguage(String lang) async {
-    _lang = lang;
-    return SessionUser.fromJson(_map(await _patch('/me', {'language_code': lang})));
+    _lang = wireLang(lang);
+    return SessionUser.fromJson(_map(await _patch('/me', {'language_code': wireLang(lang)})));
   }
 
   @override
@@ -348,7 +352,7 @@ class HttpApi implements Api {
       options: _o)));
   @override
   Future<String> transcribe(String key, String lang) async =>
-      (_map(await _post('/media/transcribe', {'key': key, 'lang': lang})))['transcript'] as String;
+      (_map(await _post('/media/transcribe', {'key': key, 'lang': wireLang(lang)})))['transcript'] as String;
   @override
   Future<List<Json>> chat(String jobId, String withUser) async => _list(await _get('/jobs/$jobId/chat', {'with': withUser}));
   @override

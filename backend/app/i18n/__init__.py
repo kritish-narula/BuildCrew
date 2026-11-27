@@ -16,6 +16,14 @@ _DIR = Path(__file__).parent / "locales"
 FALLBACK = "en"
 
 
+def canon(code: str | None) -> str | None:
+    """Normalise a language tag: 'en-IN', 'en_in' and 'en_IN' all name the Hinglish bundle."""
+    if not code:
+        return None
+    c = code.strip().replace("-", "_")
+    return "en_IN" if c.lower() == "en_in" else c.lower()
+
+
 @lru_cache
 def bundle(lang: str) -> dict[str, str | None]:
     path = _DIR / f"{lang}.json"
@@ -23,6 +31,7 @@ def bundle(lang: str) -> dict[str, str | None]:
 
 
 def t(key: str, lang: str | None, **params) -> str:
+    lang = canon(lang)
     lang = lang if lang in LANGUAGE_CODES else FALLBACK
     text = bundle(lang).get(key)
     if text is None:
@@ -42,8 +51,8 @@ def missing_keys() -> dict[str, list[str]]:
 
 def pick_lang(user_lang: str | None, accept_language: str | None) -> str:
     """User's saved language wins; else first supported Accept-Language tag; else Hindi."""
-    if user_lang in LANGUAGE_CODES:
-        return user_lang
+    if canon(user_lang) in LANGUAGE_CODES:
+        return canon(user_lang)
     for part in (accept_language or "").split(","):
         code = part.split(";")[0].strip().lower()[:2]
         if code in LANGUAGE_CODES:

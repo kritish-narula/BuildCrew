@@ -95,5 +95,6 @@ LANGUAGES: list[dict] = [
     {"code": "pa", "native": "ਪੰਜਾਬੀ", "english": "Punjabi"},
     {"code": "as", "native": "অসমীয়া", "english": "Assamese"},
     {"code": "en", "native": "English", "english": "English"},
+    {"code": "en_IN", "native": "Hinglish", "english": "Hinglish (Roman Hindi)"},
 ]
 LANGUAGE_CODES = [lang["code"] for lang in LANGUAGES]

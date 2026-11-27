@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Merge lib/l10n/fragments/*.json into the ARB files.
 
-Fragment format: {"key": {"en": "...", "hi": "...", "placeholders": {"name": "String"|"int"}}}
+Fragment format: {"key": {"en": "...", "hi": "...", "hinglish": "...", "placeholders": {"name": "String"|"int"}}}
 English goes to app_en.arb (with @key metadata), Hindi to app_hi.arb, and every other locale
 gets the English text until translated. Existing keys are overwritten. Exits 1 on conflicts
 between fragments that define the same key differently.
@@ -31,7 +31,8 @@ for arb_file in sorted(root.glob("app_*.arb")):
     arb = json.loads(arb_file.read_text())
     loc = arb["@@locale"]
     for k, v in merged.items():
-        arb[k] = v.get(loc) or v["en"]
+        # Hinglish (en_IN) uses the fragment's "hinglish" text, falling back to English.
+        arb[k] = (v.get("hinglish") or v["en"]) if loc == "en_IN" else (v.get(loc) or v["en"])
         if loc == "en":
             ph = v.get("placeholders") or {}
             arb[f"@{k}"] = {"placeholders": {n: {"type": t} for n, t in ph.items()}} if ph else {}

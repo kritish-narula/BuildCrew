@@ -11,6 +11,7 @@ const languages = [
   ('mr', 'मराठी', 'Marathi'), ('ta', 'தமிழ்', 'Tamil'), ('gu', 'ગુજરાતી', 'Gujarati'),
   ('kn', 'ಕನ್ನಡ', 'Kannada'), ('ml', 'മലയാളം', 'Malayalam'), ('or', 'ଓଡ଼ିଆ', 'Odia'),
   ('pa', 'ਪੰਜਾਬੀ', 'Punjabi'), ('as', 'অসমীয়া', 'Assamese'), ('en', 'English', 'English'),
+  ('en_IN', 'Hinglish', 'Hinglish (Roman Hindi)'),
 ];
 
 String nativeName(String code) => languages.firstWhere((l) => l.$1 == code, orElse: () => languages.first).$2;

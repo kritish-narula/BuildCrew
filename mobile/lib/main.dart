@@ -83,7 +83,7 @@ class _BuildCrewAppState extends State<BuildCrewApp> {
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
         // Design rule #1: the chosen language drives EVERY string, from the first tap.
-        locale: Locale(widget.state.language ?? 'hi'),
+        locale: widget.state.language == 'en_IN' ? const Locale('en', 'IN') : Locale(widget.state.language ?? 'hi'),
         supportedLocales: L.supportedLocales,
         localizationsDelegates: const [
           L.delegate,
