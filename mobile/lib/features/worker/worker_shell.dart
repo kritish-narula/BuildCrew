@@ -145,37 +145,77 @@ class PendingChip extends StatelessWidget {
 // ================================================================== S4 Jobs
 DateTime? _lastLocationPush; // the 4 s refresh must not re-send the phone's position every time
 
-class JobsTab extends StatelessWidget {
+Future<(List<Json>, List<Json>)> _loadJobsData(AppState state) async {
+  // "Near you" must mean near the worker's real position, not a saved home address.
+  final stale = _lastLocationPush == null || DateTime.now().difference(_lastLocationPush!) > const Duration(minutes: 1);
+  final p = stale ? await LocationService.quiet() : null;
+  if (p != null) {
+    _lastLocationPush = DateTime.now();
+    try {
+      await state.api.updateMyLocation(p.latitude, p.longitude);
+    } catch (_) {}
+  }
+  return (await state.api.workerFeed(), await state.api.assignments());
+}
+
+/// Splits the worker's data into: ONE big active job, and everything else that needs action ("to do").
+class _Split {
+  _Split(List<Json> feed, List<Json> work) {
+    direct = feed.where((j) => j['direct'] != null).toList();
+    jobs = feed.where((j) => j['direct'] == null).toList();
+    bool isRefix(Json a) => a['kind'] == 'refix';
+    final live = work.where((a) => const ['assigned', 'in_progress', 'disputed'].contains((a['job'] as Json)['status'])).toList();
+    // Most urgent first: working now > paid & waiting > unpaid > dispute.
+    int rank(Json a) {
+      final st = (a['job'] as Json)['status'];
+      final unpaid = (a['payment'] as Map?)?['escrow_state'] == 'created';
+      if (st == 'in_progress') return 0;
+      if (st == 'assigned' && !unpaid) return 1;
+      if (st == 'assigned') return 2;
+      return 3;
+    }
+
+    final mainJobs = live.where((a) => !isRefix(a)).toList()..sort((x, y) => rank(x).compareTo(rank(y)));
+    refix = live.where(isRefix).toList();
+    active = mainJobs.isEmpty ? null : mainJobs.first;
+    others = mainJobs.skip(1).toList();
+    toRate = work
+        .where((a) => !isRefix(a) && (a['job'] as Json)['status'] == 'completed' && (a['ratings'] as Map)['worker_to_customer'] == null)
+        .toList();
+  }
+  late final List<Json> direct, jobs, refix, others, toRate;
+  late final Json? active;
+  int get todoCount => direct.length + refix.length + others.length + toRate.length;
+}
+
+class JobsTab extends StatefulWidget {
   const JobsTab({super.key, required this.state, this.refresh});
   final AppState state;
   final Listenable? refresh;
+  @override
+  State<JobsTab> createState() => _JobsTabState();
+}
+
+class _JobsTabState extends State<JobsTab> {
+  AppState get state => widget.state;
 
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
+    final lang = state.language ?? 'hi';
     return AsyncList<(List<Json>, List<Json>)>(
-      refresh: refresh,
-      load: () async {
-        // "Near you" must mean near the worker's real position, not a saved home address.
-        final stale = _lastLocationPush == null || DateTime.now().difference(_lastLocationPush!) > const Duration(minutes: 1);
-        final p = stale ? await LocationService.quiet() : null;
-        if (p != null) {
-          _lastLocationPush = DateTime.now();
-          try {
-            await state.api.updateMyLocation(p.latitude, p.longitude);
-          } catch (_) {}
-        }
-        return (await state.api.workerFeed(), await state.api.assignments());
-      },
+      refresh: widget.refresh,
+      load: () => _loadJobsData(state),
       builder: (ctx, data, reload) {
         final (feed, work) = data;
-        final direct = feed.where((j) => j['direct'] != null).toList();
-        final jobs = feed.where((j) => j['direct'] == null).toList();
-        final myName = state.user?.name?.split(' ').first ?? '';
-        final active = work.where((a) => const ['assigned', 'in_progress', 'disputed'].contains((a['job'] as Json)['status'])).toList();
-        final toRate = work.where((a) => (a['job'] as Json)['status'] == 'completed' && (a['ratings'] as Map)['worker_to_customer'] == null).toList();
-        final today = [...active, ...toRate];
-        return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 24), children: [
+        final sp = _Split(feed, work);
+        final jobs = sp.jobs;
+        Future<void> openTodo() async {
+          await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerTodoScreen(state: state)));
+          await reload();
+        }
+
+        return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), children: [
           const PendingChip(),
           if (LocationService.last == null) ...[
             InfoBanner(
@@ -193,68 +233,58 @@ class JobsTab extends StatelessWidget {
                 }
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
           ],
-          // "Ramesh, Priya wants you again": direct requests (hire again) always come first.
-          for (final j in direct) ...[
-            JobCard(
-              job: j,
-              workerName: myName,
+          // 1) at most ONE big active job
+          if (sp.active != null) ...[
+            ActiveWorkCard(
+              a: sp.active!,
+              lang: lang,
               onTap: () async {
-                await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => JobDetailScreen(state: state, jobId: j['id'] as String)));
+                tapFeedback();
+                await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AssignmentScreen(state: state, assignmentId: sp.active!['id'] as String)));
                 await reload();
               },
-              onDecline: () async {
-                final l2 = L.of(context);
-                try {
-                  await state.api.declineDirect(j['id'] as String);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BC.ink, content: Text(l2.directDeclinedDone, style: const TextStyle(fontSize: 15, color: Colors.white))));
-                  }
-                  await reload();
-                } catch (e) {
-                  if (context.mounted) showError(context, e);
-                }
-              },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
+          ],
+          // 2) ONE compact "To do" strip for everything else that needs action
+          if (sp.todoCount > 0) ...[
+            _TodoStrip(sp: sp, onTap: openTodo),
+            const SizedBox(height: 10),
           ],
           if (state.user != null && state.user!.kycLevel < 1 && work.isNotEmpty) ...[
             KycNudge(state: state, onDone: reload),
-            const SizedBox(height: 16),
-          ],
-          // "Today's work" first: the job that already pays beats new jobs.
-          if (today.isNotEmpty) SectionHeader(l.todaysWork, padding: const EdgeInsets.fromLTRB(2, 0, 2, 8)),
-          for (final a in today) ...[
-            ActiveWorkCard(a: a, onTap: () async {
-              await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AssignmentScreen(state: state, assignmentId: a['id'] as String)));
-              await reload();
-            }),
             const SizedBox(height: 12),
           ],
-          if (today.isNotEmpty) const SizedBox(height: 8),
+          // 3) new jobs immediately
           Padding(
-            padding: const EdgeInsets.fromLTRB(2, 0, 0, 12),
+            padding: const EdgeInsets.fromLTRB(2, 4, 0, 10),
             child: Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(l.jobsNear, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.headlineMedium),
+                  Text(l.jobsNear, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.headlineSmall),
                   Text(l.jobsNearSub(jobs.length), maxLines: 2, overflow: TextOverflow.ellipsis, style: BC.subtle),
                 ]),
               ),
               const SizedBox(width: 4),
               ChatInboxButton(state: state),
-              SpeakButton(text: '${l.jobsNear}. ${l.jobsNearSub(jobs.length)}', lang: state.language ?? 'hi'),
+              ReadButton(text: '${l.jobsNear}. ${l.jobsNearSub(jobs.length)}', lang: lang),
             ]),
           ),
           if (jobs.isEmpty)
             EmptyState(icon: Icons.search_off_rounded, text: l.noJobsNear)
           else
             for (final j in jobs) ...[
-              JobCard(job: j, onTap: () async {
-                await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => JobDetailScreen(state: state, jobId: j['id'] as String)));
-                await reload();
-              }),
+              JobCard(
+                job: j,
+                lang: lang,
+                onTap: () async {
+                  tapFeedback();
+                  await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => JobDetailScreen(state: state, jobId: j['id'] as String)));
+                  await reload();
+                },
+              ),
               const SizedBox(height: 16),
             ],
         ]);
@@ -263,11 +293,124 @@ class JobsTab extends StatelessWidget {
   }
 }
 
-/// Status card for work the worker already won ("Today's work"): one glance, one tap.
+/// "⭐ 4 to rate · 1 re-fix" — one slim row that opens the full to-do list.
+class _TodoStrip extends StatelessWidget {
+  const _TodoStrip({required this.sp, required this.onTap});
+  final _Split sp;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final parts = [
+      if (sp.direct.isNotEmpty) '❤ ${l.wkTodoDirect(sp.direct.length)}',
+      if (sp.toRate.isNotEmpty) '⭐ ${l.wkTodoRate(sp.toRate.length)}',
+      if (sp.refix.isNotEmpty) '🔧 ${l.wkTodoRefix(sp.refix.length)}',
+      if (sp.others.isNotEmpty) '+${l.wkTodoMore(sp.others.length)}',
+    ];
+    return AppCard(
+      color: BC.brandSoft,
+      borderColor: BC.brand,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      onTap: () {
+        tapFeedback();
+        onTap();
+      },
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 40),
+        child: Row(children: [
+          const Icon(Icons.checklist_rounded, color: BC.brandDark),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(l.wkTodoTitle, style: context.tt.titleSmall!.copyWith(color: BC.brandDark)),
+              Text(parts.join(' · '), maxLines: 3, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium),
+            ]),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: BC.brandDark),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Opened from the To-do strip: direct requests, customers to rate, re-fix visits, other active jobs.
+class WorkerTodoScreen extends StatelessWidget {
+  const WorkerTodoScreen({super.key, required this.state});
+  final AppState state;
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final lang = state.language ?? 'hi';
+    final myName = state.user?.name?.split(' ').first ?? '';
+    return Scaffold(
+      appBar: AppBar(title: Text(l.wkTodoTitle, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      body: AsyncList<(List<Json>, List<Json>)>(
+        load: () => _loadJobsData(state),
+        builder: (ctx, data, reload) {
+          final sp = _Split(data.$1, data.$2);
+          Future<void> openA(Json a) async {
+            tapFeedback();
+            await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AssignmentScreen(state: state, assignmentId: a['id'] as String)));
+            await reload();
+          }
+
+          Widget group(String title, List<Widget> items) => items.isEmpty
+              ? const SizedBox.shrink()
+              : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  SectionHeader(title, padding: const EdgeInsets.fromLTRB(2, 12, 2, 8)),
+                  ...items,
+                ]);
+          if (sp.todoCount == 0) return ListView(padding: const EdgeInsets.all(16), children: [EmptyState(icon: Icons.check_circle_outline_rounded, text: l.wkTodoEmpty)]);
+          return ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
+            group(l.directBadge, [
+              for (final j in sp.direct)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: JobCard(
+                    job: j,
+                    lang: lang,
+                    workerName: myName,
+                    onTap: () async {
+                      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => JobDetailScreen(state: state, jobId: j['id'] as String)));
+                      await reload();
+                    },
+                    onDecline: () async {
+                      try {
+                        await state.api.declineDirect(j['id'] as String);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BC.ink, content: Text(l.directDeclinedDone, style: const TextStyle(fontSize: 15, color: Colors.white))));
+                        }
+                        await reload();
+                      } catch (e) {
+                        if (context.mounted) showError(context, e);
+                      }
+                    },
+                  ),
+                ),
+            ]),
+            group(l.rateCustomerCta, [
+              for (final a in sp.toRate) Padding(padding: const EdgeInsets.only(bottom: 10), child: ActiveWorkCard(a: a, lang: lang, compact: true, onTap: () => openA(a))),
+            ]),
+            group(l.refixBadge, [
+              for (final a in sp.refix) Padding(padding: const EdgeInsets.only(bottom: 10), child: ActiveWorkCard(a: a, lang: lang, compact: true, onTap: () => openA(a))),
+            ]),
+            group(l.todaysWork, [
+              for (final a in sp.others) Padding(padding: const EdgeInsets.only(bottom: 10), child: ActiveWorkCard(a: a, lang: lang, compact: true, onTap: () => openA(a))),
+            ]),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+/// Status card for work the worker already won: one glance, one tap. [compact] is the list variant.
 class ActiveWorkCard extends StatelessWidget {
-  const ActiveWorkCard({super.key, required this.a, required this.onTap});
+  const ActiveWorkCard({super.key, required this.a, required this.onTap, this.lang = 'hi', this.compact = false});
   final Json a;
   final VoidCallback onTap;
+  final String lang;
+  final bool compact;
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
@@ -283,40 +426,45 @@ class ActiveWorkCard extends StatelessWidget {
       'disputed' => (l.statusDisputed, Icons.gavel_rounded),
       _ => (l.rateCustomerCta, Icons.star_rounded),
     };
+    final sub = '${job['locality']} · ${a['kind'] == 'refix' ? l.refixBadge : inr(a['price_inr'] as num)}';
+    final big = !compact;
     return AppCard(
       color: BC.money,
       borderColor: BC.money,
       radius: BC.rMd,
-      padding: const EdgeInsets.all(BC.pad),
-      shadow: true,
+      padding: EdgeInsets.all(big ? BC.padLg : BC.pad),
+      shadow: big,
       onTap: onTap,
       child: Row(children: [
         Container(
-          width: 52,
-          height: 52,
+          width: big ? 56 : 44,
+          height: big ? 56 : 44,
           decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)),
-          child: Icon(icon, color: Colors.white, size: 28),
+          child: Icon(icon, color: Colors.white, size: big ? 30 : 24),
         ),
         const SizedBox(width: 14),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (big) Text(l.todaysWork, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.labelMedium!.copyWith(color: Colors.white70)),
             Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleLarge!.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
-            Text('${job['locality']} · ${a['kind'] == 'refix' ? l.refixBadge : inr(a['price_inr'] as num)}',
-                maxLines: 1, overflow: TextOverflow.ellipsis,
+            Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis,
                 style: context.tt.titleSmall!.copyWith(color: Colors.white.withValues(alpha: 0.92), fontWeight: FontWeight.w500, fontFeatures: BC.tabular)),
           ]),
         ),
         const SizedBox(width: 4),
-        const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 28),
+        Column(mainAxisSize: MainAxisSize.min, children: [
+          if (big) ReadButton(text: '$label. $sub', lang: lang, size: 40) else const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 28),
+        ]),
       ]),
     );
   }
 }
 
 class JobCard extends StatelessWidget {
-  const JobCard({super.key, required this.job, required this.onTap, this.workerName = '', this.onDecline});
+  const JobCard({super.key, required this.job, required this.onTap, this.workerName = '', this.onDecline, this.lang = 'hi'});
   final Json job;
+  final String lang;
   final VoidCallback onTap;
 
   /// Direct request ("hire again"): the worker's first name for the greeting, and a Decline action.
@@ -351,13 +499,13 @@ class JobCard extends StatelessWidget {
           ),
         // Photo strip — what the work looks like, before any words.
         SizedBox(
-          height: 132,
+          height: 112,
           child: thumbs.isEmpty
               ? Container(color: BC.closedSoft, alignment: Alignment.center, child: Icon(TradeStyle.of(trades.isEmpty ? '' : trades.first).icon, size: 40, color: BC.inkFaint))
               : Row(children: [
                   for (final (i, url) in thumbs.take(3).indexed) ...[
                     if (i > 0) const SizedBox(width: 2),
-                    Expanded(child: AppImage(url, height: 132)),
+                    Expanded(child: AppImage(url, height: 112)),
                   ],
                 ]),
         ),
@@ -380,7 +528,10 @@ class JobCard extends StatelessWidget {
             Row(children: [
               const Icon(Icons.place_rounded, size: 18, color: BC.inkFaint),
               const SizedBox(width: 6),
-              Expanded(child: Text(where, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.titleSmall)),
+              Expanded(child: Text(where, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleSmall)),
+              ReadButton(
+                  text: '${trades.map((t) => tradeLabel(l, t)).join(', ')}. $where. ${job['work_count'] == null ? '' : l.workCount(job['work_count'] as int)}',
+                  lang: lang),
             ]),
             if (job['scheduled_for'] != null) ...[
               const SizedBox(height: 4),
@@ -525,20 +676,17 @@ class _BidRowState extends State<_BidRow> {
                     maxLines: 2, overflow: TextOverflow.ellipsis, style: BC.subtle),
               ]),
             ),
+            ReadButton(text: '${inr(bid['price_inr'] as num)}. ${(job['trades'] as List).toSet().map((t) => tradeLabel(l, t as String)).join(', ')}. $label', lang: widget.state.language ?? 'hi'),
           ]),
           const SizedBox(height: 12),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Flexible(child: StatusPill(label: label, color: fg, bg: bg, icon: icon)),
-            if (status == 'pending') ...[
-              const SizedBox(width: 8),
-              Flexible(
-                child: TextButton(
-                  onPressed: _withdrawing ? null : _withdraw,
-                  style: TextButton.styleFrom(foregroundColor: BC.danger),
-                  child: BtnLabel(l.withdrawBid),
-                ),
+          Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            StatusPill(label: label, color: fg, bg: bg, icon: icon),
+            if (status == 'pending')
+              TextButton(
+                onPressed: _withdrawing ? null : _withdraw,
+                style: TextButton.styleFrom(foregroundColor: BC.danger, minimumSize: const Size(0, 48)),
+                child: Text(l.withdrawBid, maxLines: 2, textAlign: TextAlign.center),
               ),
-            ],
           ]),
           if (status == 'rejected')
             Padding(
@@ -578,7 +726,7 @@ class EarningsTab extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(child: Text(l.availableBalance, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium!.copyWith(color: Colors.white70, fontWeight: FontWeight.w500))),
-                SpeakButton(text: l.balanceSpeech(inr(available)), lang: lang, size: 40),
+                ReadButton(text: l.balanceSpeech(inr(available)), lang: lang, size: 40),
               ]),
               const SizedBox(height: 4),
               FittedBox(
@@ -792,7 +940,8 @@ class _WorkerProfileTabState extends State<WorkerProfileTab> {
         final kyc = p['kyc'] as Json;
         final online = p['is_online'] == true;
         final selfie = p['selfie'] as String?;
-        return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 32), children: [
+        return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
+          SectionHeader(l.wkSecAccount, padding: const EdgeInsets.fromLTRB(2, 4, 2, 8)),
           AppCard(
             padding: const EdgeInsets.all(BC.padLg),
             child: Row(children: [
@@ -813,6 +962,37 @@ class _WorkerProfileTabState extends State<WorkerProfileTab> {
               ),
             ]),
           ),
+          const SizedBox(height: 12),
+          PrimaryButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LabourCardScreen(state: state))),
+            color: BC.ink,
+            icon: Icons.badge_rounded,
+            label: l.myLabourCard,
+          ),
+          SectionHeader(l.wkSecWork, padding: const EdgeInsets.fromLTRB(2, 18, 2, 8)),
+          AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: SwitchListTile(
+              value: online,
+              onChanged: _toggling
+                  ? null
+                  : (v) async {
+                      setState(() => _toggling = true);
+                      try {
+                        await state.api.setOnline(v);
+                        await reload();
+                      } catch (e) {
+                        if (context.mounted) showError(context, e);
+                      } finally {
+                        if (mounted) setState(() => _toggling = false);
+                      }
+                    },
+              title: Text(l.availableForWork, maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Text(l.availableForWorkSub, maxLines: 3, overflow: TextOverflow.ellipsis),
+              secondary: Icon(Icons.circle, color: online ? BC.money : BC.inkFaint, size: 16),
+            ),
+          ),
+          const SizedBox(height: 12),
           if (p['level_card'] is Map) ...[
             const SizedBox(height: 12),
             LevelCard(
@@ -830,7 +1010,7 @@ class _WorkerProfileTabState extends State<WorkerProfileTab> {
                 StarBadge(b['overall'] as num, big: true),
                 const SizedBox(width: 10),
                 Expanded(child: Text(l.ratingFromJobs(b['count'] as int), maxLines: 2, overflow: TextOverflow.ellipsis, style: BC.subtle)),
-                SpeakButton(
+                ReadButton(
                     text: l.ratingSpeech((b['overall'] as num).toStringAsFixed(1), (b['quality'] as num).toStringAsFixed(1),
                         (b['timeliness'] as num).toStringAsFixed(1), (b['behaviour'] as num).toStringAsFixed(1), (b['value_for_money'] as num).toStringAsFixed(1)),
                     lang: state.language ?? 'hi'),
@@ -848,20 +1028,11 @@ class _WorkerProfileTabState extends State<WorkerProfileTab> {
                     text: badgeLabel(l, badge, b['overall'] as num, b['count'] as int)),
               ),
           ],
-          const SizedBox(height: 12),
-          PrimaryButton(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LabourCardScreen(state: state))),
-            color: BC.ink,
-            icon: Icons.badge_rounded,
-            label: l.myLabourCard,
-          ),
-          const SizedBox(height: 16),
-          KycStatusCard(state: state, kyc: kyc, onChanged: reload, police: (p['police'] as Map?)?.cast<String, dynamic>()),
           if (history.isNotEmpty) ...[
             const SizedBox(height: 20),
             SectionHeader(l.workHistory),
             SizedBox(
-              height: 224,
+              height: 224 * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6),
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: history.length,
@@ -890,30 +1061,9 @@ class _WorkerProfileTabState extends State<WorkerProfileTab> {
               ),
             ),
           ],
-          const SizedBox(height: 20),
-          AppCard(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: SwitchListTile(
-              value: online,
-              onChanged: _toggling
-                  ? null
-                  : (v) async {
-                      setState(() => _toggling = true);
-                      try {
-                        await state.api.setOnline(v);
-                        await reload();
-                      } catch (e) {
-                        if (context.mounted) showError(context, e);
-                      } finally {
-                        if (mounted) setState(() => _toggling = false);
-                      }
-                    },
-              title: Text(l.availableForWork, maxLines: 2, overflow: TextOverflow.ellipsis),
-              subtitle: Text(l.availableForWorkSub, maxLines: 3, overflow: TextOverflow.ellipsis),
-              secondary: Icon(Icons.circle, color: online ? BC.money : BC.inkFaint, size: 16),
-            ),
-          ),
-          const SizedBox(height: 12),
+          SectionHeader(l.wkSecMoney, padding: const EdgeInsets.fromLTRB(2, 12, 2, 8)),
+          KycStatusCard(state: state, kyc: kyc, onChanged: reload, police: (p['police'] as Map?)?.cast<String, dynamic>()),
+          const SizedBox(height: 4),
           ...settingsTiles(context, state),
         ]);
       },

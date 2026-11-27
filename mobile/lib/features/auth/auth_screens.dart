@@ -23,6 +23,7 @@ class PhoneScreen extends StatefulWidget {
 class _PhoneScreenState extends State<PhoneScreen> {
   final _c = TextEditingController();
   bool _busy = false;
+  String? _err;
 
   @override
   void dispose() {
@@ -34,13 +35,17 @@ class _PhoneScreenState extends State<PhoneScreen> {
   bool get _valid => RegExp(r'^[6-9]\d{9}$').hasMatch(_digits);
 
   Future<void> _send() async {
-    setState(() => _busy = true);
+    HapticFeedback.lightImpact();
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
     try {
       await widget.state.api.requestOtp(_digits, widget.state.language ?? 'hi');
       widget.state.pendingPhone = _digits;
       if (mounted) context.push('/otp');
     } catch (e) {
-      if (mounted) showError(context, e);
+      if (mounted) setState(() => _err = errorText(L.of(context), e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -63,11 +68,13 @@ class _PhoneScreenState extends State<PhoneScreen> {
                 const SizedBox(height: 4),
                 Text(l.phoneSub, style: context.tt.bodyLarge!.copyWith(color: BC.inkSoft)),
                 const SizedBox(height: 28),
-                Container(
+                MediaQuery.withClampedTextScaling(
+                  maxScaleFactor: 1.15, // the digits are already huge
+                  child: Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(BC.rMd),
-                    border: Border.all(color: _valid ? BC.money : BC.line, width: 1.5),
+                    border: Border.all(color: _err != null ? BC.danger : (_valid ? BC.money : BC.line), width: 1.5),
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   child: Row(children: [
@@ -84,13 +91,22 @@ class _PhoneScreenState extends State<PhoneScreen> {
                         decoration: const InputDecoration(
                             border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none,
                             filled: false, hintText: '98765 43210', hintStyle: TextStyle(color: BC.line)),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (_) => setState(() => _err = null),
                         onSubmitted: (_) => _valid && !_busy ? _send() : null,
                       ),
                     ),
                     if (_valid) const Icon(Icons.check_circle_rounded, color: BC.money, size: 28),
                   ]),
                 ),
+                ),
+                if (_err != null) ...[
+                  const SizedBox(height: 8),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Icon(Icons.error_outline_rounded, color: BC.danger, size: 22),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_err!, style: context.tt.bodyLarge!.copyWith(color: BC.danger))),
+                  ]),
+                ],
                 const SizedBox(height: 16),
                 if (widget.state.isDemo) ...[
                   const DemoChip(),
@@ -146,6 +162,7 @@ class _OtpScreenState extends State<OtpScreen> {
   int _left = 30;
   bool _busy = false;
   bool _error = false;
+  String? _errText;
 
   @override
   void initState() {
@@ -177,9 +194,11 @@ class _OtpScreenState extends State<OtpScreen> {
       if (context.canPop()) context.pop();
       return;
     }
+    HapticFeedback.lightImpact();
     setState(() {
       _busy = true;
       _error = false;
+      _errText = null;
     });
     try {
       final r = await s.api.verifyOtp(s.pendingPhone!, _c.text, role: s.roleIntent, lang: s.language ?? 'hi');
@@ -187,9 +206,12 @@ class _OtpScreenState extends State<OtpScreen> {
     } catch (e) {
       if (!mounted) return;
       HapticFeedback.heavyImpact();
-      setState(() => _error = true);
+      setState(() {
+        _error = true;
+        _errText = errorText(L.of(context), e);
+      });
       _c.clear();
-      showError(context, e);
+      _focus.requestFocus();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -237,15 +259,39 @@ class _OtpScreenState extends State<OtpScreen> {
                       ),
                     ),
                     // Six flexible boxes: they shrink on narrow phones instead of overflowing.
-                    Row(children: [
-                      for (var i = 0; i < 6; i++) ...[
-                        if (i > 0) const SizedBox(width: 8),
-                        Expanded(child: _box(i)),
-                      ],
-                    ]),
+                    MediaQuery.withClampedTextScaling(
+                      maxScaleFactor: 1.15,
+                      child: Row(children: [
+                        for (var i = 0; i < 6; i++) ...[
+                          if (i > 0) const SizedBox(width: 8),
+                          Expanded(child: _box(i)),
+                        ],
+                      ]),
+                    ),
                   ]),
                 ),
-                const SizedBox(height: 20),
+                if (_errText != null) ...[
+                  const SizedBox(height: 10),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Icon(Icons.error_outline_rounded, color: BC.danger, size: 22),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_errText!, style: context.tt.bodyLarge!.copyWith(color: BC.danger))),
+                  ]),
+                ],
+                const SizedBox(height: 12),
+                SecondaryButton(
+                  icon: Icons.content_paste_rounded,
+                  label: l.wkPasteCode,
+                  onPressed: () async {
+                    final d = await Clipboard.getData(Clipboard.kTextPlain);
+                    final m = RegExp(r'\d{6}').firstMatch(d?.text ?? '') ?? RegExp(r'\d{4,6}').firstMatch(d?.text ?? '');
+                    if (m == null || !mounted) return;
+                    _c.text = m.group(0)!;
+                    setState(() => _error = false);
+                    if (_c.text.length == 6 && !_busy) _verify();
+                  },
+                ),
+                const SizedBox(height: 12),
                 Center(
                   child: _left > 0
                       ? Text(l.otpResendIn(_left), style: context.tt.bodyLarge!.copyWith(color: BC.inkSoft, fontFeatures: BC.tabular))

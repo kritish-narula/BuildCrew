@@ -49,8 +49,10 @@ class LanguageScreen extends StatelessWidget {
           Expanded(
             child: GridView.builder(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, mainAxisExtent: 80),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10,
+                  // tall enough for big system fonts
+                  mainAxisExtent: 80 * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.7)),
               itemCount: languages.length,
               itemBuilder: (ctx, i) {
                 final (code, native, english) = languages[i];

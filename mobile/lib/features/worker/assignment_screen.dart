@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
 import '../../core/location.dart';
@@ -15,6 +16,7 @@ import '../../widgets/media.dart';
 import '../../widgets/trust_widgets.dart';
 import '../common/chat.dart';
 import '../common/completion_ui.dart';
+import '../common/help.dart';
 import 'worker_shell.dart' show PendingChip;
 
 /// The job the worker has WON: address, attendance (S9), escrow status, rate the customer.
@@ -57,6 +59,16 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     super.dispose();
   }
 
+  bool _spoken = false;
+  String _headline = '';
+
+  /// Reads the current next step once when the screen opens (unless auto-read is switched off in Profile).
+  void _autoRead(Json a) {
+    if (_spoken || _headline.isEmpty) return;
+    _spoken = true;
+    ReadAloud.auto(_headline, state.language ?? 'hi');
+  }
+
   /// Another account signed in on this phone: this screen belongs to the old one.
   void _onState() {
     if (mounted && state.user?.id != _uid) Navigator.of(context).maybePop();
@@ -81,6 +93,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
         _loadFailed = false;
       });
       _syncSharing(a);
+      _autoRead(a);
     } catch (_) {
       // Keep showing the last good data; only show the retry screen if we never had any.
       if (mounted && _a == null) setState(() => _loadFailed = true);
@@ -108,6 +121,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
   }
 
   Future<void> _run(Future<void> Function() fn) async {
+    HapticFeedback.mediumImpact();
     setState(() => _busy = true);
     try {
       await fn();
@@ -253,7 +267,14 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     final l = L.of(context);
     final a = _a;
     return Scaffold(
-      appBar: AppBar(title: Text(l.myWork, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      appBar: AppBar(
+        title: Text(l.myWork, maxLines: 1, overflow: TextOverflow.ellipsis),
+        actions: [
+          if (_headline.isNotEmpty) ReadButton(text: _headline, lang: state.language ?? 'hi'),
+          IconButton(tooltip: l.wkHelpTitle, icon: const Icon(Icons.support_agent_rounded), onPressed: () => openHelp(context, state)),
+          const SizedBox(width: 4),
+        ],
+      ),
       body: _gone
           ? Center(
               child: Padding(
@@ -307,7 +328,11 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     final jLat = (job['lat'] as num).toDouble(), jLng = (job['lng'] as num).toDouble();
     final km = distanceFromMe(jLat, jLng);
 
-    Widget step({required IconData icon, required Color color, required String title, String? sub, List<Widget> actions = const []}) => Container(
+    String? stepTitle, stepSub;
+    Widget step({required IconData icon, required Color color, required String title, String? sub, List<Widget> actions = const []}) {
+      stepTitle = title;
+      stepSub = sub;
+      return Container(
           padding: const EdgeInsets.all(BC.padLg),
           decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(BC.rMd), border: Border.all(color: color.withValues(alpha: 0.3))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -324,6 +349,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
             for (final w in actions) ...[const SizedBox(height: 14), w],
           ]),
         );
+    }
 
     late final Widget next;
     if (status == 'disputed') {
@@ -362,27 +388,42 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
           ],
           if (done && ((a['proof_photos'] as List?) ?? const []).isNotEmpty) ThumbRow((a['proof_photos'] as List).cast<String>()),
           if (done && hoursLeft != null) InfoBanner(icon: Icons.timer_rounded, color: BC.info, text: l.autoReleaseWorker(hoursLeft)),
-          Row(children: [
-            Expanded(
-              child: PrimaryButton(
+          if (bigText(context, 1.2))
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              PrimaryButton(
                 big: true,
                 color: BC.money,
                 onPressed: _busy || open || codeState == 'locked' ? null : () => _mark('in'),
                 icon: Icons.login_rounded,
                 label: l.checkIn,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: PrimaryButton(
+              const SizedBox(height: 10),
+              PrimaryButton(
                 big: true,
                 color: BC.ink,
                 onPressed: _busy || !open ? null : () => _mark('out'),
                 icon: Icons.logout_rounded,
                 label: l.checkOut,
               ),
-            ),
-          ]),
+            ])
+          else
+            Row(children: [
+              Expanded(child: PrimaryButton(
+                big: true,
+                color: BC.money,
+                onPressed: _busy || open || codeState == 'locked' ? null : () => _mark('in'),
+                icon: Icons.login_rounded,
+                label: l.checkIn,
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: PrimaryButton(
+                big: true,
+                color: BC.ink,
+                onPressed: _busy || !open ? null : () => _mark('out'),
+                icon: Icons.logout_rounded,
+                label: l.checkOut,
+              )),
+            ]),
           if (rework)
             PrimaryButton(big: true, color: BC.danger, busy: _busy, onPressed: _finish, icon: Icons.task_alt_rounded, label: l.doneAgain)
           else if (!done && !queued && !(codeState != null && codeState != 'verified'))
@@ -398,6 +439,10 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
       next = step(icon: Icons.payments_rounded, color: BC.money, title: l.paymentReceived, sub: l.escrowReleased(inr(pay?['worker_payout_inr'] as num?)));
     }
 
+    _headline = '${stepTitle ?? ''}. ${stepSub ?? ''}. ${inr(a['price_inr'] as num)}. ${job['locality']}';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _autoRead(a);
+    });
     return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
       const PendingChip(),
       if (refix) ...[
@@ -491,6 +536,11 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
           icon: const Icon(Icons.report_gmailerrorred_rounded, color: BC.danger),
           label: Text(l.workerDisputeBtn, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: BC.danger)),
         ),
+      TextButton.icon(
+        onPressed: () => openHelp(context, state, problem: true),
+        icon: const Icon(Icons.support_agent_rounded),
+        label: Text(l.wkHelpReport, maxLines: 2, textAlign: TextAlign.center),
+      ),
       if (status == 'assigned' && a['started_at'] == null)
         TextButton(
           onPressed: _busy ? null : _withdraw,

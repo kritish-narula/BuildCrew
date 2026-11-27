@@ -1,0 +1,338 @@
+{
+  "wkTodoTitle": {
+    "en": "To do",
+    "hi": "करने के काम"
+  },
+  "wkTodoRate": {
+    "en": "{n} to rate",
+    "hi": "{n} को रेटिंग दें",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "wkTodoRefix": {
+    "en": "{n} re-fix",
+    "hi": "{n} दोबारा ठीक करना",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "wkTodoDirect": {
+    "en": "{n} requests",
+    "hi": "{n} सीधे अनुरोध",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "wkTodoMore": {
+    "en": "{n} more jobs",
+    "hi": "{n} और काम",
+    "placeholders": {
+      "n": "int"
+    }
+  },
+  "wkTodoEmpty": {
+    "en": "Nothing to do right now.",
+    "hi": "अभी कोई काम बाकी नहीं।"
+  },
+  "wkHelpTitle": {
+    "en": "Help & Support",
+    "hi": "मदद और सहायता"
+  },
+  "wkHelpTitleSub": {
+    "en": "Call, WhatsApp, questions",
+    "hi": "कॉल, व्हाट्सऐप, सवाल"
+  },
+  "wkHelpHours": {
+    "en": "We answer every day, 9 am to 7 pm.",
+    "hi": "हम रोज़ सुबह 9 से शाम 7 बजे तक जवाब देते हैं।"
+  },
+  "wkHelpFaq": {
+    "en": "Common questions",
+    "hi": "आम सवाल"
+  },
+  "wkHelpReport": {
+    "en": "Report a problem",
+    "hi": "समस्या बताएं"
+  },
+  "wkReportSub": {
+    "en": "Tell us what went wrong. Our team will call you back.",
+    "hi": "बताइए क्या गड़बड़ हुई। हमारी टीम आपको वापस कॉल करेगी।"
+  },
+  "wkReportCategory": {
+    "en": "What is the problem about?",
+    "hi": "समस्या किस बारे में है?"
+  },
+  "wkCatPayment": {
+    "en": "Payment",
+    "hi": "पैसे"
+  },
+  "wkCatJob": {
+    "en": "Job or the other person",
+    "hi": "काम या दूसरा व्यक्ति"
+  },
+  "wkCatApp": {
+    "en": "App not working",
+    "hi": "ऐप नहीं चल रहा"
+  },
+  "wkCatSafety": {
+    "en": "Safety",
+    "hi": "सुरक्षा"
+  },
+  "wkCatOther": {
+    "en": "Something else",
+    "hi": "कुछ और"
+  },
+  "wkReportHint": {
+    "en": "Write here. You can also speak using the keyboard microphone.",
+    "hi": "यहाँ लिखें। कीबोर्ड के माइक से बोल भी सकते हैं।"
+  },
+  "wkReportPhoto": {
+    "en": "Add a photo (optional)",
+    "hi": "फ़ोटो जोड़ें (ज़रूरी नहीं)"
+  },
+  "wkReportSend": {
+    "en": "Send report",
+    "hi": "रिपोर्ट भेजें"
+  },
+  "wkReportSent": {
+    "en": "Sent. Our team will contact you soon.",
+    "hi": "भेज दिया। हमारी टीम जल्दी संपर्क करेगी।"
+  },
+  "wkReportNeedText": {
+    "en": "Please write a few words.",
+    "hi": "कृपया कुछ शब्द लिखें।"
+  },
+  "wkSafetyTitle": {
+    "en": "Safety tips",
+    "hi": "सुरक्षा के सुझाव"
+  },
+  "wkSafety1": {
+    "en": "Pay and get paid only inside the app.",
+    "hi": "पैसे का लेन-देन सिर्फ़ ऐप में करें।"
+  },
+  "wkSafety2": {
+    "en": "Share your live trip with someone you trust.",
+    "hi": "अपनी यात्रा किसी भरोसेमंद को शेयर करें।"
+  },
+  "wkSafety3": {
+    "en": "Never share your OTP or UPI PIN with anyone.",
+    "hi": "अपना OTP या UPI पिन किसी को न बताएं।"
+  },
+  "wkSafety4": {
+    "en": "If a place feels unsafe, leave and call support.",
+    "hi": "जगह असुरक्षित लगे तो वहाँ से निकलें और सहायता को कॉल करें।"
+  },
+  "wkTerms": {
+    "en": "Terms of use",
+    "hi": "उपयोग की शर्तें"
+  },
+  "wkPrivacy": {
+    "en": "Privacy policy",
+    "hi": "गोपनीयता नीति"
+  },
+  "wkLegalSoon": {
+    "en": "This page will be available soon.",
+    "hi": "यह पेज जल्दी उपलब्ध होगा।"
+  },
+  "wkSecHelp": {
+    "en": "Help",
+    "hi": "मदद"
+  },
+  "wkSecApp": {
+    "en": "App",
+    "hi": "ऐप"
+  },
+  "wkSecAccount": {
+    "en": "Account",
+    "hi": "खाता"
+  },
+  "wkSecWork": {
+    "en": "Work",
+    "hi": "काम"
+  },
+  "wkSecMoney": {
+    "en": "Money & verification",
+    "hi": "पैसे और वेरिफ़िकेशन"
+  },
+  "wkReadAloudAuto": {
+    "en": "Read aloud automatically",
+    "hi": "अपने आप पढ़कर सुनाएं"
+  },
+  "wkReadAloudAutoSub": {
+    "en": "Reads a job out loud when you open it",
+    "hi": "काम खोलते ही उसे बोलकर सुनाता है"
+  },
+  "wkTextSize": {
+    "en": "Text size",
+    "hi": "अक्षरों का आकार"
+  },
+  "wkTextSizeHint": {
+    "en": "To make letters bigger: phone Settings > Display > Font size",
+    "hi": "अक्षर बड़े करने के लिए: फ़ोन सेटिंग > डिस्प्ले > फ़ॉन्ट साइज़"
+  },
+  "wkPasteCode": {
+    "en": "Paste code",
+    "hi": "कोड पेस्ट करें"
+  },
+  "wkFaqW1Q": {
+    "en": "When do I get paid?",
+    "hi": "काम का पैसा कब मिलेगा?"
+  },
+  "wkFaqW1A": {
+    "en": "The customer pays BuildCrew before you start, so the money is safe. When the customer confirms the work and rates you, it goes to your UPI the same day. If the customer says nothing for 48 hours, it is released automatically.",
+    "hi": "काम शुरू होने से पहले ग्राहक BuildCrew को पैसे देता है, इसलिए पैसा सुरक्षित रहता है। ग्राहक के काम मानने और रेटिंग देने पर उसी दिन आपके UPI में आ जाता है। 48 घंटे तक ग्राहक कुछ न बोले तो पैसा अपने आप मिल जाता है।"
+  },
+  "wkFaqW2Q": {
+    "en": "What if the customer does not pay?",
+    "hi": "ग्राहक पैसे न दे तो क्या करें?"
+  },
+  "wkFaqW2A": {
+    "en": "Start work only after the app shows the customer has paid. BuildCrew holds that money safely. If the customer does not respond or is unfair, tap Report a problem and we will help.",
+    "hi": "ऐप में ग्राहक का भुगतान दिखने के बाद ही काम शुरू करें। वह पैसा BuildCrew के पास सुरक्षित रहता है। ग्राहक जवाब न दे या गलत करे तो 'समस्या बताएं' दबाएं, हम मदद करेंगे।"
+  },
+  "wkFaqW3Q": {
+    "en": "What is the start code?",
+    "hi": "स्टार्ट कोड क्या है?"
+  },
+  "wkFaqW3A": {
+    "en": "When you reach the site, the customer gives you a short code. Enter it in the app to check in. It proves you really arrived.",
+    "hi": "साइट पर पहुँचने पर ग्राहक आपको एक छोटा कोड देता है। चेक-इन के लिए उसे ऐप में डालें। इससे पता चलता है कि आप सच में पहुँचे।"
+  },
+  "wkFaqW4Q": {
+    "en": "What if the customer cancels?",
+    "hi": "ग्राहक काम रद्द कर दे तो?"
+  },
+  "wkFaqW4A": {
+    "en": "If the customer cancels before work starts, their money is refunded and you are free to take other jobs. You can also leave a job before starting from My Work.",
+    "hi": "काम शुरू होने से पहले ग्राहक रद्द करे तो उसका पैसा लौट जाता है और आप दूसरे काम ले सकते हैं। शुरू करने से पहले आप भी 'मेरा काम' से छोड़ सकते हैं।"
+  },
+  "wkFaqW5Q": {
+    "en": "What is a warranty re-fix?",
+    "hi": "वारंटी री-फ़िक्स क्या है?"
+  },
+  "wkFaqW5A": {
+    "en": "If the customer reports a problem with finished work during the warranty, you visit again for free. It shows as Warranty re-fix.",
+    "hi": "तैयार काम में वारंटी के दौरान कोई कमी बताई जाए तो आप मुफ़्त में दोबारा जाते हैं। यह 'वारंटी री-फ़िक्स' दिखता है।"
+  },
+  "wkFaqW6Q": {
+    "en": "What if we disagree about the work?",
+    "hi": "काम पर सहमति न हो तो?"
+  },
+  "wkFaqW6A": {
+    "en": "The customer can ask you to fix things up to 3 times. After that, or if you feel it is unfair, tap Report a problem. The money stays safe while our team checks photos, chat and attendance.",
+    "hi": "ग्राहक 3 बार तक ठीक करवा सकता है। उसके बाद, या अन्याय लगे तो 'समस्या बताएं' दबाएं। हमारी टीम फ़ोटो, चैट और हाज़िरी देखती है, तब तक पैसा सुरक्षित रहता है।"
+  },
+  "wkFaqW7Q": {
+    "en": "What is police verification?",
+    "hi": "पुलिस वेरिफ़िकेशन क्या है?"
+  },
+  "wkFaqW7A": {
+    "en": "It is optional. Ask for it in Profile under Verification. Verified workers get a badge and customers trust them more.",
+    "hi": "यह वैकल्पिक है। प्रोफ़ाइल में 'वेरिफ़िकेशन' में माँगें। वेरिफ़ाइड कारीगरों को बैज मिलता है और ग्राहक ज़्यादा भरोसा करते हैं।"
+  },
+  "wkFaqW8Q": {
+    "en": "Do I pay any fee?",
+    "hi": "क्या मुझे कोई फ़ीस देनी होगी?"
+  },
+  "wkFaqW8A": {
+    "en": "No. Quoting is free. The customer pays a small fixed fee of Rs 30. You receive the full price you quoted.",
+    "hi": "नहीं। दाम बताना मुफ़्त है। ग्राहक ₹30 की छोटी फ़ीस देता है। आपको पूरा बताया हुआ दाम मिलता है।"
+  },
+  "wkFaqW9Q": {
+    "en": "How do I stay safe?",
+    "hi": "मैं सुरक्षित कैसे रहूँ?"
+  },
+  "wkFaqW9A": {
+    "en": "Share your trip with someone you trust, never take or give money outside the app, and leave any site that feels unsafe. Call support if you need help.",
+    "hi": "अपनी यात्रा किसी भरोसेमंद को शेयर करें, ऐप के बाहर पैसे न लें न दें, और असुरक्षित जगह से निकल जाएं। मदद चाहिए तो सहायता को कॉल करें।"
+  },
+  "wkFaqW10Q": {
+    "en": "How do ratings work?",
+    "hi": "रेटिंग कैसे काम करती है?"
+  },
+  "wkFaqW10A": {
+    "en": "Customers rate quality, time, behaviour and value. Good ratings bring more jobs and badges. You also rate the customer.",
+    "hi": "ग्राहक काम की क्वालिटी, समय, व्यवहार और दाम पर रेटिंग देते हैं। अच्छी रेटिंग से ज़्यादा काम और बैज मिलते हैं। आप भी ग्राहक को रेटिंग देते हैं।"
+  },
+  "wkFaqC1Q": {
+    "en": "How does payment work?",
+    "hi": "भुगतान कैसे होता है?"
+  },
+  "wkFaqC1A": {
+    "en": "When you accept a quote you pay the price plus a Rs 30 fee. BuildCrew holds the money safely. The worker gets it only after you confirm and rate the work.",
+    "hi": "कोटेशन मानने पर आप दाम और ₹30 फ़ीस देते हैं। BuildCrew पैसा सुरक्षित रखता है। आपके काम मानने और रेटिंग देने के बाद ही कारीगर को मिलता है।"
+  },
+  "wkFaqC2Q": {
+    "en": "When is the worker paid?",
+    "hi": "कारीगर को पैसे कब मिलते हैं?"
+  },
+  "wkFaqC2A": {
+    "en": "After you confirm the work and rate it. If you do nothing for 48 hours after the worker marks it done, payment is released automatically.",
+    "hi": "जब आप काम मान लें और रेटिंग दें। कारीगर के काम पूरा बताने के 48 घंटे बाद तक आप कुछ न करें तो पैसा अपने आप चला जाता है।"
+  },
+  "wkFaqC3Q": {
+    "en": "What is the start code?",
+    "hi": "स्टार्ट कोड क्या है?"
+  },
+  "wkFaqC3A": {
+    "en": "When the worker is on the way you see a short code. Tell it to the worker only when they reach your site. It confirms the right person arrived.",
+    "hi": "कारीगर के निकलने पर आपको एक छोटा कोड दिखता है। कारीगर के साइट पर पहुँचने पर ही उसे बताएं। इससे पक्का होता है कि सही व्यक्ति आया।"
+  },
+  "wkFaqC4Q": {
+    "en": "Can I cancel and get a refund?",
+    "hi": "क्या मैं रद्द करके रिफ़ंड ले सकता हूँ?"
+  },
+  "wkFaqC4A": {
+    "en": "Yes. Before work starts you get a full refund of price and fee. After work starts, tap Report a problem so our team can decide fairly.",
+    "hi": "हाँ। काम शुरू होने से पहले दाम और फ़ीस पूरी लौट जाती है। काम शुरू होने के बाद 'समस्या बताएं' दबाएं, हमारी टीम निष्पक्ष फ़ैसला करेगी।"
+  },
+  "wkFaqC5Q": {
+    "en": "What if the work has a problem later?",
+    "hi": "बाद में काम में कमी निकले तो?"
+  },
+  "wkFaqC5A": {
+    "en": "Use Ask for re-fix on the finished job. The worker visits again free of charge during the warranty.",
+    "hi": "पूरे हुए काम पर 'दोबारा ठीक कराएं' दबाएं। वारंटी में कारीगर मुफ़्त में दोबारा आता है।"
+  },
+  "wkFaqC6Q": {
+    "en": "What if I am not happy?",
+    "hi": "काम पसंद न आए तो?"
+  },
+  "wkFaqC6A": {
+    "en": "Send the work back for a fix (up to 3 times) or tap Report a problem. Your money stays safe until our team decides.",
+    "hi": "काम वापस ठीक करने भेजें (3 बार तक) या 'समस्या बताएं' दबाएं। हमारी टीम के फ़ैसले तक आपका पैसा सुरक्षित रहता है।"
+  },
+  "wkFaqC7Q": {
+    "en": "Are workers verified?",
+    "hi": "क्या कारीगर वेरिफ़ाइड हैं?"
+  },
+  "wkFaqC7A": {
+    "en": "Workers verify their phone and ID. Some also have police verification, shown as a badge.",
+    "hi": "कारीगर अपना फ़ोन और पहचान वेरिफ़ाई करते हैं। कुछ की पुलिस वेरिफ़िकेशन भी होती है, जो बैज में दिखती है।"
+  },
+  "wkFaqC8Q": {
+    "en": "What are the fees?",
+    "hi": "फ़ीस कितनी है?"
+  },
+  "wkFaqC8A": {
+    "en": "A fixed fee of Rs 30 is added to the worker's price. There are no other hidden charges.",
+    "hi": "कारीगर के दाम में ₹30 की तय फ़ीस जुड़ती है। कोई और छिपा खर्च नहीं।"
+  },
+  "wkFaqC9Q": {
+    "en": "How can I stay safe?",
+    "hi": "मैं सुरक्षित कैसे रहूँ?"
+  },
+  "wkFaqC9A": {
+    "en": "Check the worker's rating and badges, share the live trip with family, keep valuables safe, and pay only in the app. Call support if something feels wrong.",
+    "hi": "कारीगर की रेटिंग और बैज देखें, लाइव यात्रा परिवार को शेयर करें, कीमती सामान सुरक्षित रखें और पैसे सिर्फ़ ऐप में दें। कुछ गलत लगे तो सहायता को कॉल करें।"
+  },
+  "wkFaqC10Q": {
+    "en": "What if the worker does not come?",
+    "hi": "कारीगर न आए तो?"
+  },
+  "wkFaqC10A": {
+    "en": "Report it on the job screen or call support. Your money is refunded in full.",
+    "hi": "जॉब स्क्रीन पर बताएं या सहायता को कॉल करें। आपका पूरा पैसा लौटा दिया जाएगा।"
+  }
+}
