@@ -5,17 +5,15 @@ from functools import lru_cache
 from ..config import get_settings
 from .infra import DevSmsStub, GoogleMaps, MapsService, MockMaps, MockRealtime, Msg91Sms, RealtimeService, SmsProvider
 from .language import BhashiniAdapter, GoogleAdapter, MockSpeech, MockTranslation, SpeechService, TranslationService
-from .payout import MockPayoutProvider, PayoutProvider, RazorpayXPayoutProvider
-from .payment import MockPaymentProvider, PaymentProvider, RazorpayRouteProvider
+from .payout import MockPayoutProvider, PayoutProvider, RazorpayXPayoutProvider, build_payout_provider
+from .payment import MockPaymentProvider, PaymentProvider, RazorpayProvider, build_payment_provider
+from .push import FcmPush, MockPush, PushProvider
 from .storage import LocalStorage, S3Storage, StorageService
 
 
 @lru_cache
 def payment() -> PaymentProvider:
-    s = get_settings()
-    if s.payment_provider == "razorpay":
-        return RazorpayRouteProvider(s.razorpay_key_id, s.razorpay_key_secret, s.razorpay_webhook_secret)
-    return MockPaymentProvider()
+    return build_payment_provider(get_settings())
 
 
 @lru_cache
@@ -59,5 +57,16 @@ def realtime() -> RealtimeService:
 
 @lru_cache
 def payouts() -> PayoutProvider:
+    return build_payout_provider(get_settings())
+
+
+@lru_cache
+def push() -> PushProvider:
     s = get_settings()
-    return RazorpayXPayoutProvider() if s.payout_provider == "razorpayx" else MockPayoutProvider(s.payout_mock_settle_seconds)
+    if s.fcm_service_account_json:
+        try:
+            return FcmPush(s.fcm_service_account_json)
+        except Exception:
+            import logging
+            logging.getLogger("app.push").exception("FCM_SERVICE_ACCOUNT_JSON invalid; using the mock push provider")
+    return MockPush()

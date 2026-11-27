@@ -25,6 +25,7 @@ from ..models import (
     Assignment, Attendance, Bid, Job, Payment, Payout, Rating, TripShare, User, WorkerProfile, WorkItem, WorkItemPhoto,
 )
 from . import levels
+from .notify import notify
 
 IST = timezone(timedelta(hours=5, minutes=30))
 now = lambda: datetime.now(timezone.utc)  # noqa: E731
@@ -353,6 +354,7 @@ def request_refix(db: Session, customer: User, a: Assignment, reason: str, photo
     a.worker.worker_profile.refix_count += 1
     flows.add_event(db, a, "refix_requested", "customer", note=reason[:500], photos=photos)
     audit(db, actor_id=customer.id, action="refix.requested", entity="assignment", entity_id=r.id, parent=a.id)
+    notify(db, a.worker_id, "refix_requested", job_id=job.id, assignment_id=r.id, locality=orig.locality, reason=reason[:80])
     services.realtime().publish(f"job:{a.job_id}", "refix", {"job_id": str(job.id)})
     return r
 
@@ -373,7 +375,12 @@ def auto_payout(db: Session, a: Assignment, amount_paise: int) -> Payout | None:
     wp = worker.worker_profile
     if worker.kyc_level < 1 or not wp.upi_id or flows.kyc_state(worker)["blocked_by_level2"]:
         return None
-    ref, st = services.payouts().send(upi_id=wp.upi_id, amount_paise=amount_paise, reference=f"asg_{a.id.hex[:16]}")
+    try:
+        ref, st = services.payouts().send(upi_id=wp.upi_id, amount_paise=amount_paise, reference=f"asg_{a.id.hex[:16]}")
+    except Exception:  # provider down: leave it in the balance; the worker can withdraw later
+        import logging
+        logging.getLogger("app").exception("auto payout failed; kept in balance")
+        return None
     p = Payout(worker_id=worker.id, amount_paise=amount_paise, upi_masked=mask_upi(wp.upi_id) or "", status="processing",
                provider_ref=ref, source="auto", assignment_id=a.id)
     db.add(p)
@@ -389,9 +396,18 @@ def settle_payouts(db: Session, worker_id=None) -> int:
         q = q.where(Payout.worker_id == worker_id)
     n = 0
     for p in db.scalars(q):
-        if services.payouts().status(p.provider_ref or "", p.created_at) == "paid":
+        try:
+            st = services.payouts().status(p.provider_ref or "", p.created_at)
+        except Exception:  # provider hiccup: try again on the next read
+            continue
+        if st == "paid":
             p.status, p.paid_at = "paid", now()
             audit(db, actor_id=None, action="payout.paid", entity="payout", entity_id=p.id)
+            notify(db, p.worker_id, "payout_paid", assignment_id=p.assignment_id, amount=round(p.amount_paise / 100), upi=p.upi_masked)
+            n += 1
+        elif st == "failed":  # money returns to the worker's available balance
+            p.status = "failed"
+            audit(db, actor_id=None, action="payout.failed", entity="payout", entity_id=p.id)
             n += 1
     if n:
         db.flush()
@@ -437,6 +453,8 @@ def set_direct(db: Session, customer: User, job: Job, worker_id: uuid.UUID) -> N
     job.direct_until = now() + timedelta(hours=get_settings().direct_request_hours)
     job.direct_declined = False
     audit(db, actor_id=customer.id, action="job.direct_offered", entity="job", entity_id=job.id, worker=w.id)
+    notify(db, w.id, "direct_request", job_id=job.id, other_user_id=customer.id, name=customer.name or "BuildCrew",
+           locality=job.locality, hours=get_settings().direct_request_hours)
 
 
 def decline_direct(db: Session, worker: User, job: Job) -> dict:

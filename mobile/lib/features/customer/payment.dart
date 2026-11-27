@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
+import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
@@ -29,21 +32,133 @@ class PaymentScreen extends StatefulWidget {
 class _PaymentScreenState extends State<PaymentScreen> {
   String _method = 'upi';
   bool _paying = false;
+  bool _verifying = false;
+  Razorpay? _rzp;
+
+  @override
+  void dispose() {
+    _rzp?.clear(); // removes every listener
+    super.dispose();
+  }
 
   Future<void> _pay() async {
     setState(() => _paying = true);
     try {
       final p = await widget.state.api.payJob(widget.jobId, _method);
       if (!mounted) return;
-      HapticFeedback.heavyImpact();
-      await Navigator.of(context).pushReplacement(customerRoute<void>(
-        builder: (_) => PaymentSuccessScreen(payment: p, workerName: widget.workerName),
-      ));
+      if (p['provider'] == 'razorpay' && p['order_id'] != null && p['escrow_state'] == null) {
+        _teamTotal ??= (p['remaining'] as num?)?.toInt() ?? 1;
+        _openCheckout(p); // live keys: Razorpay's own PCI-certified page; result arrives via the listeners below
+        return;
+      }
+      await _done(p);
     } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _paying = false);
+      if (mounted) {
+        setState(() => _paying = false);
+        showError(context, e);
+      }
     }
+  }
+
+  Future<void> _done(Json p) async {
+    HapticFeedback.heavyImpact();
+    if (!mounted) return;
+    setState(() => _paying = false);
+    await Navigator.of(context).pushReplacement(customerRoute<void>(
+      builder: (_) => PaymentSuccessScreen(payment: p, workerName: widget.workerName),
+    ));
+  }
+
+  String _contact() {
+    final n = (widget.state.user?.phone ?? '').replaceAll(RegExp(r'\D'), '');
+    return n.length == 10 ? '+91$n' : (n.isEmpty ? '' : '+$n');
+  }
+
+  void _openCheckout(Json co) {
+    final rzp = _rzp ??= (Razorpay()
+      ..on(Razorpay.EVENT_PAYMENT_SUCCESS, _onSuccess)
+      ..on(Razorpay.EVENT_PAYMENT_ERROR, _onError)
+      ..on(Razorpay.EVENT_EXTERNAL_WALLET, _onWallet));
+    _order = co;
+    final upi = _method == 'upi';
+    try {
+      rzp.open({
+        'key': co['key_id'], // PUBLIC key id; the secret never leaves the server
+        'order_id': co['order_id'],
+        'amount': co['amount'],
+        'currency': co['currency'] ?? 'INR',
+        'name': 'BuildCrew',
+        'description': co['description'] ?? 'Work payment',
+        'prefill': {'contact': _contact()},
+        'theme': {'color': '#EA580C'},
+        'timeout': 600,
+        'retry': {'enabled': true, 'max_count': 2},
+        // UPI first (most workers/customers pay by UPI); cards and netbanking stay available under "Other".
+        if (upi)
+          'config': {
+            'display': {
+              'blocks': {
+                'upi': {'name': 'UPI', 'instruments': [{'method': 'upi'}]}
+              },
+              'sequence': ['block.upi'],
+              'preferences': {'show_default_blocks': true},
+            }
+          },
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _paying = false);
+        showError(context, e);
+      }
+    }
+  }
+
+  Json? _order;
+  int? _teamTotal; // team jobs pay one Razorpay order per hired worker
+
+  Future<void> _onSuccess(PaymentSuccessResponse r) async {
+    if (!mounted) return;
+    setState(() => _verifying = true);
+    try {
+      // The server checks HMAC-SHA256(order_id|payment_id) with its secret before holding the money.
+      final p = await widget.state.api.payJobVerify(widget.jobId,
+          orderId: r.orderId ?? '${_order?['order_id']}', paymentId: r.paymentId ?? '', signature: r.signature ?? '', method: _method);
+      if (!mounted) return;
+      setState(() => _verifying = false);
+      final remaining = (p['remaining'] as num?)?.toInt() ?? 0;
+      if (p['provider'] == 'razorpay' && p['order_id'] != null && p['escrow_state'] == null && remaining > 0) {
+        // Team job: one Razorpay order per hired worker. Open the next one.
+        final total = _teamTotal ?? remaining + 1;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L.of(context).payTeamNext(total - remaining, total))));
+        _openCheckout(p);
+        return;
+      }
+      await _done(p);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _verifying = false;
+          _paying = false;
+        });
+        showError(context, e);
+      }
+    }
+  }
+
+  void _onError(PaymentFailureResponse r) {
+    if (!mounted) return;
+    setState(() => _paying = false);
+    final l = L.of(context);
+    final cancelled = r.code == Razorpay.PAYMENT_CANCELLED;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(cancelled ? l.payCancelled : l.payFailed), backgroundColor: BC.ink));
+  }
+
+  void _onWallet(ExternalWalletResponse r) {
+    // The user left for a wallet app (Paytm, ...). The payment.captured webhook confirms it server-side;
+    // when they come back, paying again returns the already-held payment instead of charging twice.
+    if (mounted) setState(() => _paying = false);
   }
 
   @override
@@ -100,6 +215,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ),
         const SizedBox(height: 16),
         InfoBanner(icon: Icons.verified_user_rounded, color: BC.money, text: l.escrowExplain),
+        const SizedBox(height: 12),
+        const RefundPolicyBox(),
         const SizedBox(height: 20),
         Text(l.choosePaymentMethod, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 10),
@@ -123,7 +240,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white)),
                     const SizedBox(width: 12),
-                    Text(l.processingPayment),
+                    Text(_verifying ? l.payVerifying : l.processingPayment),
                   ])
                 : Text(l.payAmount(inr(total))),
           ),
@@ -268,10 +385,58 @@ class ReceiptScreen extends StatelessWidget {
           ]),
         ),
         const SizedBox(height: 16),
+        const RefundPolicyBox(),
+        const SizedBox(height: 16),
         OutlinedButton.icon(
           onPressed: () => Share.share([for (final (a, b) in rows) '$a: $b'].join('\n')),
           icon: const Icon(Icons.share_rounded),
           label: BtnLabel(l.shareReceipt),
+        ),
+      ]),
+    );
+  }
+}
+
+
+/// #16 Cancellation and refund policy, shown on the payment page and the receipt. Short, plain, with the support line.
+class RefundPolicyBox extends StatelessWidget {
+  const RefundPolicyBox({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    Widget bullet(String t) => Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Padding(padding: EdgeInsets.only(top: 6), child: Icon(Icons.circle, size: 6, color: BC.inkSoft)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(t, style: const TextStyle(fontSize: 14, height: 1.35, color: BC.inkSoft))),
+          ]),
+        );
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(BC.r), border: Border.all(color: BC.line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.policy_outlined, size: 20, color: BC.ink),
+          const SizedBox(width: 8),
+          Expanded(child: Text(l.refundPolicyTitle, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+        ]),
+        bullet(l.refundPolicyBefore),
+        bullet(l.refundPolicyAfter),
+        bullet(l.refundPolicyNoShow),
+        bullet(l.refundPolicyWarranty),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () => launchUrl(Uri.parse('tel:$supportPhone')),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              const Icon(Icons.call_rounded, size: 18, color: BC.brandDark),
+              const SizedBox(width: 8),
+              Expanded(child: Text(l.refundPolicyHelp(supportPhoneDisplay), style: const TextStyle(fontWeight: FontWeight.w700, color: BC.brandDark))),
+            ]),
+          ),
         ),
       ]),
     );

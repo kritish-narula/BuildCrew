@@ -1,6 +1,7 @@
 import 'package:buildcrew/core/api.dart';
 import 'package:buildcrew/core/demo_accounts.dart';
 import 'package:buildcrew/core/demo_api.dart';
+import 'package:buildcrew/core/sync.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1347,6 +1348,102 @@ void main() {
       final row = (await api.workerFeed()).firstWhere((r) => r['id'] == id);
       expect(row['direct'], isNotNull);
       await api.placeBid(id, 15000, 'ref-ramesh-direct');
+    });
+  });
+
+  group('sync + notifications', () {
+    Future<String> postJobAsPriya() async {
+      await signInAs(_priya);
+      return (await api.createJob(_jobBody()))['id'] as String;
+    }
+
+    test('sync: baseline cursor, quiet polls change nothing, a write bumps the revision', () async {
+      await signInAs(_priya);
+      final b = await api.sync(null);
+      expect(b['full'], true);
+      final settled = (await api.sync(b['cursor'] as int))['cursor'] as int;
+      final quiet = await api.sync(settled);
+      expect(quiet['cursor'], settled);
+      expect((quiet['changed'] as Map)['all'], false);
+      // reads must not tick the revision
+      await api.customerJobs();
+      await api.unreadNotifications();
+      expect((await api.sync(settled))['cursor'], settled);
+      // a real write does
+      await api.createJob(_jobBody());
+      final after = await api.sync(settled);
+      expect(after['cursor'] as int, greaterThan(settled));
+      expect((after['changed'] as Map)['all'], true);
+    });
+
+    test('notifications: new quote -> unread count -> mark read; accept and chat notify the other side', () async {
+      final jobId = await postJobAsPriya();
+      final priya = (await signInAs(_priya)).id;
+      expect(await api.unreadNotifications(), 0);
+      final cursor = (await api.sync(null))['cursor'] as int;
+
+      await signInAs(_ramesh);
+      final bid = await api.placeBid(jobId, 15000, 'ref-sync-1');
+
+      await signInAs(_priya);
+      expect(await api.unreadNotifications(), 1);
+      final s = await api.sync(cursor);
+      expect(s['unread'], 1);
+      expect((s['changed'] as Map)['notifications'], 1);
+      var list = await api.notifications();
+      expect(list.single['kind'], 'new_quote');
+      expect(list.single['read'], false);
+      expect(list.single['link'], '/job/$jobId');
+      expect((list.single['title'] as String).isNotEmpty, true);
+      await api.markNotificationsRead([list.single['id'] as String]);
+      expect(await api.unreadNotifications(), 0);
+      expect((await api.notifications()).single['read'], true);
+
+      // accepting tells the worker; chatting tells the other person; unread is per user
+      await api.acceptBid(jobId, bid['id'] as String);
+      await signInAs(_ramesh);
+      list = await api.notifications();
+      expect(list.first['kind'], 'quote_accepted');
+      expect(await api.unreadNotifications(), 1);
+      final ramesh = (await api.workerProfile())['id'] as String;
+      await signInAs(_priya);
+      await api.sendChat(jobId, ramesh, 'Kal 9 baje aa jao');
+      await signInAs(_ramesh);
+      list = await api.notifications();
+      expect(list.first['kind'], 'chat_message');
+      expect(list.first['body'], 'Kal 9 baje aa jao');
+      expect(list.first['link'], '/chat/$jobId/$priya');
+      expect(await api.unreadNotifications(), 2);
+      await api.markNotificationsRead(); // everything
+      expect(await api.unreadNotifications(), 0);
+      await signInAs(_priya); // the customer's own list is untouched by the worker's read-all
+      expect((await api.notifications()).any((n) => n['kind'] == 'new_quote'), true);
+    });
+
+    test('SyncService: baseline, revision ticks on a change, unread count, boost switches the interval', () async {
+      final jobId = await postJobAsPriya();
+      final svc = SyncService(api)..start();
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(svc.healthy, true);
+      final base = svc.revision.value;
+      expect(base, greaterThan(0));
+      expect(svc.interval, SyncService.idle);
+      final holder = Object();
+      svc.boost(holder);
+      expect(svc.interval, SyncService.live);
+      svc.release(holder);
+      expect(svc.interval, SyncService.idle);
+
+      await signInAs(_ramesh);
+      await api.placeBid(jobId, 15000, 'ref-sync-svc');
+      await signInAs(_priya);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await svc.pollNow();
+      expect(svc.revision.value, greaterThan(base));
+      expect(svc.unread.value, 1);
+      expect(svc.last.notifications, 1);
+      svc.stop();
+      expect(SyncService.current, isNull);
     });
   });
 }

@@ -2,6 +2,7 @@
 Phases 2–5 add the write flows), and dev-only helpers."""
 import hashlib
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import Response
@@ -38,7 +39,8 @@ def public_config():
     s = get_settings()
     return {"platform_fee_flat_inr": s.platform_fee_flat_inr, "platform_take_rate_pct": s.platform_take_rate_pct,
             "audio_max_seconds": s.audio_max_seconds, "audio_soft_prompt_seconds": s.audio_soft_prompt_seconds,
-            "audio_target_kbps": s.audio_target_kbps, "kyc_l2_earnings_cap_inr": s.kyc_l2_earnings_cap_inr}
+            "audio_target_kbps": s.audio_target_kbps, "kyc_l2_earnings_cap_inr": s.kyc_l2_earnings_cap_inr,
+            "support_phone": s.support_phone}
 
 
 class TtsIn(BaseModel):
@@ -215,6 +217,9 @@ def chat_send(job_id: uuid.UUID, body: ChatIn, user: User = Depends(current_user
         raise AppError("err.chat_closed", 409)  # not hired (or job cancelled): the old thread stays readable, read-only
     m = ChatMessage(job_id=job.id, sender_id=user.id, recipient_id=w if user.id == c else c, body=body.body.strip())
     db.add(m)
+    from ..domain.notify import notify
+    notify(db, m.recipient_id, "chat_message", job_id=job.id, other_user_id=user.id, name=user.name or mask_phone(user.phone),
+           text=m.body[:120])
     db.commit()
     services.realtime().publish(f"chat:{job.id}", "message", {"id": str(m.id)})
     return {"ok": True}
@@ -246,21 +251,50 @@ def chat_threads(user: User = Depends(current_user), db: Session = Depends(get_d
 
 @files.post("/payments/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
-    """Razorpay → us. Signature verified BEFORE parsing; only `payment.captured` moves escrow
-    to HELD. Replays are harmless (state machine ignores same-state transitions)."""
+    """Razorpay -> us (configure the URL `<public_base_url>/payments/webhook` in the Razorpay dashboard with events
+    payment.captured, payment.failed, refund.processed). Signature (X-Razorpay-Signature, HMAC-SHA256 of the RAW body with the
+    webhook secret) is verified BEFORE parsing. Delivery is at-least-once: `X-Razorpay-Event-Id` (or a body hash) is stored,
+    so a replay is acknowledged and ignored; the state machine is idempotent as a second line of defence."""
     raw = await request.body()
     if not services.payment().verify_webhook(raw, request.headers.get("x-razorpay-signature", "")):
         raise AppError("err.forbidden", 403)
     import json
+    from sqlalchemy.exc import IntegrityError
+    from ..audit import audit
     from ..domain.flows import mark_held
-    from ..models import Assignment, Payment
+    from ..domain.notify import notify
+    from ..models import Assignment, Payment, WebhookEvent
     event = json.loads(raw)
-    if event.get("event") == "payment.captured":
-        order_id = event["payload"]["payment"]["entity"]["order_id"]
-        p = db.scalar(select(Payment).where(Payment.razorpay_ref == order_id))
+    name = event.get("event", "")
+    eid = request.headers.get("x-razorpay-event-id") or hashlib.sha256(raw).hexdigest()
+    try:
+        db.add(WebhookEvent(id=eid[:80], event=name[:40]))
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return {"ok": True, "duplicate": True}
+    pay = ((event.get("payload") or {}).get("payment") or {}).get("entity") or {}
+    ref = ((event.get("payload") or {}).get("refund") or {}).get("entity") or {}
+    if name == "payment.captured":
+        p = db.scalar(select(Payment).where(Payment.razorpay_ref == pay.get("order_id")))
+        if p:
+            p.razorpay_payment_id = p.razorpay_payment_id or pay.get("id")
+            if p.escrow_state == EscrowState.created:
+                p.method = p.method or pay.get("method")
+                mark_held(db, p, db.get(Assignment, p.assignment_id), actor_id=None)
+                p.paid_at = p.paid_at or datetime.now(timezone.utc)
+    elif name == "payment.failed":
+        p = db.scalar(select(Payment).where(Payment.razorpay_ref == pay.get("order_id")))
         if p and p.escrow_state == EscrowState.created:
-            mark_held(db, p, db.get(Assignment, p.assignment_id), actor_id=None)
-            db.commit()
+            a = db.get(Assignment, p.assignment_id)
+            audit(db, actor_id=None, action="payment.failed", entity="payment", entity_id=p.id, reason=pay.get("error_code"))
+            notify(db, a.job.customer_id, "payment_failed", job_id=a.job_id, assignment_id=a.id, amount=round(p.amount_paise / 100))
+    elif name == "refund.processed":
+        p = db.scalar(select(Payment).where(Payment.razorpay_payment_id == ref.get("payment_id")))
+        if p:
+            p.refund_ref = p.refund_ref or ref.get("id")
+            audit(db, actor_id=None, action="payment.refund_processed", entity="payment", entity_id=p.id, amount=ref.get("amount"))
+    db.commit()
     return {"ok": True}
 
 

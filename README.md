@@ -85,14 +85,29 @@ Every integration sits behind an interface in `backend/app/services/`. Switch on
 
 | Service | Env switch | Keys |
 |---|---|---|
-| Payments: Razorpay Route escrow | `PAYMENT_PROVIDER=razorpay` | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` |
+| Payments: Razorpay Checkout (escrow is a ledger state) | automatic when both keys are set (`PAYMENT_PROVIDER=auto`; `mock` forces the demo flow) | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` |
+| Worker payouts: RazorpayX to UPI | automatic when `RAZORPAYX_ACCOUNT_NUMBER` + keys are set (`PAYOUT_PROVIDER=auto`; `mock` / `razorpayx` to force) | `RAZORPAYX_ACCOUNT_NUMBER`, `RAZORPAYX_KEY_ID`, `RAZORPAYX_KEY_SECRET` (default to the `RAZORPAY_*` pair) |
+| Background push (FCM HTTP v1) | enabled when `FCM_SERVICE_ACCOUNT_JSON` is set (JSON text or file path); otherwise a mock logs the pushes | `FCM_SERVICE_ACCOUNT_JSON` |
 | Translation / STT / TTS: Bhashini | `TRANSLATION_PROVIDER=bhashini`, `SPEECH_PROVIDER=bhashini` | `BHASHINI_USER_ID`, `BHASHINI_API_KEY`, `BHASHINI_PIPELINE_ID` |
 | Translation / STT / TTS: Google | `…=google` | `GOOGLE_API_KEY` |
 | Maps | `MAPS_PROVIDER=google` | `GOOGLE_MAPS_API_KEY` |
 | SMS (DLT-registered template) | `SMS_PROVIDER=msg91` | `MSG91_AUTH_KEY` |
 | Storage (private bucket) | `STORAGE_PROVIDER=s3` | `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` |
 
-**Before going live with payments:** each worker needs a Razorpay Route linked account (or use RazorpayX payouts to their UPI ID). Test the whole flow in Razorpay test mode first.
+### Real payments (Razorpay) and payouts (RazorpayX)
+
+1. In the Razorpay dashboard use **Test mode** first (`rzp_test_...` keys). Put `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` in the backend env. **Never** put the secret in the app: only the public key id is sent to the phone, in the `/customer/jobs/{id}/pay` response.
+2. Webhook: add `https://<your API host>/payments/webhook`, a secret of your choice (= `RAZORPAY_WEBHOOK_SECRET`) and the events `payment.captured`, `payment.failed`, `refund.processed`. Keep **auto-capture** on. The signature (`X-Razorpay-Signature`) is verified on the raw body, and `X-Razorpay-Event-Id` makes replays harmless.
+3. Flow: accepting a quote creates a Razorpay **Order** (amount computed on the server). `POST /customer/jobs/{id}/pay` returns `{provider:'razorpay', order_id, key_id, amount, currency}`; the app opens Razorpay Checkout (UPI first), then calls the same endpoint again with `razorpay_order_id`, `razorpay_payment_id`, `razorpay_signature`. The server accepts it only if `HMAC_SHA256(order_id|payment_id, key_secret)` matches; the webhook is the independent second confirmation. Without keys, `/pay` keeps the demo behaviour (`provider:'mock'`).
+4. Escrow is a ledger state: the money sits in your Razorpay balance until the customer rates the worker. Cancellation before work starts, a no-show or a worker withdrawal call the Razorpay **Refund** API for the full amount (fee included). Team jobs create one order per hired worker (the app opens them one after another).
+5. Payouts: when escrow is released the worker gets a RazorpayX payout to his UPI (contact, fund account `vpa`, payout mode `UPI`). Fund your RazorpayX account and set `RAZORPAYX_ACCOUNT_NUMBER`. Failed payouts flip to `failed` and the money returns to his available balance. `RAZORPAY_ROUTE_ENABLED=true` switches checkout to Route linked-account transfers instead (needs business KYC per worker; off by default).
+6. Android: `prepare_android.py` adds the R8 rules and the `upi://pay` package-visibility queries Razorpay Checkout needs. The pay page shows the cancellation and refund policy; support: `SUPPORT_PHONE` (default `+917973493558`).
+
+### Sync and notifications
+
+- `GET /sync?since=<cursor>` is the cheap change feed (`{cursor, full, unread, changed:{jobs, assignments, chats, earnings, notifications}}`); rows are written automatically by a session hook in `domain/sync.py`. The app polls it every 15 s (3 s while a live-tracking, assignment or chat screen is open) and screens reload only when something changed. Old per-screen `Poller`s keep working but only hit the network when `/sync` says so.
+- `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/read` (`{ids?}`), `POST /me/push-token`. Text is rendered in the reader's language from `notif.<kind>.title/body` in `backend/app/i18n/locales`.
+- **Background push needs a Firebase project.** Create one, add the Android app `com.buildcrew.app`, download `google-services.json`, generate a service-account key (Project settings, Service accounts) and set `FCM_SERVICE_ACCOUNT_JSON` on the server. In the app add `firebase_core` + `firebase_messaging`, put `google-services.json` in `mobile/android/app` (CI secret) and set `PushClient.tokenProvider` (see `mobile/lib/core/push_client.dart`). Until then the app shows local system notifications while it is running or resumed.
 
 **Realtime: Supabase Realtime over Firebase.** Our data already lives in Postgres. Supabase streams bid and chat changes straight from it, applies the same row-level access rules, and can be hosted in Mumbai for data residency. Locally, a mock sits behind the same `RealtimeService` interface.
 

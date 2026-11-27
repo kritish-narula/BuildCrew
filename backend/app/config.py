@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     #   python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
     data_encryption_key: str = "xY3v0J6m1dU6Qm0uVZr1o7mJ0pS9x3c2HkzPqM8nE1Q="  # dev only
     otp_requests_per_hour: int = 5
+    support_phone: str = "+917973493558"  # SUPPORT_PHONE; shown in policy boxes, dispute messages, /meta/config
     jwt_ttl_hours: int = 24 * 30  # workers on shared phones shouldn't re-login often
     public_base_url: str = "http://localhost:8000"
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
@@ -52,7 +53,7 @@ class Settings(BaseSettings):
     public_trip_base_url: str = "https://buildcrew.app/t"
     # Same-day pay: payouts go to UPI as soon as the escrow is released. "mock" settles after a few seconds;
     # a real RazorpayX adapter replaces it (see services/payout.py).
-    payout_provider: str = "mock"          # mock | razorpayx
+    payout_provider: str = "auto"          # auto (razorpayx if RAZORPAYX_ACCOUNT_NUMBER + keys set, else mock) | mock | razorpayx
     payout_mock_settle_seconds: int = 5
     # Skill ladder (ordered). A worker is at the HIGHEST level whose rules all hold. `max_refix_rate` is
     # re-fixes / completed jobs. `fair_multiplier` scales the fair-wage band suggested to that worker (never the legal minimum).
@@ -71,13 +72,21 @@ class Settings(BaseSettings):
     worker_feed_radius_km: float = 15.0
 
     # --- Adapters (swap "mock" for real providers; see README) -------------------------
-    payment_provider: str = "mock"        # mock | razorpay
+    payment_provider: str = "auto"        # auto (razorpay if RAZORPAY_KEY_ID+SECRET set, else mock) | mock | razorpay
     translation_provider: str = "mock"    # mock | bhashini | google
     speech_provider: str = "mock"         # mock | bhashini | google
     storage_provider: str = "local"       # local | s3 (MinIO / AWS / GCS-interop)
     sms_provider: str = "dev"             # dev | msg91
     maps_provider: str = "mock"           # mock | google
 
+    # Push: set to the Firebase service-account JSON (text or file path) to enable FCM; empty = mock (logs only).
+    fcm_service_account_json: str = ""
+    # Razorpay checkout (customer pays). Keys present + payment_provider "auto" -> live; "mock" forces the demo flow.
+    razorpay_route_enabled: bool = False   # Route linked-account transfers (needs business KYC per worker); off = plain Orders
+    # RazorpayX payouts to worker UPI (same API key pair unless overridden). PAYOUT_PROVIDER auto|mock|razorpayx.
+    razorpayx_key_id: str = ""
+    razorpayx_key_secret: str = ""
+    razorpayx_account_number: str = ""
     razorpay_key_id: str = ""
     razorpay_key_secret: str = ""
     razorpay_webhook_secret: str = ""
