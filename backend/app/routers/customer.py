@@ -12,8 +12,9 @@ from ..audit import audit
 from ..config import get_settings
 from ..db import get_db
 from ..domain import flows, levels, pricing, team, trust
+from ..domain.notify import notify_nearby_workers
 from ..domain.state import transition
-from ..enums import AudioUploadState, BidStatus, JobStatus, Role, Trade
+from ..enums import AudioUploadState, BidStatus, EscrowState, JobStatus, Role, Trade
 from ..errors import AppError
 from ..models import Assignment, Bid, Job, Payment, PriceHistory, User, WorkerProfile, WorkItem, WorkItemPhoto
 from ..security import require
@@ -185,6 +186,7 @@ def create_job(body: JobIn, user: User = Depends(C), db: Session = Depends(get_d
     if body.direct_worker_id:
         trust.set_direct(db, user, job, body.direct_worker_id)
     audit(db, actor_id=user.id, action="job.posted", entity="job", entity_id=job.id, items=len(body.work_items), kind=body.kind)
+    notify_nearby_workers(db, job)
     db.commit()
     return {"id": str(job.id), "status": job.status.value, "locality": locality,
             "direct_until": job.direct_until.isoformat() if job.direct_until else None}
@@ -283,29 +285,49 @@ def accept(job_id: uuid.UUID, bid_id: uuid.UUID, user: User = Depends(C), db: Se
     p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
     # Checkout params for the client (key_id is PUBLIC; the secret never leaves the server).
     return {"assignment_id": str(a.id), "payment": payment_view(p),
-            "checkout": {"order_id": p.razorpay_ref, "key_id": get_settings().razorpay_key_id or "rzp_test_mock",
+            "checkout": {"order_id": p.razorpay_ref, "key_id": services.payment().checkout_key_id(),
                          "amount_paise": p.amount_paise}}
 
 
 class PayIn(BaseModel):
-    method: str = Field(pattern="^(upi|card|netbanking)$")
+    method: str = Field("upi", pattern="^(upi|card|netbanking)$")
     razorpay_payment_id: str | None = None
     razorpay_signature: str | None = None
+    razorpay_order_id: str | None = None  # team jobs have one order per hired worker
+
+
+def _checkout(p: Payment, remaining: int) -> dict:
+    """Everything the app needs to open Razorpay Checkout. key_id is PUBLIC; the secret never leaves the server."""
+    return {"provider": "razorpay", "order_id": p.razorpay_ref, "key_id": services.payment().checkout_key_id(),
+            "amount": p.amount_paise, "currency": "INR", "name": "BuildCrew", "description": "Work payment (held safely until you rate)",
+            "remaining": remaining}
 
 
 @router.post("/jobs/{job_id}/pay")
 def pay(job_id: uuid.UUID, body: PayIn, user: User = Depends(C), db: Session = Depends(get_db)):
     """Payment page → money into escrow. Amount is NOT accepted from the client."""
     job = _own(db, user, job_id)
+    live = services.payment().live
     if job.kind == "team":
+        unpaid = [p for a in team._assignments(db, job)
+                  if (p := db.scalar(select(Payment).where(Payment.assignment_id == a.id))) and p.escrow_state == EscrowState.created]
+        if live and not body.razorpay_payment_id and unpaid:  # start the NEXT worker's checkout
+            return _checkout(unpaid[0], len(unpaid))
         out = team.pay_team(db, user, job, method=body.method, razorpay_payment_id=body.razorpay_payment_id,
-                            signature=body.razorpay_signature)
+                            signature=body.razorpay_signature, razorpay_order_id=body.razorpay_order_id)
         db.commit()
+        out["provider"] = "razorpay" if live else "mock"
+        out["remaining"] = len(unpaid) - out["count"] if live else 0
         return out
-    p = flows.pay_escrow(db, user, _assignment(db, job), method=body.method,
+    a = _assignment(db, job)
+    if live and not body.razorpay_payment_id:
+        p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
+        if p and p.escrow_state == EscrowState.created and a.job.customer_id == user.id:
+            return _checkout(p, 1)
+    p = flows.pay_escrow(db, user, a, method=body.method,
                          razorpay_payment_id=body.razorpay_payment_id, signature=body.razorpay_signature)
     db.commit()
-    return payment_view(p)
+    return {**payment_view(p), "provider": "razorpay" if live else "mock", "remaining": 0}
 
 
 class SettleIn(BaseModel):

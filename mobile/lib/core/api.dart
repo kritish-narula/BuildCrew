@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import 'config.dart';
 import 'demo_api.dart';
+import 'media_util.dart';
 
 typedef Json = Map<String, dynamic>;
 
@@ -104,8 +105,12 @@ abstract class Api {
   Future<Json> createJob(Json body);
   Future<Json> customerJob(String id);
   Future<Json> acceptBid(String jobId, String bidId);
-  /// Payment page: quote + fee into escrow. Returns the payment (with method, paid_at, ref).
+  /// Payment page: quote + fee into escrow. Returns the payment (with method, paid_at, ref). With live Razorpay keys the
+  /// FIRST call returns Checkout params instead: `{provider: 'razorpay', order_id, key_id, amount, currency, remaining}`;
+  /// open Razorpay Checkout, then call [payJobVerify].
   Future<Json> payJob(String jobId, String method);
+  /// After Razorpay Checkout succeeded: the server verifies the HMAC signature, then holds the money in escrow.
+  Future<Json> payJobVerify(String jobId, {required String orderId, required String paymentId, required String signature, String method = 'upi'});
   Future<void> completeJob(String jobId);
   Future<Json> rateWorker(String jobId, Json stars);
   /// Cancel: free before a hire; after a hire (work not started) the hire ends and paid money is refunded in
@@ -146,6 +151,18 @@ abstract class Api {
   Future<Json> settleTeamWorker(String jobId, String assignmentId, Json stars);
   /// Contractors: business name shown to workers.
   Future<void> setBusinessName(String name);
+
+  // sync + notifications
+  /// Change feed: `{cursor, full, unread, changed: {jobs, assignments, chats, earnings, notifications}}`.
+  /// `since == null` returns a baseline cursor. Cheap: call it instead of re-downloading lists.
+  Future<Json> sync(int? since);
+  /// `[{id, kind, title, body, job_id, assignment_id, with_user, read, at, link}]`, newest first. [link] is a go_router path.
+  Future<List<Json>> notifications({int limit = 40});
+  Future<int> unreadNotifications();
+  /// Mark [ids] (or everything when null) as read.
+  Future<void> markNotificationsRead([List<String>? ids]);
+  /// FCM token (only when a Firebase client is configured; see README "Push notifications").
+  Future<void> registerPushToken(String token);
 
   // shared
   Future<Json> upload(String kind, String filePath);
@@ -296,6 +313,10 @@ class HttpApi implements Api {
   @override
   Future<Json> payJob(String jobId, String method) async => _map(await _post('/customer/jobs/$jobId/pay', {'method': method}));
   @override
+  Future<Json> payJobVerify(String jobId, {required String orderId, required String paymentId, required String signature, String method = 'upi'}) async =>
+      _map(await _post('/customer/jobs/$jobId/pay', {
+        'method': method, 'razorpay_order_id': orderId, 'razorpay_payment_id': paymentId, 'razorpay_signature': signature}));
+  @override
   Future<void> completeJob(String jobId) => _post('/customer/jobs/$jobId/complete');
   @override
   Future<Json> rateWorker(String jobId, Json stars) async => _map(await _post('/customer/jobs/$jobId/rate', stars));
@@ -343,9 +364,23 @@ class HttpApi implements Api {
   Future<void> setBusinessName(String name) => _patch('/me', {'business_name': name});
 
   @override
-  Future<Json> upload(String kind, String filePath) async => _map(await _wrap(() => _dio.post('/media/upload',
-      data: FormData.fromMap({'kind': kind, 'file': MultipartFile.fromFileSync(filePath, filename: filePath.split('/').last)}),
-      options: _o)));
+  Future<Json> sync(int? since) async => _map(await _get('/sync', {if (since != null) 'since': since}));
+  @override
+  Future<List<Json>> notifications({int limit = 40}) async => _list((_map(await _get('/notifications', {'limit': limit})))['items']);
+  @override
+  Future<int> unreadNotifications() async => ((_map(await _get('/notifications/unread-count')))['unread'] as num).toInt();
+  @override
+  Future<void> markNotificationsRead([List<String>? ids]) => _post('/notifications/read', {'ids': ids});
+  @override
+  Future<void> registerPushToken(String token) => _post('/me/push-token', {'token': token, 'platform': 'android'});
+
+  @override
+  Future<Json> upload(String kind, String filePath) async {
+    // Low-end phones + 2G/3G: photos are shrunk (<= 1600 px long edge, JPEG ~75 %) before they leave the phone.
+    final path = kind == 'audio' ? filePath : await compressImage(filePath);
+    return _map(await _wrap(() => _dio.post('/media/upload',
+        data: FormData.fromMap({'kind': kind, 'file': MultipartFile.fromFileSync(path, filename: path.split('/').last)}), options: _o)));
+  }
   @override
   Future<String> transcribe(String key, String lang) async =>
       (_map(await _post('/media/transcribe', {'key': key, 'lang': lang})))['transcript'] as String;

@@ -53,6 +53,7 @@ class DemoApi implements Api {
     // (BUG FIX: typed literals like List<Map<String,Object>> rejected rows containing null —
     // e.g. a check-in with no check-out yet — and showed "Something went wrong".)
     _db = jsonDecode(raw ?? jsonEncode(_seed())) as Json;
+    _lastJson = jsonEncode(_db);
     return _db!;
   }
 
@@ -62,7 +63,17 @@ class DemoApi implements Api {
     await (await SharedPreferences.getInstance()).remove(_key);
   }
 
-  Future<void> _save() async => (await SharedPreferences.getInstance()).setString(_key, jsonEncode(_db));
+  /// Sync revision: bumps only when a write REALLY changed the data (reads that call _save() do not tick it).
+  int _rev = 1;
+  String? _lastJson;
+
+  Future<void> _save() async {
+    final s = jsonEncode(_db);
+    if (s == _lastJson) return;
+    _lastJson = s;
+    _rev++;
+    await (await SharedPreferences.getInstance()).setString(_key, s);
+  }
   Future<void> _lag() => Future.delayed(Duration(milliseconds: 60 + _rnd.nextInt(60))); // snappy: the owner asked for fast refresh
   String _id(String p) => '$p${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(999)}';
   String _now() => DateTime.now().toIso8601String();
@@ -72,6 +83,95 @@ class DemoApi implements Api {
   Json _row(Json d, String table, String id) => (_t(d, table)[id] as Map?)?.cast<String, dynamic>() ?? _err('err.not_found');
   Iterable<Json> _all(Json d, String table) => _t(d, table).values.map((e) => (e as Map).cast<String, dynamic>());
   Json _user(Json d, [String? id]) => _row(d, 'users', id ?? _me ?? _err('err.unauthorized'));
+
+  // ---------------------------------------------------------------- sync + notifications (mirror GET /sync, /notifications)
+  static const _nTexts = <String, List<String>>{
+    // kind: [title en, body en, title hi, body hi]
+    'new_quote': ['New quote received', 'A worker quoted for your job.', 'नया रेट मिला', 'एक कारीगर ने आपके काम का रेट बताया।'],
+    'quote_accepted': ['You got the job!', 'The customer accepted your quote. Waiting for payment.', 'आपको काम मिल गया!', 'ग्राहक ने आपका रेट मान लिया। पेमेंट का इंतज़ार है।'],
+    'payment_held': ['Payment is safe', 'The money is held safely. Start work with the code from the customer.', 'पेमेंट सुरक्षित है', 'पैसे सुरक्षित रखे गए हैं। ग्राहक से कोड लेकर काम शुरू करें।'],
+    'worker_on_way': ['Worker is on the way', 'Your worker has started towards your site.', 'कारीगर रास्ते में है', 'कारीगर आपकी साइट के लिए निकल चुका है।'],
+    'work_finished': ['Work finished', 'The worker says the work is done. Please check and confirm.', 'काम पूरा हुआ', 'कारीगर कहता है काम पूरा हो गया। कृपया देखकर पक्का करें।'],
+    'sent_back': ['Customer sent the work back', 'Please fix it and mark it finished again.', 'ग्राहक ने काम वापस भेजा', 'कृपया ठीक करके फिर से पूरा बताएँ।'],
+    'chat_message': ['New message', '', 'नया संदेश', ''],
+    'payment_released': ['Payment released', 'The money for your work was released.', 'पेमेंट जारी हुआ', 'आपके काम का पैसा जारी हो गया।'],
+  };
+
+  void _notify(Json d, String? userId, String kind, {String? jobId, String? assignmentId, String? withUser, String? text}) {
+    if (userId == null) return;
+    final list = (d['notifs'] ??= <dynamic>[]) as List;
+    list.add({'id': _id('n'), 'user': userId, 'kind': kind, 'job_id': jobId, 'assignment_id': assignmentId, 'with_user': withUser,
+      'text': text, 'read': false, 'at': _now(), 'rev': _rev + 1});
+    if (list.length > 200) list.removeRange(0, list.length - 200);
+  }
+
+  Iterable<Json> _myNotifs(Json d) =>
+      ((d['notifs'] as List?) ?? const []).cast<Map>().map((e) => e.cast<String, dynamic>()).where((n) => n['user'] == _me);
+
+  String _nLink(Json n) {
+    final kind = n['kind'] as String;
+    if (kind == 'chat_message' && n['job_id'] != null && n['with_user'] != null) return '/chat/${n['job_id']}/${n['with_user']}';
+    if (n['assignment_id'] != null && kind != 'new_job') return '/assignment/${n['assignment_id']}${n['job_id'] != null ? '?job=${n['job_id']}' : ''}';
+    if (n['job_id'] != null) return '/job/${n['job_id']}';
+    return '/notifications';
+  }
+
+  @override
+  Future<Json> sync(int? since) async {
+    final d = await _d;
+    if (_me == null) _err('err.unauthorized');
+    _simulate(d);
+    // A live trip changes every second without any write (position/ETA are computed from the clock): keep tickling.
+    final onTrip = _all(d, 'assignments').any((a) {
+      if (a['journey_started_at'] == null || a['started_at'] != null || a['released_at'] != null) return false;
+      final j = (_t(d, 'jobs')[a['job_id']] as Map?)?.cast<String, dynamic>();
+      if (j == null || (a['worker_id'] != _me && j['customer_id'] != _me)) return false;
+      return _tracking(d, a)?['arrived'] != true; // still moving: position + ETA change without any write
+    });
+    await _save();
+    if (onTrip && since != null) _rev++;
+    final mine = _myNotifs(d).toList();
+    final unread = mine.where((n) => n['read'] != true).length;
+    final fresh = since == null ? 0 : mine.where((n) => ((n['rev'] as num?) ?? 0) > since).length;
+    final quiet = since != null && since >= _rev;
+    return {
+      'cursor': _rev, 'full': since == null, 'unread': unread,
+      'changed': {'jobs': [], 'assignments': [], 'chats': [], 'earnings': !quiet && since != null, 'notifications': fresh, 'all': !quiet && since != null},
+    };
+  }
+
+  @override
+  Future<List<Json>> notifications({int limit = 40}) async {
+    final d = await _d;
+    if (_me == null) _err('err.unauthorized');
+    final hi = _lang == 'hi';
+    final mine = _myNotifs(d).toList().reversed.take(limit);
+    return [
+      for (final n in mine)
+        {
+          'id': n['id'], 'kind': n['kind'],
+          'title': (_nTexts[n['kind']] ?? const ['BuildCrew', '', 'BuildCrew', ''])[hi ? 2 : 0],
+          'body': (n['text'] as String?) ?? (_nTexts[n['kind']] ?? const ['', '', '', ''])[hi ? 3 : 1],
+          'job_id': n['job_id'], 'assignment_id': n['assignment_id'], 'with_user': n['with_user'], 'read': n['read'] == true,
+          'at': n['at'], 'link': _nLink(n),
+        }
+    ];
+  }
+
+  @override
+  Future<int> unreadNotifications() async => _myNotifs(await _d).where((n) => n['read'] != true).length;
+
+  @override
+  Future<void> markNotificationsRead([List<String>? ids]) async {
+    final d = await _d;
+    for (final n in _myNotifs(d)) {
+      if (ids == null || ids.isEmpty || ids.contains(n['id'])) n['read'] = true;
+    }
+    await _save();
+  }
+
+  @override
+  Future<void> registerPushToken(String token) async {} // demo: no push
 
   // ---------------------------------------------------------------- views (match backend JSON)
   String? _text(Json item, String lang) {
@@ -1149,6 +1249,7 @@ class DemoApi implements Api {
         'client_ref': clientRef, 'sim_accept': !isTeam && j['sim_customer'] == true, if (teamItem != null) 'item_id': teamItem['id']};
       _t(d, 'bids')[id] = b;
       if (j['status'] == 'open') j['status'] = 'bidding';
+      _notify(d, j['customer_id'] as String?, 'new_quote', jobId: jobId, withUser: _me);
     }
     await _save();
     return {'id': b['id'], 'status': b['status'], 'price_inr': b['price']};
@@ -1310,6 +1411,7 @@ class DemoApi implements Api {
     a['done_note'] = (n == null || n.isEmpty) ? null : n;
     a['rework_open'] = false;
     _event(a, 'worker_done', 'worker', note: a['done_note'] as String?, photos: proof);
+    _notify(d, j['customer_id'] as String?, 'work_finished', jobId: a['job_id'] as String?, assignmentId: assignmentId, withUser: _me);
     await _save();
   }
 
@@ -1720,8 +1822,10 @@ class DemoApi implements Api {
       return {'assignment_id': a['id']};
     }
     _doAccept(d, j, b);
+    final asg = _assignmentFor(d, jobId)!;
+    _notify(d, b['worker_id'] as String?, 'quote_accepted', jobId: jobId, assignmentId: asg['id'] as String?, withUser: _me);
     await _save();
-    return {'assignment_id': _assignmentFor(d, jobId)!['id']};
+    return {'assignment_id': asg['id']};
   }
 
   @override
@@ -1760,10 +1864,16 @@ class DemoApi implements Api {
       // Presentation helper: the hired worker sets off right away so the customer can watch
       // distance + ETA. (With a real backend the worker taps "I'm on my way".)
       _beginJourney(d, a);
+      _notify(d, a['worker_id'] as String?, 'payment_held', jobId: jobId, assignmentId: a['id'] as String?);
+      _notify(d, _me, 'worker_on_way', jobId: jobId, assignmentId: a['id'] as String?, withUser: a['worker_id'] as String?);
     }
     await _save();
-    return _paymentView(p);
+    return {..._paymentView(p), 'provider': 'mock', 'remaining': 0};
   }
+
+  @override
+  Future<Json> payJobVerify(String jobId, {required String orderId, required String paymentId, required String signature, String method = 'upi'}) =>
+      payJob(jobId, method); // demo has no Razorpay: the test-mode payment is the only path
 
   @override
   Future<void> completeJob(String jobId) async {
@@ -1811,6 +1921,7 @@ class DemoApi implements Api {
       a['rework_open'] = true;
       a['worker_done_at'] = null; // the worker must finish again, with new proof
       out = {'outcome': 'rework', 'rework_count': rounds + 1, 'rework_left': _maxRework - rounds - 1};
+      _notify(d, a['worker_id'] as String?, 'sent_back', jobId: jobId, assignmentId: a['id'] as String?);
     }
     await _save();
     return out;
@@ -1842,6 +1953,7 @@ class DemoApi implements Api {
     p['released_at'] = _now();
     w['earned'] = ((w['earned'] as num?) ?? 0) + (p['payout'] as num);
     _autoPayout(d, a, p['payout'] as num); // same-day pay: straight to UPI when there is one
+    _notify(d, a['worker_id'] as String?, 'payment_released', jobId: jobId, assignmentId: a['id'] as String?);
     await _save();
     return {'overall': overall, 'payment': _paymentView(p)};
   }
@@ -2094,6 +2206,7 @@ class DemoApi implements Api {
     // Not hired (or job cancelled): the thread stays readable but read-only.
     if ((hired != null && hired['worker_id'] != workerId) || job['status'] == 'cancelled') _err('err.chat_closed');
     (d['chat'] as List).add({'job_id': jobId, 'from': _me, 'to': to, 'body': body.trim(), 'at': _now(), 'read': false});
+    _notify(d, to, 'chat_message', jobId: jobId, withUser: _me, text: body.trim().length > 120 ? body.trim().substring(0, 120) : body.trim());
     await _save();
   }
 

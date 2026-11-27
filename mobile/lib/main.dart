@@ -4,9 +4,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/app_state.dart';
+import 'core/notifier.dart';
 import 'core/theme.dart';
 import 'core/updater.dart';
 import 'features/auth/auth_screens.dart';
+import 'features/common/notifications.dart';
 import 'features/customer/customer_shell.dart';
 import 'features/onboarding/onboarding.dart';
 import 'features/worker/worker_shell.dart';
@@ -23,6 +25,7 @@ Future<void> main() async {
     statusBarIconBrightness: Brightness.dark,
   ));
   final state = await AppState.load();
+  await AppNotifier.instance.init(); // single owner of the local-notification plugin (taps -> deep links)
   await Updater.instance.init();
   runApp(BuildCrewApp(state: state));
 }
@@ -60,6 +63,15 @@ GoRouter buildRouter(AppState s) {
       GoRoute(path: '/worker', builder: (_, __) => WorkerShell(state: s)),
       GoRoute(path: '/customer', builder: (_, __) => CustomerShell(state: s)),
       GoRoute(path: '/admin', builder: (_, __) => AdminOnMobile(state: s)),
+      // Deep links (notification taps, push `data.link`): pushed on top of the role home, Back returns to it.
+      GoRoute(path: '/notifications', builder: (_, __) => NotificationsScreen(state: s)),
+      GoRoute(path: '/job/:id', builder: (_, st) => JobDeepLink(state: s, jobId: st.pathParameters['id']!)),
+      GoRoute(
+          path: '/assignment/:id',
+          builder: (_, st) => AssignmentDeepLink(state: s, assignmentId: st.pathParameters['id']!, jobId: st.uri.queryParameters['job'])),
+      GoRoute(
+          path: '/chat/:jobId/:withUser',
+          builder: (_, st) => ChatDeepLink(state: s, jobId: st.pathParameters['jobId']!, withUser: st.pathParameters['withUser']!)),
     ],
   );
 }
@@ -73,6 +85,23 @@ class BuildCrewApp extends StatefulWidget {
 
 class _BuildCrewAppState extends State<BuildCrewApp> {
   late final GoRouter _router = buildRouter(widget.state);
+
+  @override
+  void initState() {
+    super.initState();
+    // Tapping a system notification opens its screen (also replays a tap that launched the app).
+    AppNotifier.instance.onRoute = (route) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.state.loggedIn) _router.push(route);
+      });
+    };
+  }
+
+  @override
+  void dispose() {
+    AppNotifier.instance.onRoute = null;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

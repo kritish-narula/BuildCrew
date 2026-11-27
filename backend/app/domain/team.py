@@ -21,6 +21,7 @@ from ..errors import AppError
 from ..models import Assignment, Attendance, Bid, Job, Payment, Rating, User, WorkerProfile, WorkItem
 from . import pricing, trust
 from .fees import compute_fees
+from .notify import notify
 from .state import transition
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -135,6 +136,8 @@ def accept_team_bid(db: Session, customer: User, job: Job, bid: Bid) -> Assignme
     db.add(p)
     db.flush()
     audit(db, actor_id=customer.id, action="team.hired", entity="assignment", entity_id=a.id, amount=fees.customer_pays_paise)
+    notify(db, bid.worker_id, "quote_accepted", job_id=job.id, assignment_id=a.id, other_user_id=customer.id,
+           name=customer.name or "BuildCrew", price=round(bid.quoted_price_paise / 100))
     if open_slots(db, job) == 0:  # fully staffed: everyone else is turned down
         for other in db.scalars(select(Bid).where(Bid.job_id == job.id, Bid.status == BidStatus.pending)):
             transition(db, other, kind="bid", field="status", new=BidStatus.rejected, actor_id=customer.id)
@@ -142,14 +145,19 @@ def accept_team_bid(db: Session, customer: User, job: Job, bid: Bid) -> Assignme
 
 
 def pay_team(db: Session, customer: User, job: Job, *, method: str, razorpay_payment_id: str | None = None,
-             signature: str | None = None) -> dict:
-    """ONE checkout for the whole team: every unpaid worker's escrow is funded (sum shown on the roster)."""
+             signature: str | None = None, razorpay_order_id: str | None = None) -> dict:
+    """Mock: ONE checkout funds every unpaid worker's escrow. Live Razorpay: one Order per hired worker, so each call
+    verifies (and funds) the worker whose order was paid; `GET`-style first call returns the NEXT unpaid order."""
     from . import flows
+    from .. import services as _svc
     if job.customer_id != customer.id:
         raise AppError("err.not_your_job", 403)
     paid, fee, payout, count = 0, 0, 0, 0
+    live = _svc.payment().live
     for a in _assignments(db, job):
         p = db.scalar(select(Payment).where(Payment.assignment_id == a.id))
+        if live and p and razorpay_order_id and p.razorpay_ref != razorpay_order_id:
+            continue
         if p and p.escrow_state == EscrowState.created:
             flows.pay_escrow(db, customer, a, method=method, razorpay_payment_id=razorpay_payment_id, signature=signature)
             paid += p.amount_paise

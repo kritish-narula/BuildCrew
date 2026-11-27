@@ -1,0 +1,65 @@
+{
+  "notifTitle": {
+    "en": "Notifications",
+    "hi": "सूचनाएँ"
+  },
+  "notifEmpty": {
+    "en": "No notifications yet. Quotes, payments and messages will show up here.",
+    "hi": "अभी कोई सूचना नहीं। रेट, पेमेंट और संदेश यहाँ दिखेंगे।"
+  },
+  "notifMarkAll": {
+    "en": "Mark all read",
+    "hi": "सब पढ़ा हुआ करें"
+  },
+  "notifLoadFailed": {
+    "en": "Could not load notifications. Pull down to try again.",
+    "hi": "सूचनाएँ नहीं खुल पाईं। दोबारा कोशिश करने के लिए नीचे खींचें।"
+  },
+  "refundPolicyTitle": {
+    "en": "Cancellation and refund",
+    "hi": "रद्द करना और रिफ़ंड"
+  },
+  "refundPolicyBefore": {
+    "en": "Before the worker starts: full refund, including the BuildCrew fee.",
+    "hi": "कारीगर के काम शुरू करने से पहले: BuildCrew फ़ीस समेत पूरा रिफ़ंड।"
+  },
+  "refundPolicyAfter": {
+    "en": "After work has started: our support team decides a fair split.",
+    "hi": "काम शुरू होने के बाद: हमारी सपोर्ट टीम सही बँटवारा तय करती है।"
+  },
+  "refundPolicyNoShow": {
+    "en": "Worker does not come: full refund.",
+    "hi": "कारीगर न आए: पूरा रिफ़ंड।"
+  },
+  "refundPolicyWarranty": {
+    "en": "Problem comes back within the warranty: a free re-fix visit.",
+    "hi": "वारंटी में समस्या दोबारा आए: मुफ़्त दोबारा ठीक करने की विज़िट।"
+  },
+  "refundPolicyHelp": {
+    "en": "Need help? Call {phone}",
+    "hi": "मदद चाहिए? {phone} पर कॉल करें",
+    "placeholders": {
+      "phone": "String"
+    }
+  },
+  "payCancelled": {
+    "en": "Payment cancelled. No money was taken.",
+    "hi": "पेमेंट रद्द हुआ। कोई पैसा नहीं कटा।"
+  },
+  "payFailed": {
+    "en": "Payment did not go through. If money was deducted, it will come back automatically.",
+    "hi": "पेमेंट नहीं हो पाया। अगर पैसे कटे हैं तो अपने-आप वापस आ जाएँगे।"
+  },
+  "payVerifying": {
+    "en": "Confirming your payment...",
+    "hi": "आपका पेमेंट पक्का कर रहे हैं..."
+  },
+  "payTeamNext": {
+    "en": "Payment {done} of {total} done. Pay the next worker.",
+    "hi": "{total} में से {done} पेमेंट हो गए। अगले कारीगर का पेमेंट करें।",
+    "placeholders": {
+      "done": "int",
+      "total": "int"
+    }
+  }
+}

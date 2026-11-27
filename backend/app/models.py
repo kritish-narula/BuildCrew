@@ -297,6 +297,8 @@ class Payment(Base):
     method: Mapped[str | None] = mapped_column(String(20))       # upi | card | netbanking
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     refund_paise: Mapped[int] = mapped_column(BigInteger, default=0)  # used by refund/split
+    razorpay_payment_id: Mapped[str | None] = mapped_column(String(80))  # pay_xxx, set when Checkout is verified / webhook lands
+    refund_ref: Mapped[str | None] = mapped_column(String(80))           # provider refund id (rfnd_xxx)
 
 
 class Payout(Base):  # addition: worker withdrawals of released earnings to UPI
@@ -382,4 +384,50 @@ class AuditLog(Base):
     entity: Mapped[str] = mapped_column(String(40), index=True)
     entity_id: Mapped[str] = mapped_column(String(64), index=True)
     meta: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)  # "metadata" is reserved on Base
+    created_at: Mapped[datetime] = _created()
+
+
+class Notification(Base):
+    """In-app notification centre + source for push. Text is NOT stored: `kind` + `params` are rendered with the
+    reader's language at list time (i18n keys `notif.<kind>.title` / `notif.<kind>.body`)."""
+    __tablename__ = "notifications"
+    __table_args__ = (Index("ix_notif_user_created", "user_id", "created_at"),)
+    id: Mapped[uuid.UUID] = _pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    assignment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assignments.id", ondelete="SET NULL"))
+    other_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))  # chat peer
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+
+
+class SyncEvent(Base):
+    """Per-user change feed behind GET /sync. `seq` is the cursor. Rows are written automatically (domain/sync.py)
+    whenever a job / bid / assignment / payment / chat message / payout / notification a user can see changes."""
+    __tablename__ = "sync_events"
+    __table_args__ = (Index("ix_sync_user_seq", "user_id", "seq"),)
+    seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    entity: Mapped[str] = mapped_column(String(12))  # job | assignment | chat | earnings | notification
+    entity_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = _created()
+
+
+class PushToken(Base):
+    __tablename__ = "push_tokens"
+    id: Mapped[uuid.UUID] = _pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token: Mapped[str] = mapped_column(String(300), unique=True)
+    platform: Mapped[str] = mapped_column(String(10), default="android")
+    created_at: Mapped[datetime] = _created()
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WebhookEvent(Base):
+    """Razorpay delivers webhooks at-least-once; the event id is the idempotency key."""
+    __tablename__ = "webhook_events"
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    event: Mapped[str] = mapped_column(String(40))
     created_at: Mapped[datetime] = _created()

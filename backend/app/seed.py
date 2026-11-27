@@ -131,7 +131,7 @@ SCHEDULES = {0: (1, 9, 30, "exact"), 1: (2, 8, 0, "morning"), 2: (-1, 12, 0, "af
 def reset(db):
     db.execute(text("TRUNCATE users, otp_codes, worker_profiles, customer_profiles, jobs, work_items, "
                     "work_item_photos, bids, assignments, attendance, ratings, payments, disputes, "
-                    "chat_messages, support_tickets, price_history, audit_logs CASCADE"))
+                    "chat_messages, support_tickets, price_history, audit_logs, notifications, sync_events, push_tokens, webhook_events CASCADE"))
     db.commit()
 
 

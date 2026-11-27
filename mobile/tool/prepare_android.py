@@ -8,7 +8,7 @@ We then apply a small, explicit set of patches:
   * release signing from android/key.properties (the permanent release key; CI writes it)
   * Java 8+ API desugaring (needed by flutter_local_notifications) + androidx.core (FileProvider)
   * permissions, no cloud backup, HTTPS-only network config, FileProvider for self-update
-  * our MainActivity (updater bridge), launcher icons, R8 keep-rules
+  * our MainActivity (updater bridge), launcher icons, R8 shrink + keep-rules (incl. Razorpay), UPI intent queries
 
 Usage (from mobile/):  python3 tool/prepare_android.py
 """
@@ -80,6 +80,9 @@ def patch_gradle() -> None:
     g = sub_once(g, r'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
                  'signingConfig = if (rootProject.file("key.properties").exists()) '
                  'signingConfigs.getByName("release") else signingConfigs.getByName("debug")\n'
+                 '            // Smaller APK on low-end phones: R8 code shrinking + unused resource removal.\n'
+                 '            isMinifyEnabled = true\n'
+                 '            isShrinkResources = true\n'
                  '            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")',
                  "release signingConfig")
     g += '''
@@ -95,7 +98,22 @@ dependencies {
         "-keepattributes Signature\n-keepattributes *Annotation*\n"
         "-keep class com.google.gson.reflect.TypeToken { *; }\n"
         "-keep class * extends com.google.gson.reflect.TypeToken\n"
-        "-dontwarn com.google.errorprone.annotations.**\n")
+        "-dontwarn com.google.errorprone.annotations.**\n"
+        "# Razorpay Checkout (razorpay_flutter): reflection + JS bridge + payment callbacks\n"
+        "-keepattributes JavascriptInterface\n"
+        "-keepattributes *Annotation*\n"
+        "-dontwarn com.razorpay.**\n"
+        "-keep class com.razorpay.** {*;}\n"
+        "-optimizations !method/inlining/*\n"
+        "-keepclasseswithmembers class * {\n"
+        "  public void onPayment*(...);\n"
+        "}\n"
+        "-keepclassmembers class * {\n"
+        "  @android.webkit.JavascriptInterface <methods>;\n"
+        "}\n"
+        "-keep class proguard.annotation.Keep { *; }\n"
+        "-dontwarn proguard.annotation.**\n"
+        "# flutter_image_compress / cached_network_image need no extra rules\n")
 
 
 def patch_root_gradle() -> None:
@@ -156,6 +174,9 @@ def patch_manifest() -> None:
         <intent><action android:name="android.speech.RecognitionService" /></intent>
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="tel" /></intent>
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
+        <!-- Razorpay Checkout lists installed UPI apps (GPay, PhonePe, Paytm, BHIM...) via the upi://pay intent -->
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="upi" android:host="pay" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="upi" /></intent>
     </queries>
 </manifest>'''
     m = sub_once(m, r"\s*</manifest>\s*$", queries, "</manifest>")

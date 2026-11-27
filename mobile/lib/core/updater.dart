@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
+import 'notifier.dart';
 
 /// In-app self-update for APKs distributed through GitHub Releases.
 ///
@@ -43,7 +44,7 @@ class Updater extends ChangeNotifier {
   static final instance = Updater._();
 
   static const _channel = MethodChannel('buildcrew/updater');
-  final _notifications = FlutterLocalNotificationsPlugin();
+  FlutterLocalNotificationsPlugin get _notifications => AppNotifier.instance.plugin;
   final _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 15)));
 
   UpdateInfo? available;
@@ -59,21 +60,13 @@ class Updater extends ChangeNotifier {
     final info = await PackageInfo.fromPlatform();
     currentVersion = info.version;
     currentCode = int.tryParse(info.buildNumber) ?? 0;
-    try {
-      await _notifications.initialize(
-        const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
-        onDidReceiveNotificationResponse: (r) {
-          if (r.payload == 'update') {
-            openSheetRequested = true;
-            notifyListeners();
-          }
-        },
-      );
-      final launch = await _notifications.getNotificationAppLaunchDetails();
-      if (launch?.didNotificationLaunchApp == true && launch?.notificationResponse?.payload == 'update') {
-        openSheetRequested = true;
-      }
-    } catch (_) {/* notifications are a nicety; never block startup */}
+    await AppNotifier.instance.init(); // shared plugin: tap payload 'update' -> requestSheet()
+  }
+
+  /// A tap on the "update ready" notification (called by [AppNotifier]).
+  void requestSheet() {
+    openSheetRequested = true;
+    notifyListeners();
   }
 
   /// Android 13+ needs runtime permission for notifications. Ask after login, not on first launch.

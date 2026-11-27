@@ -6,7 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'config.dart';
+import 'notifier.dart';
 import 'demo_api.dart';
+import 'push_client.dart';
+import 'sync.dart';
 
 /// App-wide session state. Drives routing (see router.dart): language → role → phone/OTP → home.
 ///
@@ -18,6 +21,9 @@ class AppState extends ChangeNotifier {
   static const _secure = FlutterSecureStorage(aOptions: AndroidOptions(encryptedSharedPreferences: true));
   final SharedPreferences _prefs;
   final Api api;
+
+  /// ONE change-feed poller for the signed-in session (see sync.dart). Started on sign-in / app launch with a session.
+  late final SyncService sync = SyncService(api);
 
   String? language; // null until S1 is done
   String? roleIntent; // chosen on the role screen, used only when registering a new number
@@ -54,6 +60,7 @@ class AppState extends ChangeNotifier {
     }
     s.api.token = s.token;
     s.api.language = s.language ?? 'hi';
+    if (s.loggedIn) s._startSync();
     return s;
   }
 
@@ -92,7 +99,17 @@ class AppState extends ChangeNotifier {
     api.token = token;
     await _secure.write(key: 'token', value: token);
     await _secure.write(key: 'user', value: jsonEncode(user!.toJson()));
+    _startSync();
     notifyListeners();
+  }
+
+  void _startSync() {
+    sync.stop(); // a fresh baseline for this account
+    sync.start();
+    AppNotifier.instance.requestPermission(); // Android 13+: asks once; the OS never re-prompts after a refusal
+    PushClient.token().then((t) {
+      if (t != null) api.registerPushToken(t).catchError((_) {});
+    });
   }
 
   /// Demo/presentation helper: jump straight into another sample account (no OTP screen).
@@ -109,6 +126,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    sync.stop();
     token = null;
     user = null;
     api.token = null;

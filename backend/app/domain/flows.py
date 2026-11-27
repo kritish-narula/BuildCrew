@@ -20,6 +20,7 @@ from ..models import (
     Assignment, AssignmentEvent, Attendance, Bid, Dispute, Job, Payment, Payout, Rating, User, WorkerProfile,
 )
 from . import trust
+from .notify import notify
 from .fees import compute_fees
 from .state import transition
 
@@ -36,6 +37,11 @@ NO_SHOW_NO_JOURNEY_GRACE_MIN = 180  # worker never even started the journey: aft
 NO_QUOTES_HOURS = 24         # open job without any live quote -> suggest a nudge
 NUDGE_COOLDOWN_HOURS = 6
 MAX_NOTE = 1000
+
+
+def _name(db: Session, user_id) -> str:
+    u = db.get(User, user_id)
+    return (u.name if u and u.name else "BuildCrew")
 
 
 def today_ist() -> date:
@@ -116,6 +122,8 @@ def place_bid(db: Session, worker: User, job: Job, price_paise: int, client_ref:
     if job.status == JobStatus.open:
         transition(db, job, kind="job", field="status", new=JobStatus.bidding, actor_id=worker.id)
     services.realtime().publish(f"job:{job.id}", "bid", {"bid_id": str(bid.id)})
+    notify(db, job.customer_id, "new_quote", job_id=job.id, other_user_id=worker.id, name=_name(db, worker.id),
+           price=round(price_paise / 100), locality=job.locality)
     return bid
 
 
@@ -157,6 +165,8 @@ def accept_bid(db: Session, customer: User, job: Job, bid: Bid) -> Assignment:
     db.flush()
     audit(db, actor_id=customer.id, action="payment.order_created", entity="payment", entity_id=p.id,
           amount=fees.customer_pays_paise)
+    notify(db, bid.worker_id, "quote_accepted", job_id=job.id, assignment_id=a.id, other_user_id=customer.id,
+           name=_name(db, customer.id), price=round(bid.quoted_price_paise / 100))
     # Escrow stays CREATED until the customer completes the payment page (pay_escrow).
     return a
 
@@ -174,10 +184,11 @@ def pay_escrow(db: Session, customer: User, a: Assignment, *, method: str, razor
         raise AppError("err.job_closed", 409)
     if p.escrow_state != EscrowState.created:
         return p  # idempotent: double-tap / replay on "Pay" never charges twice (held, or already settled)
-    if get_settings().payment_provider != "mock":
+    if services.payment().live:
         if not (razorpay_payment_id and signature and
                 services.payment().verify_checkout_signature(p.razorpay_ref or "", razorpay_payment_id, signature)):
-            raise AppError("err.forbidden", 403)
+            raise AppError("err.payment_signature", 403)
+        p.razorpay_payment_id = razorpay_payment_id
     mark_held(db, p, a, actor_id=customer.id)
     p.method, p.paid_at = method, now()
     services.realtime().publish(f"job:{a.job_id}", "paid", {})
@@ -197,6 +208,7 @@ def mark_held(db: Session, p: Payment, a: Assignment, actor_id) -> None:
     a.escrow_status = EscrowState.held
     if not a.start_code_nonce:  # the customer now gets a start code to tell the worker on arrival
         trust.new_nonce(a)
+    notify(db, a.worker_id, "payment_held", job_id=a.job_id, assignment_id=a.id, amount=round(p.worker_payout_paise / 100))
 
 
 # ------------------------------------------------------------------ work
@@ -228,6 +240,9 @@ def start_journey(db: Session, worker: User, a: Assignment, lat: float | None, l
         eta = (tracking(a) or {}).get("eta_min") or 30
         a.expected_arrival_at = now() + timedelta(minutes=eta)
     audit(db, actor_id=worker.id, action="journey.started", entity="assignment", entity_id=a.id)
+    if first:
+        notify(db, a.job.customer_id, "worker_on_way", job_id=a.job_id, assignment_id=a.id, other_user_id=worker.id,
+               name=_name(db, worker.id))
 
 
 def update_location(db: Session, worker: User, a: Assignment, lat: float, lng: float) -> None:
@@ -276,6 +291,8 @@ def worker_done(db: Session, worker: User, a: Assignment, photos: list[str] | No
     audit(db, actor_id=worker.id, action="work.worker_done", entity="assignment", entity_id=a.id, photos=len(proof),
           round=a.rework_count + 1)
     services.realtime().publish(f"job:{a.job_id}", "worker_done", {})
+    notify(db, job.customer_id, "work_finished", job_id=job.id, assignment_id=a.id, other_user_id=worker.id,
+           name=_name(db, worker.id))
 
 
 def complete_work(db: Session, customer: User, a: Assignment) -> None:
@@ -295,6 +312,7 @@ def complete_work(db: Session, customer: User, a: Assignment) -> None:
     a.completed_at = a.completed_at or now()
     a.rework_open = False
     add_event(db, a, "confirmed", "customer")
+    notify(db, a.worker_id, "work_confirmed", job_id=job.id, assignment_id=a.id)
 
 
 def request_rework(db: Session, customer: User, a: Assignment, reasons: list[str], note: str | None,
@@ -325,6 +343,7 @@ def request_rework(db: Session, customer: User, a: Assignment, reasons: list[str
     audit(db, actor_id=customer.id, action="work.rework_requested", entity="assignment", entity_id=a.id,
           reasons=reasons, round=a.rework_count)
     services.realtime().publish(f"job:{a.job_id}", "rework", {})
+    notify(db, a.worker_id, "sent_back", job_id=job.id, assignment_id=a.id)
     return {"outcome": "rework", "rework_count": a.rework_count, "rework_left": MAX_REWORK_ROUNDS - a.rework_count}
 
 
@@ -412,8 +431,10 @@ def _void_or_refund(db: Session, a: Assignment, actor_id) -> int:
         return 0
     if p.escrow_state != EscrowState.held:
         raise AppError("err.payment_not_held", 409)
-    services.payment().refund(p.razorpay_ref or "", p.amount_paise, p.transfer_ref, p.worker_payout_paise)
+    p.refund_ref = services.payment().refund(p.razorpay_payment_id or p.razorpay_ref or "", p.amount_paise, p.transfer_ref,
+                                             p.worker_payout_paise)
     transition(db, p, kind="escrow", field="escrow_state", new=EscrowState.refunded, actor_id=actor_id, reason="hire_released")
+    notify(db, a.job.customer_id, "refund_done", job_id=a.job_id, assignment_id=a.id, amount=round(p.amount_paise / 100))
     refunded = p.amount_paise
     p.refund_paise, p.worker_payout_paise, p.platform_fee_paise, p.released_at = refunded, 0, 0, now()
     a.escrow_status = EscrowState.refunded
@@ -612,6 +633,7 @@ def release_payment(db: Session, a: Assignment, actor_id, *, by_admin: bool = Fa
     wp.lifetime_earnings_paise += p.worker_payout_paise
     audit(db, actor_id=actor_id, action="payment.released", entity="payment", entity_id=p.id, ref=ref,
           payout=p.worker_payout_paise)
+    notify(db, a.worker_id, "payment_released", job_id=a.job_id, assignment_id=a.id, amount=round(p.worker_payout_paise / 100))
     trust.auto_payout(db, a, p.worker_payout_paise)  # same-day pay: straight to UPI when the worker has one
     return p
 
@@ -625,7 +647,10 @@ def refund_or_split(db: Session, a: Assignment, admin: User, worker_share_pct: i
         return release_payment(db, a, admin.id, by_admin=True)
     worker_part = p.worker_payout_paise * worker_share_pct // 100
     refund = p.amount_paise - worker_part - (p.platform_fee_paise if worker_share_pct else 0)
-    services.payment().refund(p.razorpay_ref or "", refund, p.transfer_ref, p.worker_payout_paise - worker_part)
+    if refund > 0:
+        p.refund_ref = services.payment().refund(p.razorpay_payment_id or p.razorpay_ref or "", refund, p.transfer_ref,
+                                                 p.worker_payout_paise - worker_part)
+        notify(db, a.job.customer_id, "refund_done", job_id=a.job_id, assignment_id=a.id, amount=round(refund / 100))
     new = EscrowState.split if worker_share_pct else EscrowState.refunded
     transition(db, p, kind="escrow", field="escrow_state", new=new, actor_id=admin.id, reason=f"worker_share={worker_share_pct}%")
     p.refund_paise = refund
@@ -723,6 +748,9 @@ def attendance(db: Session, worker: User, a: Assignment, *, kind: str, lat: floa
         db.add(row)
         if code_status in trust.code_ok_statuses():
             start_work(db, worker, a)
+        if not offline:
+            notify(db, a.job.customer_id, "worker_arrived", job_id=a.job_id, assignment_id=a.id, other_user_id=worker.id,
+                   name=_name(db, worker.id))
     else:
         row = db.scalar(select(Attendance).where(Attendance.assignment_id == a.id, Attendance.checkout_at.is_(None))
                         .order_by(Attendance.checkin_at.desc()))
@@ -770,6 +798,8 @@ def raise_dispute(db: Session, user: User, a: Assignment, reason: str, *, auto: 
     add_event(db, a, "disputed", "system" if auto else ("customer" if user.id == job.customer_id else "worker"),
               note=reason.strip()[:500])
     audit(db, actor_id=user.id, action="dispute.raised", entity="dispute", entity_id=d.id, auto=auto)
+    for uid in (job.customer_id, a.worker_id):
+        notify(db, uid, "dispute_opened", job_id=job.id, assignment_id=a.id)
     return d
 
 
@@ -793,6 +823,8 @@ def resolve_dispute(db: Session, admin: User, d: Dispute, *, worker_share_pct: i
     add_event(db, a, "dispute_resolved", "admin", note=f"worker_share={worker_share_pct}%")
     d.status, d.resolution, d.resolved_by, d.resolved_at = DisputeStatus.resolved, \
         f"worker_share={worker_share_pct}%; penalise={penalise}; {note}".strip(), admin.id, now()
+    for uid in (a.job.customer_id, a.worker_id):
+        notify(db, uid, "dispute_resolved", job_id=a.job_id, assignment_id=a.id)
     audit(db, actor_id=admin.id, action="dispute.resolved", entity="dispute", entity_id=d.id,
           worker_share_pct=worker_share_pct, penalise=penalise)
     return d

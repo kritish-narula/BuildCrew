@@ -28,6 +28,8 @@ class EscrowOrder:
 
 
 class PaymentProvider(ABC):
+    live: bool = False  # True = real money: Checkout results must carry a verifiable signature
+
     @abstractmethod
     def create_escrow_order(self, *, receipt: str, amount_paise: int, worker_payout_paise: int,
                             worker_account_id: str) -> EscrowOrder: ...
@@ -44,6 +46,9 @@ class PaymentProvider(ABC):
     @abstractmethod
     def refund(self, payment_id: str, amount_paise: int, transfer_id: str | None,
                reverse_paise: int) -> str: ...
+
+    def checkout_key_id(self) -> str:
+        return "rzp_test_mock"
 
     @abstractmethod
     def create_linked_account(self, *, name: str, phone: str, upi_id: str) -> str: ...
@@ -91,17 +96,27 @@ class MockPaymentProvider(PaymentProvider):
         return f"acc_mock_{uuid.uuid4().hex[:10]}"
 
 
-class RazorpayRouteProvider(PaymentProvider):
-    """Live adapter. Set PAYMENT_PROVIDER=razorpay + RAZORPAY_KEY_ID/SECRET/WEBHOOK_SECRET.
-    Untested here without keys — verify against Razorpay test mode before going live."""
-    BASE = "https://api.razorpay.com/v1"
+class RazorpayProvider(PaymentProvider):
+    """Live adapter (PAYMENT_PROVIDER=auto|razorpay with RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET / RAZORPAY_WEBHOOK_SECRET).
 
-    def __init__(self, key_id: str, key_secret: str, webhook_secret: str):
-        import httpx
-        if not (key_id and key_secret and webhook_secret):
+    Default = PLAIN Orders: the customer's money lands in OUR Razorpay account and the escrow is a ledger state; on release
+    the worker is paid through the PayoutProvider (RazorpayX -> UPI). That works for individual workers without business KYC.
+    `route=True` (RAZORPAY_ROUTE_ENABLED) instead attaches an on_hold Route transfer to a linked account per worker.
+    Test it end-to-end in Razorpay TEST mode (rzp_test_ keys) before going live. `client` is injectable for tests."""
+    BASE = "https://api.razorpay.com/v1"
+    live = True
+
+    def __init__(self, key_id: str, key_secret: str, webhook_secret: str, *, route: bool = False, client=None):
+        if not (key_id and key_secret):
             raise RuntimeError("Razorpay keys missing")
-        self.key_id, self.key_secret, self.webhook_secret = key_id, key_secret, webhook_secret
-        self.http = httpx.Client(base_url=self.BASE, auth=(key_id, key_secret), timeout=20)
+        self.key_id, self.key_secret, self.webhook_secret, self.route = key_id, key_secret, webhook_secret, route
+        if client is None:
+            import httpx
+            client = httpx.Client(base_url=self.BASE, auth=(key_id, key_secret), timeout=20)
+        self.http = client
+
+    def checkout_key_id(self) -> str:
+        return self.key_id
 
     def _post(self, path, json, idem: str | None = None):
         headers = {"X-Razorpay-Idempotency-Key": idem} if idem else {}
@@ -110,11 +125,11 @@ class RazorpayRouteProvider(PaymentProvider):
         return r.json()
 
     def create_escrow_order(self, *, receipt, amount_paise, worker_payout_paise, worker_account_id):
-        data = self._post("/orders", {
-            "amount": amount_paise, "currency": "INR", "receipt": receipt,
-            "transfers": [{"account": worker_account_id, "amount": worker_payout_paise,
-                           "currency": "INR", "on_hold": 1}],
-        }, idem=receipt)
+        body = {"amount": amount_paise, "currency": "INR", "receipt": receipt}
+        if self.route:
+            body["transfers"] = [{"account": worker_account_id, "amount": worker_payout_paise,
+                                  "currency": "INR", "on_hold": 1}]
+        data = self._post("/orders", body, idem=receipt)
         transfers = data.get("transfers") or []
         return EscrowOrder(data["id"], transfers[0]["id"] if transfers else None, amount_paise, self.key_id)
 
@@ -122,20 +137,45 @@ class RazorpayRouteProvider(PaymentProvider):
         return _hmac_ok(self.key_secret, f"{order_id}|{payment_id}".encode(), signature)
 
     def verify_webhook(self, raw_body, signature):
-        return _hmac_ok(self.webhook_secret, raw_body, signature)
+        return bool(self.webhook_secret) and _hmac_ok(self.webhook_secret, raw_body, signature)
 
     def release(self, transfer_id):
+        if not self.route or not transfer_id:  # plain orders: the worker is paid by the payout provider
+            return "payout_provider"
         r = self.http.patch(f"/transfers/{transfer_id}", json={"on_hold": 0})
         r.raise_for_status()
         return r.json()["id"]
 
+    def _payment_for(self, ref: str) -> str:
+        if ref.startswith("pay_"):
+            return ref
+        r = self.http.get(f"/orders/{ref}/payments")
+        r.raise_for_status()
+        items = [x for x in r.json().get("items", []) if x.get("status") in ("captured", "authorized")]
+        if not items:
+            raise RuntimeError("no captured payment for order")
+        return items[0]["id"]
+
     def refund(self, payment_id, amount_paise, transfer_id, reverse_paise):
-        if transfer_id and reverse_paise:
+        """`payment_id` may be the pay_ id or (fallback) the order id. Idempotent per (payment, amount)."""
+        if self.route and transfer_id and reverse_paise:
             self._post(f"/transfers/{transfer_id}/reversals", {"amount": reverse_paise})
-        return self._post(f"/payments/{payment_id}/refund", {"amount": amount_paise})["id"]
+        pid = self._payment_for(payment_id)
+        return self._post(f"/payments/{pid}/refund", {"amount": amount_paise, "speed": "normal"},
+                          idem=f"rf_{pid}_{amount_paise}")["id"]
 
     def create_linked_account(self, *, name, phone, upi_id):
-        # Route linked-account onboarding (v2 accounts API) requires business KYC details;
-        # for individual workers most teams use RazorpayX payouts to the UPI VPA instead.
-        # Documented in README → "Going live with payments".
-        raise NotImplementedError("Complete Route linked-account onboarding before go-live")
+        raise NotImplementedError("Route linked-account onboarding needs business KYC; use RazorpayX payouts instead")
+
+
+RazorpayRouteProvider = RazorpayProvider  # backwards-compatible name
+
+
+def build_payment_provider(s) -> PaymentProvider:
+    """auto: live iff both key id + secret are set. mock forces the demo flow even if keys exist."""
+    if s.payment_provider == "mock":
+        return MockPaymentProvider()
+    if s.payment_provider == "razorpay" or (s.razorpay_key_id and s.razorpay_key_secret):
+        return RazorpayProvider(s.razorpay_key_id, s.razorpay_key_secret, s.razorpay_webhook_secret,
+                                route=s.razorpay_route_enabled)
+    return MockPaymentProvider()

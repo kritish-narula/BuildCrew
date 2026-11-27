@@ -11,7 +11,13 @@ class AppConfig {
     defaultValue: 'https://github.com/kritish-narula/BuildCrew/releases/latest/download/update.json',
   );
 
-  static const supportPhone = String.fromEnvironment('SUPPORT_PHONE', defaultValue: '+911800000000');
+  static const supportPhone = kSupportPhone;
 
   static bool get isDemo => apiBaseUrl.isEmpty;
 }
+
+/// Owner support line (call / WhatsApp). Display form: +91 79734 93558.
+const supportPhone = '+917973493558';
+const supportWhatsApp = '917973493558';
+const kSupportPhone = supportPhone;
+const supportPhoneDisplay = '+91 79734 93558';

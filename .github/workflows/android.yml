@@ -72,7 +72,7 @@ jobs:
         run: |
           VERSION=$(grep -E '^version:' pubspec.yaml | sed -E 's/version: *([0-9.]+).*/\1/')
           echo "TAG=v${VERSION}-b${{ github.run_number }}" >> "$GITHUB_ENV"
-          flutter build apk --release --split-per-abi \
+          flutter build apk --release --split-per-abi --tree-shake-icons \
             --build-name="$VERSION" --build-number=${{ github.run_number }} \
             --obfuscate --split-debug-info=build/symbols \
             --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }} \
@@ -83,12 +83,25 @@ jobs:
           # Universal APK for first-time installs from the release page (one file for every phone).
           # versionCode 2000+run: same as this run's arm64 build and below the next run's, so a
           # phone can move between the universal and per-CPU APKs without a "downgrade" error.
-          flutter build apk --release \
+          flutter build apk --release --tree-shake-icons \
             --build-name="$VERSION" --build-number=$((2000 + ${{ github.run_number }})) \
             --obfuscate --split-debug-info=build/symbols-universal \
             --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }} \
             --dart-define=UPDATE_MANIFEST_URL=https://github.com/${{ github.repository }}/releases/latest/download/update.json \
             > /tmp/build2.txt 2>&1 || { tail -40 /tmp/build2.txt | sed -E 's/^\s*/::error::/'; exit 1; }
+
+      - name: APK size budget (low-end phones, 2G/3G downloads)
+        run: |
+          # Prints every APK size as a notice and FAILS if the universal APK is over 45 MB.
+          for f in build/app/outputs/flutter-apk/*-release.apk; do
+            b=$(stat -c%s "$f")
+            echo "::notice title=APK size::$(basename "$f") = $(awk "BEGIN{printf \"%.1f\", $b/1048576}") MB"
+          done
+          U=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
+          if [ "$U" -gt $((45 * 1048576)) ]; then
+            echo "::error::Universal APK is $(awk "BEGIN{printf \"%.1f\", $U/1048576}") MB, over the 45 MB budget. Check new packages / assets."
+            exit 1
+          fi
 
       - name: Verify signature is the permanent release key
         if: env.HAS_KEY == 'true'
