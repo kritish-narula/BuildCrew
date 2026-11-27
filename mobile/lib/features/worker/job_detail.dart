@@ -200,17 +200,17 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final direct = (job['direct'] as Map?)?.cast<String, dynamic>();
     final stacked = bigText(context, 1.2);
     final field = MediaQuery.withClampedTextScaling(maxScaleFactor: 1.2, child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(color: BC.bg, borderRadius: BorderRadius.circular(BC.r), border: Border.all(color: BC.brand, width: 1.5)),
       child: Row(children: [
-        Text('₹', style: context.tt.displayMedium!.copyWith(color: BC.inkSoft)),
-        const SizedBox(width: 6),
+        Text('₹', style: context.tt.headlineSmall!.copyWith(color: BC.inkSoft)),
+        const SizedBox(width: 4),
         Expanded(
           child: TextField(
             controller: _price,
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(7)],
-            style: context.tt.displayLarge!.copyWith(fontSize: 34, fontFeatures: BC.tabular),
+            style: context.tt.displayLarge!.copyWith(fontSize: 28, fontFeatures: BC.tabular), // fits ₹99,999 between the ±50 buttons on a 320dp phone
             decoration: const InputDecoration(border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none,
                 filled: false, hintText: '0', hintStyle: TextStyle(color: BC.line)),
             onChanged: (_) => setState(() {}),
