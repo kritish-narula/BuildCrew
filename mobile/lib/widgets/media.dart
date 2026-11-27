@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../core/theme.dart';
@@ -754,6 +755,66 @@ class _VoiceAmountButtonState extends State<VoiceAmountButton> {
         ),
     ]);
   }
+}
+
+
+// ------------------------------------------------------------------ read-aloud helpers (worker UX)
+/// "Read aloud automatically" preference (Profile toggle, default ON). Persisted in SharedPreferences.
+class ReadAloud {
+  ReadAloud._();
+  static final ValueNotifier<bool> enabled = ValueNotifier<bool>(true);
+  static bool _loaded = false;
+
+  static Future<void> ensureLoaded() async {
+    if (_loaded) return;
+    _loaded = true;
+    try {
+      final p = await SharedPreferences.getInstance();
+      enabled.value = p.getBool('read_aloud_auto') ?? true;
+    } catch (_) {/* keep the default */}
+  }
+
+  static Future<void> set(bool v) async {
+    _loaded = true;
+    enabled.value = v;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool('read_aloud_auto', v);
+    } catch (_) {}
+  }
+
+  /// Speak [text] once when a screen opens, only if the worker left auto-read on.
+  static Future<void> auto(String text, String lang) async {
+    await ensureLoaded();
+    if (!enabled.value || text.trim().isEmpty) return;
+    await Speaker.instance.say(speakable(text, lang), lang);
+  }
+}
+
+/// Makes money and numbers sound natural for text-to-speech: "₹4,750" -> "4750 rupees" / "4750 रुपये".
+String speakable(String s, String lang) {
+  final word = (lang == 'hi' || lang == 'mr') ? 'रुपये' : 'rupees';
+  var t = s.replaceAllMapped(RegExp(r'(\d),(?=\d{2,3}\b)'), (m) => m[1]!);
+  t = t.replaceAllMapped(RegExp(r'₹\s?(\d+(?:\.\d+)?)'), (m) => '${m[1]} $word');
+  return t.replaceAll('₹', word).replaceAll('–', ' to ').replaceAll('·', '.');
+}
+
+/// Light tap feedback for main actions.
+void tapFeedback() => HapticFeedback.lightImpact();
+
+/// True when the user's system text size is large (stack things vertically instead of squeezing).
+bool bigText(BuildContext context, [double above = 1.15]) => MediaQuery.textScalerOf(context).scale(10) / 10 > above;
+
+/// Speaker button with natural number reading and a small haptic tick.
+class ReadButton extends StatelessWidget {
+  const ReadButton({super.key, required this.text, required this.lang, this.size = 40});
+  final String text, lang;
+  final double size;
+  @override
+  Widget build(BuildContext context) => Listener(
+        onPointerDown: (_) => HapticFeedback.selectionClick(),
+        child: SpeakButton(text: speakable(text, lang), lang: lang, size: size),
+      );
 }
 
 // ------------------------------------------------------------------ async helper

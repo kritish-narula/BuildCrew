@@ -9,6 +9,7 @@ import 'package:buildcrew/core/theme.dart';
 import 'package:buildcrew/core/updater.dart';
 import 'package:buildcrew/features/auth/auth_screens.dart';
 import 'package:buildcrew/features/common/chat.dart';
+import 'package:buildcrew/features/common/help.dart';
 import 'package:buildcrew/features/common/update_ui.dart';
 import 'package:buildcrew/features/customer/customer_job.dart';
 import 'package:buildcrew/features/customer/customer_shell.dart';
@@ -140,7 +141,7 @@ Future<void> _loadFonts() async {
 }
 
 // ------------------------------------------------------------------ harness
-Widget _harness(Key key, String lang, Widget home) => RepaintBoundary(
+Widget _harness(Key key, String lang, Widget home, {double textScale = 1.0}) => RepaintBoundary(
       key: key,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -153,6 +154,10 @@ Widget _harness(Key key, String lang, Widget home) => RepaintBoundary(
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
+        // Large system font: the REAL phone setting is a TextScaler on MediaQuery.
+        builder: textScale == 1.0
+            ? null
+            : (c, child) => MediaQuery(data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(textScale)), child: child!),
         home: home,
       ),
     );
@@ -234,7 +239,7 @@ class _Report {
   }
 }
 
-Future<void> _runScreens(WidgetTester t, List<_Screen> screens, String lang, double w, double h, double dpr) async {
+Future<void> _runScreens(WidgetTester t, List<_Screen> screens, String lang, double w, double h, double dpr, {double textScale = 1.0}) async {
   t.view.physicalSize = Size(w * dpr, h * dpr);
   t.view.devicePixelRatio = dpr;
   addTearDown(t.view.resetPhysicalSize);
@@ -249,11 +254,11 @@ Future<void> _runScreens(WidgetTester t, List<_Screen> screens, String lang, dou
     for (final s in screens) {
       report.current = s.name;
       final key = GlobalKey();
-      final file = 'test/screens_out/${s.name}_${lang}_${w.toInt()}.png';
+      final file = 'test/screens_out/${s.name}_${lang}_${w.toInt()}${textScale == 1.0 ? '' : '_x${(textScale * 10).round()}'}.png';
       try {
         if (s.phone != null && state.user?.phone != s.phone) await _real(t, () => state.switchAccount(s.phone!));
         if (s.prepare != null) await _real(t, s.prepare!);
-        await t.pumpWidget(_harness(key, lang, s.build()));
+        await t.pumpWidget(_harness(key, lang, s.build(), textScale: textScale));
         await _pumpFor(t, 3000);
         if (s.act != null) {
           await s.act!(t);
@@ -286,7 +291,7 @@ Future<void> _runScreens(WidgetTester t, List<_Screen> screens, String lang, dou
   } finally {
     FlutterError.onError = previous;
   }
-  if (report.hasFailures) fail(report.render('${lang.toUpperCase()} ${w.toInt()}x${h.toInt()}'));
+  if (report.hasFailures) fail(report.render('${lang.toUpperCase()} ${w.toInt()}x${h.toInt()}${textScale == 1.0 ? '' : ' text x$textScale'}'));
 }
 
 // ------------------------------------------------------------------ screen catalogue
@@ -438,6 +443,40 @@ List<_Screen> _extraScreens(String lang) => [
       }, scrollBottom: true),
     ];
 
+/// Worker, onboarding, auth, profile and help screens: must work with big system fonts.
+List<_Screen> _largeFontWorkerScreens() => [
+      _Screen('onboarding_language', null, () => LanguageScreen(state: state)),
+      _Screen('onboarding_role', null, () => RoleScreen(state: state)),
+      _Screen('login_phone', null, () => PhoneScreen(state: state)),
+      _Screen('login_otp', null, () {
+        state.pendingPhone = '9876543210';
+        return OtpScreen(state: state);
+      }),
+      _Screen('worker_jobs', _ramesh, () => WorkerShell(state: state), scrollBottom: true),
+      _Screen('worker_todo', _ramesh, () => WorkerTodoScreen(state: state)),
+      _Screen('worker_bids', _ramesh, () => WorkerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.receipt_long_outlined)), scrollBottom: true),
+      _Screen('worker_earnings', _ramesh, () => WorkerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.currency_rupee_rounded)), scrollBottom: true),
+      _Screen('worker_profile', _ramesh, () => WorkerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.person_outline_rounded)), scrollBottom: true),
+      _Screen('worker_job_detail', _ramesh, () => JobDetailScreen(state: state, jobId: 'j1'), scrollBottom: true),
+      _Screen('worker_my_work', _ramesh, () => AssignmentScreen(state: state, assignmentId: 'a4'), scrollBottom: true),
+      _Screen('worker_my_work_completed', _selvam, () => AssignmentScreen(state: state, assignmentId: 'a5'), scrollBottom: true),
+      _Screen('worker_labour_card', _ramesh, () => LabourCardScreen(state: state), scrollBottom: true),
+      _Screen('worker_kyc_level1', _selvam, () => KycLevel1Screen(state: state), scrollBottom: true),
+      _Screen('help_worker', _ramesh, () => HelpScreen(state: state), scrollBottom: true),
+      _Screen('help_customer', _priya, () => HelpScreen(state: state), scrollBottom: true),
+      _Screen('help_report', _ramesh, () => ReportProblemScreen(state: state)),
+    ];
+
+/// Customer-side key screens at the same large font (failures here belong to the customer engineer).
+List<_Screen> _largeFontCustomerScreens() => [
+      for (final n in const [
+        'customer_home', 'customer_bookings_open', 'customer_profile', 'customer_job_bids', 'customer_job_tracking', 'payment',
+        'rate_worker', 'receipt', 'chat_customer', 'chat_worker',
+      ])
+        _coreScreens().firstWhere((s) => s.name == n),
+      ..._extraScreens('en').where((s) => const ['customer_post_job', 'customer_browse_workers', 'customer_worker_profile', 'customer_payments'].contains(s.name)),
+    ];
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -473,4 +512,17 @@ void main() {
       }, timeout: const Timeout(Duration(minutes: 5)));
     }
   }
+
+  // ---- large system font (accessibility): 1.3x in en + hi, 1.5x in en, phone-sized 360x800
+  for (final lang in const ['en', 'hi']) {
+    testWidgets('large font 1.3x worker/onboarding/auth/help: $lang 360x800', (t) async {
+      await _runScreens(t, _largeFontWorkerScreens(), lang, 360, 800, 2, textScale: 1.3);
+    }, timeout: const Timeout(Duration(minutes: 8)));
+    testWidgets('large font 1.3x customer: $lang 360x800', (t) async {
+      await _runScreens(t, _largeFontCustomerScreens(), lang, 360, 800, 2, textScale: 1.3);
+    }, timeout: const Timeout(Duration(minutes: 8)));
+  }
+  testWidgets('large font 1.5x worker/onboarding/auth/help: en 360x800', (t) async {
+    await _runScreens(t, _largeFontWorkerScreens(), 'en', 360, 800, 2, textScale: 1.5);
+  }, timeout: const Timeout(Duration(minutes: 8)));
 }

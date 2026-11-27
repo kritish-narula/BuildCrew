@@ -4,20 +4,22 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_state.dart';
-import '../../core/config.dart';
 import '../../core/demo_accounts.dart';
 import '../../core/speech.dart';
 import '../../core/theme.dart';
 import '../../core/updater.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../widgets/common.dart';
+import '../../widgets/media.dart' show ReadAloud, tapFeedback;
 import '../onboarding/onboarding.dart';
+import 'help.dart';
 import 'update_ui.dart';
 
 /// Language, voice help, support (call + WhatsApp), updates, logout — one tap from every
 /// profile page, for every role.
 List<Widget> settingsTiles(BuildContext context, AppState state) {
   final l = L.of(context);
+  ReadAloud.ensureLoaded();
   Widget tile(IconData icon, Color color, String title, {String? sub, VoidCallback? onTap, Widget? trailing}) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: AppCard(
@@ -42,8 +44,42 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
           ),
         ),
       );
-  final phone = AppConfig.supportPhone;
+  Widget section(String t) => Padding(padding: const EdgeInsets.fromLTRB(2, 14, 2, 8), child: Text(t, style: context.tt.titleLarge));
   return [
+    section(l.wkSecHelp),
+    tile(Icons.support_agent_rounded, BC.money, l.wkHelpTitle, sub: l.wkHelpTitleSub, onTap: () => openHelp(context, state)),
+    tile(Icons.record_voice_over_rounded, BC.brand, l.askByVoice, sub: l.askByVoiceSub, onTap: () => showVoiceHelp(context, state)),
+    tile(Icons.call_rounded, BC.money, l.profileSupport, sub: kSupportPhone, onTap: () {
+      tapFeedback();
+      callSupport();
+    }),
+    tile(Icons.chat_rounded, const Color(0xFF128C7E), l.whatsappSupport, sub: l.whatsappSupportSub, onTap: () {
+      tapFeedback();
+      whatsappSupport();
+    }),
+    section(l.wkSecApp),
+    ValueListenableBuilder<bool>(
+      valueListenable: ReadAloud.enabled,
+      builder: (ctx, on, _) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: AppCard(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: SwitchListTile(
+            value: on,
+            onChanged: (v) {
+              tapFeedback();
+              ReadAloud.set(v);
+            },
+            secondary: const IconBadge(Icons.volume_up_rounded, color: BC.brand, size: 40),
+            title: Text(l.wkReadAloudAuto, maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: Text(l.wkReadAloudAutoSub, maxLines: 3, overflow: TextOverflow.ellipsis),
+          ),
+        ),
+      ),
+    ),
+    // HOOK(hinglish): language row. The Hinglish engineer extends the picker behind this route; keep the tile.
+    tile(Icons.translate_rounded, BC.info, l.profileLanguage, sub: nativeName(state.language ?? 'hi'), onTap: () => context.push('/language?settings=1')),
+    tile(Icons.text_fields_rounded, BC.inkSoft, l.wkTextSize, sub: l.wkTextSizeHint),
     if (state.isDemo) ...[
       Container(
         padding: const EdgeInsets.all(14),
@@ -94,11 +130,6 @@ List<Widget> settingsTiles(BuildContext context, AppState state) {
         ]),
       ),
     ],
-    tile(Icons.record_voice_over_rounded, BC.brand, l.askByVoice, sub: l.askByVoiceSub, onTap: () => showVoiceHelp(context, state)),
-    tile(Icons.call_rounded, BC.money, l.profileSupport, sub: phone, onTap: () => launchUrl(Uri.parse('tel:$phone'))),
-    tile(Icons.chat_rounded, const Color(0xFF128C7E), l.whatsappSupport, sub: l.whatsappSupportSub,
-        onTap: () => launchUrl(Uri.parse('https://wa.me/${phone.replaceAll('+', '')}?text=BuildCrew'), mode: LaunchMode.externalApplication)),
-    tile(Icons.translate_rounded, BC.info, l.profileLanguage, sub: nativeName(state.language ?? 'hi'), onTap: () => context.push('/language?settings=1')),
     ListenableBuilder(
       listenable: Updater.instance,
       builder: (ctx, _) {

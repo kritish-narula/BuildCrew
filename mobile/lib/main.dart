@@ -96,7 +96,7 @@ class _BuildCrewAppState extends State<BuildCrewApp> {
         // phone's back / home / recents bar instead of underneath it.
         builder: (context, child) => ColoredBox(
           color: Colors.white,
-          child: SafeArea(top: false, left: false, right: false, child: child ?? const SizedBox.shrink()),
+          child: SafeArea(top: false, left: false, right: false, child: MediaQuery.withClampedTextScaling(maxScaleFactor: 1.5, child: child ?? const SizedBox.shrink())),
         ),
       ),
     );
