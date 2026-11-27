@@ -57,7 +57,8 @@ jobs:
             exit 0
           fi
           zip -q -j /tmp/screens.zip "${pngs[@]}"
+          cp /tmp/test.txt /tmp/test-log.txt 2>/dev/null || echo "no log" > /tmp/test-log.txt
           gh release delete ci-screens --yes --cleanup-tag || true
-          gh release create ci-screens "${pngs[@]}" /tmp/screens.zip \
+          gh release create ci-screens /tmp/screens.zip /tmp/test-log.txt \
             --target "${{ github.sha }}" --prerelease --latest=false \
             --title "CI screenshots" --notes "auto"
