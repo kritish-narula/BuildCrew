@@ -601,7 +601,7 @@ class _YourWorkersRowState extends State<YourWorkersRow> {
       const SizedBox(height: 20),
       SectionHeader(l.yourWorkers, padding: const EdgeInsets.fromLTRB(2, 0, 2, 8)),
       SizedBox(
-        height: 196,
+        height: 196 * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6), // room for large system fonts
         child: ListView.separated(
           key: const ValueKey('yourWorkers'),
           scrollDirection: Axis.horizontal,

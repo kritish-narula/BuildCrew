@@ -483,7 +483,7 @@ class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderSt
           builder: (_, __) {
             final c = Color.lerp(BC.line, BC.closedSoft, _c.value)!;
             return Container(
-              height: widget.itemHeight,
+              constraints: BoxConstraints(minHeight: widget.itemHeight), // grows with big fonts instead of overflowing
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: BC.card, borderRadius: BorderRadius.circular(BC.rMd), border: Border.all(color: BC.line)),
@@ -491,7 +491,7 @@ class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderSt
                 Container(width: 48, height: 48, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
                     FractionallySizedBox(widthFactor: 0.6, child: _bar(c, double.infinity, 14)),
                     const SizedBox(height: 10),
                     FractionallySizedBox(widthFactor: 0.9, child: _bar(c, double.infinity, 12)),
