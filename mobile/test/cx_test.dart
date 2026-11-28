@@ -18,19 +18,38 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('job templates', () {
-    test('twelve templates, each with a >= 50 character starter text in English and Hindi', () async {
-      expect(jobTemplates.length, 12);
-      expect({for (final t in jobTemplates) t.id}.length, 12);
-      for (final loc in const ['en', 'hi']) {
-        final l = await L.delegate.load(Locale(loc));
-        for (final t in jobTemplates) {
-          expect(templateText(l, t.id).trim().length, greaterThanOrEqualTo(minDescription), reason: '${t.id} $loc');
-          expect(templateText(l, t.id).length, lessThanOrEqualTo(300), reason: '${t.id} $loc fits the 300 character box');
-          expect(templateTitle(l, t.id), isNotEmpty);
-        }
+    test('every trade has 4+ templates (5-7 for most); ids are unique; Other has no starter text', () {
+      expect({for (final t in jobTemplates) t.id}.length, jobTemplates.length);
+      for (final trade in const ['mason', 'plumber', 'electrician', 'carpenter', 'painter', 'helper']) {
+        final n = templatesFor(trade).length;
+        expect(n, greaterThanOrEqualTo(4), reason: trade);
+        expect(n, lessThanOrEqualTo(7), reason: trade);
       }
+      expect(templatesFor('carpenter').map((t) => t.id), containsAll(['DoorRepair', 'Furniture', 'Cupboard', 'NewShelf', 'WindowFrame', 'ModularKitchen']));
+      expect(templatesFor('nobody'), isEmpty);
+      expect(templateById(otherJobId), isNull);
+    });
+
+    test('each template has a >= 50 character starter text and a title in English, Hindi and Hinglish', () async {
+      // Hinglish is the en_IN locale (Roman-script Hindi); `en` and `hi` are the other two launch texts.
+      for (final loc in const [Locale('en'), Locale('hi'), Locale('en', 'IN')]) {
+        final l = await L.delegate.load(loc);
+        for (final t in jobTemplates) {
+          final text = templateText(l, t.id).trim();
+          expect(text.length, greaterThanOrEqualTo(minDescription), reason: '${t.id} $loc');
+          expect(text.length, lessThanOrEqualTo(300), reason: '${t.id} $loc fits the 300 character box');
+          expect(templateTitle(l, t.id).trim(), isNotEmpty, reason: '${t.id} $loc');
+        }
+        // "Other work": a title, but no starter text (the customer describes it on the next step)
+        expect(templateText(l, otherJobId), isEmpty);
+        expect(templateTitle(l, otherJobId), l.pjOtherWork);
+      }
+      final en = await L.delegate.load(const Locale('en'));
+      final hing = await L.delegate.load(const Locale('en', 'IN'));
+      expect(templateText(hing, 'Cupboard'), isNot(templateText(en, 'Cupboard')), reason: 'Hinglish has its own text');
       expect(templateLang(await L.delegate.load(const Locale('hi'))), 'hi');
       expect(templateLang(await L.delegate.load(const Locale('ta'))), 'en');
+      expect(templateLang(hing), 'en');
     });
   });
 

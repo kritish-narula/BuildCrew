@@ -12,6 +12,7 @@ import '../../widgets/schedule.dart';
 import '../../widgets/trust_widgets.dart';
 import '../worker/worker_shell.dart' show initials;
 import 'contractor.dart';
+import 'finding_worker.dart' show PulseMixin, PulsePainter;
 
 /// Caps primary/secondary buttons at 52dp for every customer screen, whatever the app theme
 /// says (merges into the theme's own style, so colours and shapes are untouched).
@@ -246,6 +247,7 @@ class CustomerHomeTab extends StatelessWidget {
     required this.onPost,
     required this.onBrowse,
     required this.onSeeBookings,
+    this.onFinding,
     this.onPostTeam,
     this.onAddBusiness,
     this.onHireAgain,
@@ -260,6 +262,9 @@ class CustomerHomeTab extends StatelessWidget {
   final Future<void> Function() onReload;
   final ValueChanged<String> onOpenJob;
   final VoidCallback onPost, onBrowse, onSeeBookings;
+
+  /// Opens the live "Finding your worker" screen of an open job (falls back to the job screen).
+  final ValueChanged<String>? onFinding;
 
   List<Widget> _attention(BuildContext context, L l, List<Json> all) {
     final out = <Widget>[];
@@ -292,12 +297,8 @@ class CustomerHomeTab extends StatelessWidget {
         action = l.trackWorker(name);
         icon = Icons.two_wheeler_rounded;
         color = BC.info;
-      } else if ((status == 'open' || status == 'bidding') && ((j['bid_count'] as num?) ?? 0) > 0) {
-        text = l.workersQuoted((j['bid_count'] as num).toInt());
-        action = l.viewQuotes;
-        icon = Icons.request_quote_rounded;
-        color = BC.money;
       }
+      // (open / bidding jobs are the live "Finding your worker" cards, see _finding)
       if (text != null) {
         out.add(_ActionCard(icon: icon, color: color, text: text, action: action, onTap: () => onOpenJob(id)));
         out.add(const SizedBox(height: 10));
@@ -306,11 +307,21 @@ class CustomerHomeTab extends StatelessWidget {
     return out;
   }
 
+  /// One live card per job that is still collecting quotes (newest first, at most three): replaces the plain "N workers have quoted" card.
+  List<Widget> _finding(List<Json> all) => [
+        for (final j in all.where((j) => j['kind'] != 'team' && (j['status'] == 'open' || j['status'] == 'bidding')).take(3))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: FindingCard(job: j, onTap: () => (onFinding ?? onOpenJob)(j['id'] as String)),
+          ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
     final name = state.user?.name?.split(' ').first ?? '';
     final all = jobs;
+    final finding = all == null ? <Widget>[] : _finding(all);
     final attention = all == null ? <Widget>[] : _attention(context, l, all);
     final contractor = onPostTeam != null;
     final org = state.user?.orgName ?? '';
@@ -333,21 +344,23 @@ class CustomerHomeTab extends StatelessWidget {
               EmptyState(icon: Icons.cloud_off_rounded, text: l.errorNetwork, actions: [PrimaryButton(expand: false, icon: Icons.refresh_rounded, label: l.retry, onPressed: onReload)])
             else if (all == null)
               const SkeletonList(count: 2, itemHeight: 76, padding: EdgeInsets.only(bottom: 8), shrink: true)
-            else if (attention.isNotEmpty) ...[
-              SectionHeader(l.attentionTitle, padding: const EdgeInsets.fromLTRB(2, 0, 2, 8)),
-              ...attention,
-              const SizedBox(height: 8),
-            ] else if (hasJobs) ...[
-              Container(
-                padding: const EdgeInsets.all(14),
-                margin: const EdgeInsets.only(bottom: 14),
-                decoration: BoxDecoration(color: BC.moneySoft, borderRadius: BorderRadius.circular(BC.r)),
-                child: Row(children: [
-                  const Icon(Icons.check_circle_rounded, color: BC.money),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(l.allCaughtUp, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BC.money))),
-                ]),
-              ),
+            else ...[
+              ...finding,
+              if (attention.isNotEmpty) ...[
+                SectionHeader(l.attentionTitle, padding: const EdgeInsets.fromLTRB(2, 0, 2, 8)),
+                ...attention,
+                const SizedBox(height: 8),
+              ] else if (hasJobs && finding.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(color: BC.moneySoft, borderRadius: BorderRadius.circular(BC.r)),
+                  child: Row(children: [
+                    const Icon(Icons.check_circle_rounded, color: BC.money),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(l.allCaughtUp, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BC.money))),
+                  ]),
+                ),
             ],
             if (contractor && org.isEmpty && onAddBusiness != null) ...[
               InfoBanner(icon: Icons.business_rounded, color: BC.info, text: l.bizNameBanner, action: l.bizNameAdd, onTap: onAddBusiness),
@@ -418,6 +431,7 @@ class _ActionCard extends StatelessWidget {
       );
 }
 
+/// Compact single-row "Post a Job" button (about 88 dp): icon, title, one-line subtitle, plus.
 class _PostHero extends StatelessWidget {
   const _PostHero({required this.onTap, this.team = false});
   final VoidCallback onTap;
@@ -426,43 +440,88 @@ class _PostHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = L.of(context);
     return Material(
+      key: const ValueKey('postHero'),
       color: BC.brand,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(team ? l.postTeamJob : l.postJob, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(team ? l.postTeamJobSub : l.postJobSub, style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 15)),
-                const SizedBox(height: 14),
-                Row(children: [
-                  for (final ic in team
-                      ? [Icons.groups_rounded, Icons.calendar_month_rounded, Icons.currency_rupee_rounded]
-                      : [Icons.photo_camera_rounded, Icons.mic_rounded, Icons.currency_rupee_rounded])
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(12)),
-                      child: Icon(ic, color: Colors.white, size: 20),
-                    ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 88),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(16)),
+                child: Icon(team ? Icons.groups_rounded : Icons.photo_camera_rounded, color: Colors.white, size: 28),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(team ? l.postTeamJob : l.postJob, maxLines: 1, softWrap: false, style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w700)),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(team ? l.postTeamJobSub : l.postJobHeroSub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 14)),
                 ]),
-              ]),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              width: 60,
-              height: 60,
-              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-              child: const Icon(Icons.add_rounded, color: BC.brand, size: 38),
-            ),
-          ]),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                child: const Icon(Icons.add_rounded, color: BC.brand, size: 30),
+              ),
+            ]),
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Home: a job that is still collecting quotes. Live pulse dot, "3 quotes so far · posted 12 min ago", opens "Finding your worker".
+class FindingCard extends StatefulWidget {
+  const FindingCard({super.key, required this.job, required this.onTap});
+  final Json job;
+  final VoidCallback onTap;
+  @override
+  State<FindingCard> createState() => _FindingCardState();
+}
+
+class _FindingCardState extends State<FindingCard> with SingleTickerProviderStateMixin, PulseMixin<FindingCard> {
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final n = (widget.job['bid_count'] as num?)?.toInt() ?? 0;
+    final ago = agoText(l, widget.job['created_at'] as String?);
+    final sub = ago == null ? l.workersQuoted(n) : l.fwCardSub(n, ago);
+    return AppCard(
+      key: ValueKey('finding${widget.job['id']}'),
+      onTap: widget.onTap,
+      shadow: true,
+      borderColor: BC.brand.withValues(alpha: 0.5),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(children: [
+        SizedBox(
+          width: 44,
+          height: 44,
+          child: AnimatedBuilder(animation: pulse, builder: (context, _) => CustomPaint(painter: PulsePainter(pulse.value, BC.brand, core: 6))),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(l.fwHeadline, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.titleSmall),
+            const SizedBox(height: 2),
+            Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, color: BC.inkSoft, height: 1.3)),
+          ]),
+        ),
+        const Icon(Icons.chevron_right_rounded, color: BC.brand),
+      ]),
     );
   }
 }

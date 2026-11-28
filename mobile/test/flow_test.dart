@@ -1357,6 +1357,14 @@ void main() {
       return (await api.createJob(_jobBody()))['id'] as String;
     }
 
+    test('posting a job without a voice note works and says how many workers were told', () async {
+      await signInAs(_priya);
+      final created = await api.createJob(_jobBody()); // audio_key null: the voice note is optional
+      expect(created['status'], 'open');
+      expect(created['notified_workers'], isA<int>());
+      expect(created['notified_workers'] as int, greaterThanOrEqualTo(1), reason: 'the sample marketplace has masons');
+    });
+
     test('sync: baseline cursor, quiet polls change nothing, a write bumps the revision', () async {
       await signInAs(_priya);
       final b = await api.sync(null);

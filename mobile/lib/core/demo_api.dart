@@ -433,21 +433,25 @@ class DemoApi implements Api {
     }
     for (final j in _all(d, 'jobs').toList()) {
       if (!(j['status'] == 'open' || j['status'] == 'bidding') || j['sim'] != true || j['kind'] == 'team') continue;
-      if (now.difference(DateTime.parse(j['created_at'] as String)).inSeconds < 15) continue;
+      final age = now.difference(DateTime.parse(j['created_at'] as String)).inSeconds;
+      if (age < 15) continue;
       final trades = {for (final it in j['items'] as List) (it as Map)['trade']};
-      final have = _all(d, 'bids').where((b) => b['job_id'] == j['id']).length;
-      if (have > 0) continue;
       final directTo = _exclusiveTo(j);
+      final jobBids = _all(d, 'bids').where((b) => b['job_id'] == j['id']).toList();
+      if (jobBids.any((b) => b['sim_auto'] != true)) continue; // a real worker (another demo login) quoted: no scripted quotes
       final pool = directTo != null
           ? [_row(d, 'users', directTo)] // "send to Ramesh first": only he is asked during the 2 hours
           : _all(d, 'users').where((u) => u['role'] == 'worker' && (u['trades'] as List).any(trades.contains)).take(3).toList();
+      // Quotes trickle in (first ~15 s after posting, then ~35 s, ~60 s) so "Finding your worker" fills up live.
+      final due = directTo != null ? pool.length : (age >= 60 ? 3 : (age >= 35 ? 2 : 1));
       final items = _pricingItems(j), city = _cityOf(d, j);
-      for (final w in pool) {
+      for (final w in pool.skip(jobBids.length).take(max(0, due - jobBids.length))) {
         // Quotes land around the fair-price model, +/-15%.
         final median = DemoPricing.fairRange(items, city, w['trades'] as List)['median'] as num;
         final price = max(100, (median * (0.85 + _rnd.nextDouble() * 0.3) / 50).round() * 50);
         final id = _id('b');
-        _t(d, 'bids')[id] = {'id': id, 'job_id': j['id'], 'worker_id': w['id'], 'price': price, 'status': 'pending', 'created_at': _now()};
+        _t(d, 'bids')[id] = {'id': id, 'job_id': j['id'], 'worker_id': w['id'], 'price': price, 'status': 'pending', 'created_at': _now(), 'sim_auto': true};
+        _notify(d, j['customer_id'] as String?, 'new_quote', jobId: j['id'] as String?, withUser: w['id'] as String?);
       }
       if (pool.isNotEmpty) j['status'] = 'bidding';
     }
@@ -1736,6 +1740,10 @@ class DemoApi implements Api {
     if (isTeam && items.cast<Map>().map((w) => w['trade']).toSet().length != items.length) _err('err.validation');
     final id = _id('j');
     final directId = body['direct_worker_id'] as String?;
+    // workers who will be told about this job: a worker of one of its trades (or with no trade set yet); none for a direct offer
+    final jobTrades = {for (final w in items.cast<Map>()) w['trade']};
+    final notified = directId != null ? 0 : _all(d, 'users').where((u) => u['role'] == 'worker' && u['suspended'] != true &&
+        (((u['trades'] as List?) ?? const []).isEmpty || ((u['trades'] as List?) ?? const []).any(jobTrades.contains))).length;
     if (directId != null) {
       final w = _t(d, 'users')[directId] as Map?;
       if (w == null || w['role'] != 'worker' || w['suspended'] == true || isTeam) _err('err.validation');
@@ -1767,7 +1775,7 @@ class DemoApi implements Api {
       ],
     };
     await _save();
-    return {'id': id, 'status': 'open', if (directId != null) 'direct_until': (_row(d, 'jobs', id))['direct_until']};
+    return {'id': id, 'status': 'open', 'notified_workers': notified, if (directId != null) 'direct_until': (_row(d, 'jobs', id))['direct_until']};
   }
 
   @override

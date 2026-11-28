@@ -17,6 +17,7 @@ import '../../widgets/media.dart';
 import '../../widgets/photo_pick.dart';
 import '../../widgets/schedule.dart';
 import 'customer_home.dart' show customerRoute;
+import 'finding_worker.dart';
 import 'job_templates.dart';
 import 'post_example.dart';
 
@@ -43,6 +44,7 @@ class WorkDraft {
   bool get rulesMet => photos.length >= minPhotos && descLength >= minDescription;
   int? get wageInr => int.tryParse(wage.text.replaceAll(RegExp(r'[^0-9]'), ''));
   String? audioKey; // set once uploaded
+  String tplId = otherJobId; // the job option picked on step 1 (a job_templates id, or [otherJobId])
   String? starter, starterLang; // text (and its language) put in by a job template, while the customer has not changed it
   bool get isUntouchedStarter => starter != null && text.text == starter && photos.isEmpty && audio == null;
   bool uploading = false, transcribing = false, uploadFailed = false;
@@ -66,6 +68,9 @@ class PostJobScreen extends StatefulWidget {
 class _PostJobScreenState extends State<PostJobScreen> {
   int _step = 0;
   final List<WorkDraft> _works = [];
+  // Step 1 (single jobs): trades in tap order, and per trade the job options picked under it (template ids or [otherJobId]).
+  final List<String> _tradeSel = [];
+  final Map<String, List<String>> _jobPick = {};
   LatLng? _point; // exact job location (map pin)
   final _area = TextEditingController(); // locality, auto-filled from the pin, editable
   String _city = '';
@@ -98,6 +103,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       if (!trades.contains(t) || _works.any((x) => x.trade == t)) continue;
       _works.add(WorkDraft(t)..text.text = (it['text_description'] as String?) ?? '');
     }
+    _syncSelFromWorks();
     final lat = (d['lat'] as num?)?.toDouble(), lng = (d['lng'] as num?)?.toDouble();
     if (lat != null && lng != null) {
       _point = LatLng(lat, lng);
@@ -124,7 +130,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
     String t(String Function(L) f) => l == null ? '-' : f(l);
     switch (_step) {
       case 0:
-        return _works.isEmpty ? t((l) => l.pjNeedTrade) : null;
+        if (widget.team) return _works.isEmpty ? t((l) => l.pjNeedTrade) : null;
+        if (_tradeSel.isEmpty) return t((l) => l.pjNeedTrade);
+        for (final tr in _tradeSel) {
+          if ((_jobPick[tr] ?? const <String>[]).isEmpty) return t((l) => l.pjNeedJob(tradeLabel(l, tr)));
+        }
+        return null;
       case 1:
         for (final (i, w) in _works.indexed) {
           if (w.photos.length < minPhotos) return t((l) => l.pjNeedPhotos(i + 1, minPhotos - w.photos.length));
@@ -194,22 +205,56 @@ class _PostJobScreenState extends State<PostJobScreen> {
     });
   }
 
-  /// One tap on a common job: trade + starter text, straight on to "describe" where the customer edits it and adds photos.
-  void _applyTemplate(JobTemplate t) {
+  /// Step 1 (single jobs): tap a trade to show its common jobs; tap again to remove it (and its picked jobs).
+  void _pickTrade(String t) => setState(() {
+        if (_tradeSel.remove(t)) {
+          _jobPick.remove(t);
+        } else {
+          _tradeSel.add(t);
+        }
+      });
+
+  /// Tap a job option under a trade (several allowed: each becomes its own work card).
+  void _pickJob(String trade, String id) => setState(() {
+        final picked = _jobPick.putIfAbsent(trade, () => <String>[]);
+        if (!picked.remove(id)) picked.add(id);
+      });
+
+  /// The selection on step 1 follows the work cards (coming back from step 2, "hire again").
+  void _syncSelFromWorks() {
+    _tradeSel
+      ..clear()
+      ..addAll(_works.map((w) => w.trade).toSet());
+    _jobPick.clear();
+    for (final w in _works) {
+      final picked = _jobPick.putIfAbsent(w.trade, () => <String>[]);
+      if (!picked.contains(w.tplId)) picked.add(w.tplId);
+    }
+  }
+
+  /// Continue on step 1: one work card per picked job (trade + starter text). Cards the customer already worked on
+  /// (photos, edited text) are kept when their trade + job is still picked.
+  void _applyPicks() {
     final l = L.of(context);
-    final text = templateText(l, t.id);
-    setState(() {
-      _works.removeWhere((w) => w.isUntouchedStarter); // tapped another template: replace, do not pile up cards
-      var w = _works.where((x) => x.trade == t.trade && x.text.text.trim().isEmpty).firstOrNull;
-      if (w == null) {
-        w = WorkDraft(t.trade);
+    final old = List<WorkDraft>.of(_works);
+    _works.clear();
+    for (final t in _tradeSel) {
+      for (final id in _jobPick[t] ?? const <String>[]) {
+        var w = old.where((x) => x.trade == t && x.tplId == id).firstOrNull;
+        if (w != null) {
+          old.remove(w);
+        } else {
+          w = WorkDraft(t)..tplId = id;
+          final text = templateText(l, id);
+          if (text.isNotEmpty) {
+            w.text.text = text;
+            w.starter = text;
+            w.starterLang = templateLang(l);
+          }
+        }
         _works.add(w);
       }
-      w.text.text = text;
-      w.starter = text;
-      w.starterLang = templateLang(l);
-      _step = 1;
-    });
+    }
   }
 
   void _toggleTrade(String t) => setState(() {
@@ -238,6 +283,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   }
 
   Future<void> _next() async {
+    if (_step == 0 && !widget.team) setState(_applyPicks);
     if (_step == 2 && widget.team) {
       setState(() {
         _step = 3;
@@ -376,7 +422,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
           if (widget.team) ...{'headcount': w.headcount, 'days': w.days, 'daily_wage_inr': w.wageInr},
         });
       }
-      await widget.state.api.createJob({
+      final created = await widget.state.api.createJob({
         'location_lat': _point!.latitude, 'location_lng': _point!.longitude, 'address_text': _address.text.trim(),
         'city': _city.isEmpty ? _area.text.trim() : _city, 'locality': _area.text.trim(),
         'start_date': _ymd(_start), 'work_items': items,
@@ -385,6 +431,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
         if (_directId != null && !widget.team) 'direct_worker_id': _directId,
       });
       if (!mounted) return;
+      if (!widget.team) {
+        // Straight to the live "Finding your worker" screen; the old route completes with `true` (posted).
+        await Navigator.of(context).pushReplacement<void, bool>(
+          customerRoute<void>(
+              builder: (_) => FindingWorkerScreen(state: widget.state, jobId: created['id'] as String, notified: (created['notified_workers'] as num?)?.toInt())),
+          result: true,
+        );
+        return;
+      }
       await showDialog<void>(
         context: context,
         builder: (c) => AlertDialog(
@@ -410,7 +465,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
     return PopScope(
       canPop: _step == 0,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) setState(() => _step--);
+        if (didPop) return;
+        setState(() {
+          _step--;
+          if (_step == 0 && !widget.team) _syncSelFromWorks();
+        });
       },
       child: Scaffold(
         appBar: AppBar(
@@ -474,40 +533,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   // ---------------------------------------------------------------- step 1
   Widget _tradesStep(L l) => ListView(padding: const EdgeInsets.all(16), children: [
-        // FAST PATH: a common job in one tap (trade + a starter description to edit).
-        Row(children: [
-          const Icon(Icons.bolt_rounded, color: BC.brand),
-          const SizedBox(width: 6),
-          Expanded(child: Text(l.cxQuickStart, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleLarge)),
-        ]),
-        const SizedBox(height: 10),
-        GridView(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, mainAxisExtent: 76),
-          children: [
-            for (final t in jobTemplates)
-              Material(
-                key: ValueKey('tpl${t.id}'),
-                color: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r), side: const BorderSide(color: BC.line, width: 1.2)),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(BC.r),
-                  onTap: () => _applyTemplate(t),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(children: [
-                      IconBadge(t.icon, color: TradeStyle.of(t.trade).color, size: 36),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(templateTitle(l, t.id), maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, height: 1.25))),
-                    ]),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 22),
-        Text(l.cxOrPickTrade, style: context.tt.titleLarge),
+        // 1. TRADE FIRST ...
+        Text(l.pjWhatKind, style: context.tt.titleLarge),
         const SizedBox(height: 10),
         GridView(
           shrinkWrap: true,
@@ -516,14 +543,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
           children: [
             for (final t in trades)
               Builder(builder: (ctx) {
-                final on = _works.any((w) => w.trade == t);
+                final on = _tradeSel.contains(t);
                 final s = TradeStyle.of(t);
                 return Material(
+                  key: ValueKey('trade$t'),
                   color: on ? s.color.withValues(alpha: 0.12) : Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r), side: BorderSide(color: on ? s.color : BC.line, width: on ? 2.5 : 1.2)),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(BC.r),
-                    onTap: () => _toggleTrade(t),
+                    onTap: () => _pickTrade(t),
                     child: Stack(children: [
                       Center(
                         child: Padding(
@@ -542,7 +570,50 @@ class _PostJobScreenState extends State<PostJobScreen> {
               }),
           ],
         ),
+        const SizedBox(height: 18),
+        // 2. ... THEN that trade's common jobs (several trades: one group per trade) + "Other work".
+        if (_tradeSel.isEmpty)
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.touch_app_rounded, color: BC.inkSoft, size: 22),
+            const SizedBox(width: 8),
+            Expanded(child: Text(l.pjPickTradeFirst, style: const TextStyle(color: BC.inkSoft, fontSize: 15, height: 1.3))),
+          ])
+        else
+          for (final t in _tradeSel) ...[_jobOptions(l, t), const SizedBox(height: 16)],
       ]);
+
+  Widget _jobOptions(L l, String trade) {
+    final s = TradeStyle.of(trade);
+    final picked = _jobPick[trade] ?? const <String>[];
+    return Column(key: ValueKey('jobs$trade'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Icon(s.icon, color: s.color, size: 22),
+        const SizedBox(width: 8),
+        Expanded(child: Text(l.pjJobsFor(tradeLabel(l, trade)), maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium)),
+      ]),
+      const SizedBox(height: 8),
+      for (final t in templatesFor(trade))
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _JobOption(
+            key: ValueKey('tpl${t.id}'),
+            icon: t.icon,
+            label: t.title(l),
+            color: s.color,
+            on: picked.contains(t.id),
+            onTap: () => _pickJob(trade, t.id),
+          ),
+        ),
+      _JobOption(
+        key: ValueKey('tplOther_$trade'),
+        icon: Icons.edit_note_rounded,
+        label: l.pjOtherWork,
+        color: s.color,
+        on: picked.contains(otherJobId),
+        onTap: () => _pickJob(trade, otherJobId),
+      ),
+    ]);
+  }
 
   // ---------------------------------------------------------------- step 2
   Widget _describeStep(L l) => ListView(padding: const EdgeInsets.all(16), children: [
@@ -833,6 +904,35 @@ class _PostJobScreenState extends State<PostJobScreen> {
   }
 }
 
+/// One selectable job under a trade: full-width row, trade colour when picked.
+class _JobOption extends StatelessWidget {
+  const _JobOption({super.key, required this.icon, required this.label, required this.color, required this.on, required this.onTap});
+  final IconData icon;
+  final String label;
+  final Color color;
+  final bool on;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Material(
+        color: on ? color.withValues(alpha: 0.12) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BC.r), side: BorderSide(color: on ? color : BC.line, width: on ? 2 : 1.2)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(BC.r),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(children: [
+              IconBadge(icon, color: color, size: 36),
+              const SizedBox(width: 10),
+              Expanded(child: Text(label, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.25))),
+              const SizedBox(width: 8),
+              Icon(on ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: on ? color : BC.inkFaint, size: 24),
+            ]),
+          ),
+        ),
+      );
+}
+
 /// − N + control used for headcount and days.
 class _Stepper extends StatelessWidget {
   const _Stepper({required this.label, required this.value, required this.min, required this.max, required this.onChanged});
@@ -955,14 +1055,26 @@ class _WorkCardEditor extends StatelessWidget {
           ]),
           const SizedBox(height: 12),
           // AUDIO DESCRIPTION — the prominent action.
-          if (a == null)
+          if (a == null) ...[
+            // The voice note is optional: say so, and how to make it useful.
+            Container(
+              key: const ValueKey('voiceHint'),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: BC.brandSoft, borderRadius: BorderRadius.circular(12)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.record_voice_over_rounded, size: 20, color: BC.brandDark),
+                const SizedBox(width: 8),
+                Expanded(child: Text(l.pjVoiceHint, style: const TextStyle(fontSize: 13.5, height: 1.35, color: BC.ink))),
+              ]),
+            ),
+            const SizedBox(height: 8),
             FilledButton.icon(
               onPressed: onRecord,
               style: FilledButton.styleFrom(backgroundColor: BC.ink),
               icon: const Icon(Icons.mic_rounded, size: 28),
               label: BtnLabel(l.recordVoiceNote),
-            )
-          else ...[
+            ),
+          ] else ...[
             AudioPlayerCard(url: a.path, durationSec: a.seconds, sizeKb: a.bytes ~/ 1024, label: l.voiceNoteRecorded(mmss(a.seconds))),
             const SizedBox(height: 6),
             Row(children: [

@@ -257,98 +257,122 @@
   },
   "tplTapLeakTitle": {
     "en": "Tap leaking",
-    "hi": "नल से पानी टपकना"
+    "hi": "नल से पानी टपकना",
+    "hinglish": "Nal se paani tapakna"
   },
   "tplTapLeakText": {
     "en": "The tap is leaking water all day. Please check the tap and the pipe below it, then repair or change what is needed.",
-    "hi": "नल से दिनभर पानी टपक रहा है। कृपया नल और नीचे का पाइप देखकर ज़रूरत हो तो ठीक करें या बदल दें।"
+    "hi": "नल से दिनभर पानी टपक रहा है। कृपया नल और नीचे का पाइप देखकर ज़रूरत हो तो ठीक करें या बदल दें।",
+    "hinglish": "Nal se din bhar paani tapak raha hai. Nal aur neeche ka pipe dekh kar zarurat ho to theek karo ya badal do."
   },
   "tplFanFittingTitle": {
     "en": "Fan fitting",
-    "hi": "पंखा लगवाना"
+    "hi": "पंखा लगवाना",
+    "hinglish": "Fan lagwana"
   },
   "tplFanFittingText": {
     "en": "I need a new ceiling fan fitted in the room. The hook and the wire point are there. Please fit it and test the speed.",
-    "hi": "कमरे में नया सीलिंग पंखा लगवाना है। हुक और वायर पॉइंट पहले से है। कृपया पंखा लगाकर स्पीड चलाकर देख लें।"
+    "hi": "कमरे में नया सीलिंग पंखा लगवाना है। हुक और वायर पॉइंट पहले से है। कृपया पंखा लगाकर स्पीड चलाकर देख लें।",
+    "hinglish": "Kamre mein nayi ceiling fan lagwani hai. Hook aur wire point maujood hai. Please fan lagao aur speed test karo."
   },
   "tplSwitchSocketTitle": {
     "en": "Switch / socket repair",
-    "hi": "स्विच / सॉकेट ठीक करना"
+    "hi": "स्विच / सॉकेट ठीक करना",
+    "hinglish": "Switch / socket repair"
   },
   "tplSwitchSocketText": {
     "en": "A switch or socket in the room is not working and sometimes sparks. Please check the wiring and repair or change it.",
-    "hi": "कमरे का एक स्विच या सॉकेट काम नहीं कर रहा और कभी-कभी चिंगारी देता है। वायरिंग देखकर ठीक करें या बदलें।"
+    "hi": "कमरे का एक स्विच या सॉकेट काम नहीं कर रहा और कभी-कभी चिंगारी देता है। वायरिंग देखकर ठीक करें या बदलें।",
+    "hinglish": "Kamre ka ek switch ya socket kaam nahi kar raha aur kabhi-kabhi spark karta hai. Wiring check karke theek karo ya badal do."
   },
   "tplWallPaintTitle": {
     "en": "Wall painting (1 room)",
-    "hi": "दीवार पेंट (1 कमरा)"
+    "hi": "दीवार पेंट (1 कमरा)",
+    "hinglish": "Deewar ki painting (1 kamra)"
   },
   "tplWallPaintText": {
     "en": "I want one room painted, walls only. Small cracks need filling first. Please do primer and two coats of paint.",
-    "hi": "एक कमरे की दीवारें पेंट करवानी हैं। छोटी दरारें पहले भरनी हैं। कृपया प्राइमर और दो कोट पेंट कर दें।"
+    "hi": "एक कमरे की दीवारें पेंट करवानी हैं। छोटी दरारें पहले भरनी हैं। कृपया प्राइमर और दो कोट पेंट कर दें।",
+    "hinglish": "Ek kamre ki sirf deewarein paint karwani hain. Chhoti dararen pehle bharni hain. Please primer aur paint ke do coat karo."
   },
   "tplDoorRepairTitle": {
     "en": "Door repair",
-    "hi": "दरवाज़ा ठीक करना"
+    "hi": "दरवाज़ा ठीक करना",
+    "hinglish": "Darwaza repair"
   },
   "tplDoorRepairText": {
     "en": "The wooden door is loose and does not close properly. Please fix the hinges and the lock, and set the door straight.",
-    "hi": "लकड़ी का दरवाज़ा ढीला है और ठीक से बंद नहीं होता। कृपया कब्ज़े और ताला ठीक करके दरवाज़ा सीधा कर दें।"
+    "hi": "लकड़ी का दरवाज़ा ढीला है और ठीक से बंद नहीं होता। कृपया कब्ज़े और ताला ठीक करके दरवाज़ा सीधा कर दें।",
+    "hinglish": "Lakdi ka darwaza dheela hai aur theek se band nahi hota. Hinges aur lock theek karo aur darwaza seedha set karo."
   },
   "tplFurnitureTitle": {
     "en": "Bed / furniture repair",
-    "hi": "बेड / फ़र्नीचर ठीक करना"
+    "hi": "बेड / फ़र्नीचर ठीक करना",
+    "hinglish": "Bed / furniture repair"
   },
   "tplFurnitureText": {
     "en": "My bed frame is broken and wobbles. Please repair it, tighten the joints and fix any loose or damaged wooden parts.",
-    "hi": "मेरे बेड का फ्रेम टूटा है और हिलता है। कृपया जोड़ कसकर और ढीले या टूटे लकड़ी के हिस्से ठीक कर दें।"
+    "hi": "मेरे बेड का फ्रेम टूटा है और हिलता है। कृपया जोड़ कसकर और ढीले या टूटे लकड़ी के हिस्से ठीक कर दें।",
+    "hinglish": "Mera bed ka frame toota hai aur hilta hai. Please repair karo, joints kaso aur toote ya kharab lakdi ke hisse theek karo."
   },
   "tplCompoundWallTitle": {
     "en": "Compound wall",
-    "hi": "बाउंड्री दीवार"
+    "hi": "बाउंड्री दीवार",
+    "hinglish": "Boundary wall"
   },
   "tplCompoundWallText": {
     "en": "I need a brick compound wall built in front of the plot, about 30 feet long. Material will be arranged by me.",
-    "hi": "प्लॉट के सामने करीब 30 फ़ीट लंबी ईंटों की बाउंड्री दीवार बनवानी है। सामान की व्यवस्था मैं खुद करूँगा।"
+    "hi": "प्लॉट के सामने करीब 30 फ़ीट लंबी ईंटों की बाउंड्री दीवार बनवानी है। सामान की व्यवस्था मैं खुद करूँगा।",
+    "hinglish": "Plot ke saamne lagbhag 30 feet lambi eent ki boundary wall banwani hai. Material meri taraf se arrange hoga."
   },
   "tplTileFixingTitle": {
     "en": "Tile fixing",
-    "hi": "टाइल लगवाना"
+    "hi": "टाइल लगवाना",
+    "hinglish": "Tile lagwana"
   },
   "tplTileFixingText": {
     "en": "I need floor tiles fixed in one room, about 100 sq ft. Tiles are bought. Please level the floor and fix them neatly.",
-    "hi": "एक कमरे में करीब 100 वर्ग फ़ीट फ़र्श की टाइलें लगवानी हैं। टाइल्स ख़रीदी हुई हैं। फ़र्श समतल करके साफ़ लगाएँ।"
+    "hi": "एक कमरे में करीब 100 वर्ग फ़ीट फ़र्श की टाइलें लगवानी हैं। टाइल्स ख़रीदी हुई हैं। फ़र्श समतल करके साफ़ लगाएँ।",
+    "hinglish": "Ek kamre mein lagbhag 100 sq ft floor tiles lagwani hain. Tiles kharidi hui hain. Floor level karke neatly lagao."
   },
   "tplPlasterTitle": {
     "en": "Plaster / seepage",
-    "hi": "प्लास्टर / सीलन"
+    "hi": "प्लास्टर / सीलन",
+    "hinglish": "Plaster / seelan"
   },
   "tplPlasterText": {
     "en": "Damp patches and peeling plaster on the wall, mostly near the floor. Please find the cause, repair and re-plaster the wall.",
-    "hi": "दीवार पर सीलन के धब्बे हैं और प्लास्टर उखड़ रहा है, ज़्यादातर नीचे की तरफ़। कारण देखकर मरम्मत और दोबारा प्लास्टर करें।"
+    "hi": "दीवार पर सीलन के धब्बे हैं और प्लास्टर उखड़ रहा है, ज़्यादातर नीचे की तरफ़। कारण देखकर मरम्मत और दोबारा प्लास्टर करें।",
+    "hinglish": "Deewar par seelan ke daag aur plaster ukhad raha hai, zyada tar floor ke paas. Wajah dhundh kar repair karo aur dobara plaster karo."
   },
   "tplBathroomFitTitle": {
     "en": "Bathroom fitting",
-    "hi": "बाथरूम फिटिंग"
+    "hi": "बाथरूम फिटिंग",
+    "hinglish": "Bathroom fitting"
   },
   "tplBathroomFitText": {
     "en": "I need bathroom fittings fixed: a new wash basin, a shower and a flush tank. All items are bought and ready at home.",
-    "hi": "बाथरूम की फिटिंग करवानी है: नया वॉश बेसिन, शावर और फ्लश टैंक। सारा सामान ख़रीदकर घर पर रखा है।"
+    "hi": "बाथरूम की फिटिंग करवानी है: नया वॉश बेसिन, शावर और फ्लश टैंक। सारा सामान ख़रीदकर घर पर रखा है।",
+    "hinglish": "Bathroom ki fittings lagwani hain: nayi wash basin, shower aur flush tank. Sab saaman kharida hua hai aur ghar par ready hai."
   },
   "tplNewWiringTitle": {
     "en": "New wiring point",
-    "hi": "नया वायरिंग पॉइंट"
+    "hi": "नया वायरिंग पॉइंट",
+    "hinglish": "Naya wiring point"
   },
   "tplNewWiringText": {
     "en": "I need one or two new electric points added in the room for a TV and a charger, with switch and socket on the wall.",
-    "hi": "कमरे में टीवी और चार्जर के लिए एक या दो नए बिजली पॉइंट लगवाने हैं, दीवार पर स्विच और सॉकेट के साथ।"
+    "hi": "कमरे में टीवी और चार्जर के लिए एक या दो नए बिजली पॉइंट लगवाने हैं, दीवार पर स्विच और सॉकेट के साथ।",
+    "hinglish": "Kamre mein TV aur charger ke liye ek ya do naye bijli point lagwane hain, deewar par switch aur socket ke saath."
   },
   "tplHelperDayTitle": {
     "en": "Helper for a day",
-    "hi": "एक दिन के लिए हेल्पर"
+    "hi": "एक दिन के लिए हेल्पर",
+    "hinglish": "Ek din ka helper"
   },
   "tplHelperDayText": {
     "en": "I need one helper for a full day to shift furniture, carry material and clean up the work area after the work is done.",
-    "hi": "पूरे दिन के लिए एक हेल्पर चाहिए जो फ़र्नीचर शिफ्ट करे, सामान उठाए और काम के बाद जगह साफ़ करे।"
+    "hi": "पूरे दिन के लिए एक हेल्पर चाहिए जो फ़र्नीचर शिफ्ट करे, सामान उठाए और काम के बाद जगह साफ़ करे।",
+    "hinglish": "Poore din ke liye ek helper chahiye jo furniture shift kare, saaman uthaye aur kaam ke baad jagah saaf kare."
   }
 }

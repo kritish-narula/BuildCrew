@@ -14,6 +14,7 @@ import 'package:buildcrew/features/common/help.dart';
 import 'package:buildcrew/features/common/update_ui.dart';
 import 'package:buildcrew/features/customer/customer_job.dart';
 import 'package:buildcrew/features/customer/customer_shell.dart';
+import 'package:buildcrew/features/customer/finding_worker.dart';
 import 'package:buildcrew/features/customer/payment.dart';
 import 'package:buildcrew/features/customer/team_job.dart';
 import 'package:buildcrew/features/customer/post_job.dart';
@@ -300,6 +301,35 @@ Future<void> _runScreens(WidgetTester t, List<_Screen> screens, String lang, dou
 Json? _rateJob, _ratePrevAssign;
 List<Json> _payments = [];
 
+String? _findJobId;
+
+/// A new open job for Priya (mason + carpenter). With [quoted] Ramesh (mason) and Harpreet (carpenter) have quoted on it.
+/// Leaves Priya signed in. Quick enough that the demo's scripted quotes (15 s after posting) have not landed yet.
+Future<String> _freshJob({required bool quoted}) async {
+  await state.switchAccount(_priya);
+  final d = DateTime.now().add(const Duration(days: 1));
+  final day = '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  Json item(String trade, String text) => {
+        'trade': trade, 'description_language': 'en', 'text_description': text,
+        'photo_keys': ['photos/leak_1.jpg', 'photos/leak_2.jpg'], 'transcript': null, 'audio_key': null,
+      };
+  final id = (await state.api.createJob({
+    'location_lat': 18.5074, 'location_lng': 73.8077, 'address_text': 'Plot 12, Kothrud, Pune', 'city': 'Pune', 'locality': 'Kothrud', 'start_date': day,
+    'work_items': [
+      item('mason', 'New compound wall in front of the plot, about 30 feet long. Material will be arranged by me.'),
+      item('carpenter', 'Main door is loose and does not close properly. Please fix the hinges and the lock.'),
+    ],
+  }))['id'] as String;
+  if (quoted) {
+    await state.switchAccount(_ramesh);
+    await state.api.placeBid(id, 4200, 'fw-r-$id');
+    await state.switchAccount(_harpreet);
+    await state.api.placeBid(id, 3900, 'fw-h-$id');
+    await state.switchAccount(_priya);
+  }
+  return id;
+}
+
 Future<void> _asSend(String phone, String jobId, String to, String body) async {
   await state.switchAccount(phone);
   await state.api.sendChat(jobId, to, body);
@@ -406,6 +436,32 @@ List<_Screen> _trustScreens() => [
         _rebook = await state.api.rebookDraft(workerId: 'w3');
       }),
       _Screen('worker_direct_request', _ramesh, () => WorkerShell(state: state)),
+      ..._postScreens(),
+    ];
+
+/// Post a job (trade first, then its jobs) and "Finding your worker": run at 360 and 320 dp, and at 1.3x text.
+List<_Screen> _postScreens() => [
+      // ---- post a job step 1: trade first, then that trade's jobs (+ "Other work"); several trades = one group per trade
+      _Screen('customer_post_job_carpenter', _priya, () => PostJobScreen(state: state), act: (t) => _tap(t, find.byKey(const ValueKey('tradecarpenter'))), scrollBottom: true),
+      _Screen('customer_post_job_two_trades', _priya, () => PostJobScreen(state: state), act: (t) async {
+        await _tap(t, find.byKey(const ValueKey('tradecarpenter')));
+        await _tap(t, find.byKey(const ValueKey('tradeelectrician')));
+        for (final k in const ['tplCupboard', 'tplOther_electrician']) {
+          await t.ensureVisible(find.byKey(ValueKey(k))); // the second group is below the fold
+          await _pumpFor(t, 250);
+          await _tap(t, find.byKey(ValueKey(k)));
+        }
+      }, scrollBottom: true),
+      // ---- "Finding your worker": nobody has quoted yet / two quotes are in; and the live card on Home
+      _Screen('customer_finding_worker_0', _priya, () => FindingWorkerScreen(state: state, jobId: _findJobId ?? 'j1', notified: 3), prepare: () async {
+        _findJobId = await _freshJob(quoted: false);
+      }, scrollBottom: true),
+      _Screen('customer_finding_worker_2', _priya, () => FindingWorkerScreen(state: state, jobId: _findJobId ?? 'j1', notified: 3), prepare: () async {
+        _findJobId = await _freshJob(quoted: true);
+      }, scrollBottom: true),
+      _Screen('customer_home_finding', _priya, () => CustomerShell(state: state), prepare: () async {
+        _findJobId = await _freshJob(quoted: true);
+      }, scrollBottom: true),
     ];
 
 List<_Screen> _extraScreens(String lang) => [
@@ -437,7 +493,8 @@ List<_Screen> _extraScreens(String lang) => [
       _Screen('worker_feed_team_job', _selvam, () => WorkerShell(state: state), scrollBottom: true),
       _Screen('customer_scheduled_cards', _priya, () => CustomerShell(state: state), act: (t) => _tap(t, _navIcon(Icons.assignment_outlined))),
       _Screen('customer_post_job_rules', _priya, () => PostJobScreen(state: state), act: (t) async {
-        await _tap(t, find.byType(InkWell)); // pick the first trade
+        await _tap(t, find.byKey(const ValueKey('trademason'))); // trade first ...
+        await _tap(t, find.byKey(const ValueKey('tplCompoundWall'))); // ... then one of its common jobs
         await _tap(t, find.byType(FilledButton)); // Continue -> work step
         final f = find.byType(TextField);
         if (f.evaluate().isNotEmpty) await t.enterText(f.first, 'Kitchen tap is leaking badly'); // short: counter + reason
@@ -445,7 +502,9 @@ List<_Screen> _extraScreens(String lang) => [
       }, scrollBottom: true),
       // ---- customer UX: starter text from a template, the "See an example" sheet, and a job that waits for the rating
       _Screen('customer_post_example', _priya, () => PostJobScreen(state: state), act: (t) async {
-        await _tap(t, find.byType(InkWell)); // first common job -> describe step with the starter text
+        await _tap(t, find.byKey(const ValueKey('tradeplumber')));
+        await _tap(t, find.byKey(const ValueKey('tplTapLeak'))); // a common job -> describe step with the starter text
+        await _tap(t, find.byType(FilledButton)); // Continue
         await _tap(t, find.byKey(const ValueKey('seeExample')));
       }),
       _Screen('customer_job_rating_due', _neha, () => CustomerJobScreen(state: state, jobId: 'j5'), scrollBottom: true),
@@ -483,6 +542,7 @@ List<_Screen> _largeFontCustomerScreens() => [
       ])
         _coreScreens().firstWhere((s) => s.name == n),
       ..._extraScreens('en').where((s) => const ['customer_post_job', 'customer_browse_workers', 'customer_worker_profile', 'customer_payments'].contains(s.name)),
+      ..._postScreens(),
     ];
 
 void main() {

@@ -186,9 +186,9 @@ def create_job(body: JobIn, user: User = Depends(C), db: Session = Depends(get_d
     if body.direct_worker_id:
         trust.set_direct(db, user, job, body.direct_worker_id)
     audit(db, actor_id=user.id, action="job.posted", entity="job", entity_id=job.id, items=len(body.work_items), kind=body.kind)
-    notify_nearby_workers(db, job)
+    notified = notify_nearby_workers(db, job)
     db.commit()
-    return {"id": str(job.id), "status": job.status.value, "locality": locality,
+    return {"id": str(job.id), "status": job.status.value, "locality": locality, "notified_workers": notified,
             "direct_until": job.direct_until.isoformat() if job.direct_until else None}
 
 

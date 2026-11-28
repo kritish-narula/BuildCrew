@@ -1,0 +1,325 @@
+{
+  "tplPipeLeakTitle": {
+    "en": "Pipe leak",
+    "hi": "पाइप लीक",
+    "hinglish": "Pipe leak"
+  },
+  "tplPipeLeakText": {
+    "en": "A water pipe is leaking in the wall or under the sink and the area stays wet. Please find the leak and repair or change the pipe.",
+    "hi": "दीवार में या सिंक के नीचे पानी का पाइप लीक हो रहा है और जगह गीली रहती है। कृपया लीक ढूँढकर पाइप ठीक करें या बदल दें।",
+    "hinglish": "Deewar mein ya sink ke neeche paani ka pipe leak ho raha hai aur jagah geeli rehti hai. Please leak dhundh kar pipe theek karo ya badal do."
+  },
+  "tplToiletFlushTitle": {
+    "en": "Toilet / flush repair",
+    "hi": "टॉयलेट / फ्लश की मरम्मत",
+    "hinglish": "Toilet / flush repair"
+  },
+  "tplToiletFlushText": {
+    "en": "The toilet flush does not work properly and water keeps running. Please check the flush tank and the seat fitting, then repair or change the parts.",
+    "hi": "टॉयलेट का फ्लश ठीक से काम नहीं कर रहा और पानी चलता रहता है। कृपया फ्लश टैंक और सीट की फिटिंग देखकर पुर्ज़े ठीक करें या बदलें।",
+    "hinglish": "Toilet ka flush theek se kaam nahi kar raha aur paani chalta rehta hai. Flush tank aur seat ki fitting dekh kar parts theek karo ya badlo."
+  },
+  "tplTankMotorTitle": {
+    "en": "Water tank / motor connection",
+    "hi": "पानी की टंकी / मोटर कनेक्शन",
+    "hinglish": "Water tank / motor connection"
+  },
+  "tplTankMotorText": {
+    "en": "I need a water tank and a motor pump connected with pipes and a float valve. The tank and motor are bought. Please fit and test the water flow.",
+    "hi": "पानी की टंकी और मोटर पंप को पाइप और फ्लोट वाल्व के साथ जुड़वाना है। टंकी और मोटर खरीदी हुई हैं। कृपया लगाकर पानी का बहाव जाँचें।",
+    "hinglish": "Paani ki tanki aur motor pump ko pipe aur float valve ke saath judwana hai. Tanki aur motor kharidi hui hain. Please lagakar paani ka flow check karo."
+  },
+  "tplDrainBlockTitle": {
+    "en": "Drain block",
+    "hi": "नाली जाम",
+    "hinglish": "Naali jam"
+  },
+  "tplDrainBlockText": {
+    "en": "The kitchen or bathroom drain is blocked and water is not going down. Please open the blockage and clean the drain pipe properly.",
+    "hi": "रसोई या बाथरूम की नाली जाम है और पानी नहीं निकल रहा। कृपया रुकावट खोलकर नाली का पाइप अच्छे से साफ़ करें।",
+    "hinglish": "Kitchen ya bathroom ki naali jam hai aur paani nahi nikal raha. Rukawat khol kar naali ka pipe achhe se saaf karo."
+  },
+  "tplLightFittingTitle": {
+    "en": "Light / tube fitting",
+    "hi": "लाइट / ट्यूब लगवाना",
+    "hinglish": "Light / tube lagwana"
+  },
+  "tplLightFittingText": {
+    "en": "I need new lights or tube lights fitted in the room, with the wire and switch point checked. Lights are bought and ready at home.",
+    "hi": "कमरे में नई लाइट या ट्यूबलाइट लगवानी है, तार और स्विच पॉइंट भी जाँच लें। लाइटें खरीदी हुई हैं और घर पर रखी हैं।",
+    "hinglish": "Kamre mein nayi light ya tubelight lagwani hai, wire aur switch point bhi check kar lo. Lights kharidi hui hain aur ghar par rakhi hain."
+  },
+  "tplMCBFuseTitle": {
+    "en": "MCB / fuse problem",
+    "hi": "MCB / फ्यूज़ की समस्या",
+    "hinglish": "MCB / fuse problem"
+  },
+  "tplMCBFuseText": {
+    "en": "The MCB or fuse trips again and again, or the power goes off in some rooms. Please find the fault in the wiring and fix it safely.",
+    "hi": "MCB या फ्यूज़ बार-बार ट्रिप हो जाता है, या कुछ कमरों की बिजली चली जाती है। कृपया वायरिंग में खराबी ढूँढकर सुरक्षित तरीके से ठीक करें।",
+    "hinglish": "MCB ya fuse baar-baar trip ho jata hai, ya kuch kamron ki bijli chali jaati hai. Wiring mein kharabi dhundh kar safely theek karo."
+  },
+  "tplInverterGeyserTitle": {
+    "en": "Inverter / geyser connection",
+    "hi": "इन्वर्टर / गीज़र कनेक्शन",
+    "hinglish": "Inverter / geyser connection"
+  },
+  "tplInverterGeyserText": {
+    "en": "I need an inverter or a geyser connected to the main board with a proper wire and a separate switch. The item is bought and ready.",
+    "hi": "इन्वर्टर या गीज़र को मेन बोर्ड से सही तार और अलग स्विच के साथ जुड़वाना है। सामान खरीदा हुआ है और तैयार है।",
+    "hinglish": "Inverter ya geyser ko main board se sahi wire aur alag switch ke saath judwana hai. Saaman kharida hua hai aur ready hai."
+  },
+  "tplCupboardTitle": {
+    "en": "Cupboard / wardrobe repair",
+    "hi": "अलमारी की मरम्मत",
+    "hinglish": "Almari repair"
+  },
+  "tplCupboardText": {
+    "en": "The wardrobe door is loose and the shelves are broken. Please repair the hinges, shelves and handles so it opens and closes well.",
+    "hi": "अलमारी का दरवाज़ा ढीला है और शेल्फ टूटे हैं। कृपया कब्ज़े, शेल्फ और हैंडल ठीक करें ताकि वह अच्छे से खुले और बंद हो।",
+    "hinglish": "Almari ka darwaza dheela hai aur shelves toote hain. Hinges, shelves aur handle theek karo taaki woh achhe se khule aur band ho."
+  },
+  "tplNewShelfTitle": {
+    "en": "New shelf / rack",
+    "hi": "नई शेल्फ / रैक",
+    "hinglish": "Nayi shelf / rack"
+  },
+  "tplNewShelfText": {
+    "en": "I need a new wooden shelf or rack made and fixed on the wall. Size is about 4 feet by 1 foot. The exact place will be shown at the site.",
+    "hi": "दीवार पर एक नई लकड़ी की शेल्फ या रैक बनवाकर लगवानी है। साइज़ लगभग 4 फ़ीट × 1 फ़ीट है। सही जगह साइट पर दिखा दी जाएगी।",
+    "hinglish": "Deewar par nayi lakdi ki shelf ya rack banwa kar lagwani hai. Size lagbhag 4 feet by 1 feet hai. Sahi jagah site par dikha di jayegi."
+  },
+  "tplWindowFrameTitle": {
+    "en": "Window / frame repair",
+    "hi": "खिड़की / फ्रेम की मरम्मत",
+    "hinglish": "Khidki / frame repair"
+  },
+  "tplWindowFrameText": {
+    "en": "The wooden window or door frame is loose and does not close well. Please fix the frame, the hinges and the latch properly.",
+    "hi": "लकड़ी की खिड़की या दरवाज़े का फ्रेम ढीला है और ठीक से बंद नहीं होता। कृपया फ्रेम, कब्ज़े और कुंडी अच्छे से ठीक करें।",
+    "hinglish": "Lakdi ki khidki ya darwaze ka frame dheela hai aur theek se band nahi hota. Frame, hinges aur kundi achhe se theek karo."
+  },
+  "tplModularKitchenTitle": {
+    "en": "Modular kitchen fix",
+    "hi": "मॉड्यूलर किचन की मरम्मत",
+    "hinglish": "Modular kitchen repair"
+  },
+  "tplModularKitchenText": {
+    "en": "Some modular kitchen cabinet doors and drawers are loose or broken. Please repair the hinges and channels and set them straight.",
+    "hi": "मॉड्यूलर किचन के कुछ कैबिनेट के दरवाज़े और दराज़ ढीले या टूटे हैं। कृपया कब्ज़े और चैनल ठीक करके उन्हें सीधा करें।",
+    "hinglish": "Modular kitchen ke kuch cabinet ke darwaze aur drawers dheele ya toote hain. Hinges aur channels theek karke unhe seedha karo."
+  },
+  "tplBrickPartitionTitle": {
+    "en": "Brick wall / partition",
+    "hi": "ईंट की दीवार / पार्टिशन",
+    "hinglish": "Eent ki deewar / partition"
+  },
+  "tplBrickPartitionText": {
+    "en": "I need a small brick partition wall built inside a room, about 8 feet long and 10 feet high. Bricks and cement are arranged by me.",
+    "hi": "कमरे के अंदर एक छोटी ईंट की पार्टिशन दीवार बनवानी है, करीब 8 फ़ीट लंबी और 10 फ़ीट ऊँची। ईंट और सीमेंट का इंतज़ाम मेरी तरफ़ से होगा।",
+    "hinglish": "Kamre ke andar chhoti eent ki partition wall banwani hai, lagbhag 8 feet lambi aur 10 feet unchi. Eent aur cement ka intezaam meri taraf se hoga."
+  },
+  "tplFloorRepairTitle": {
+    "en": "Floor repair",
+    "hi": "फ़र्श की मरम्मत",
+    "hinglish": "Floor repair"
+  },
+  "tplFloorRepairText": {
+    "en": "The floor has cracks and broken patches in a few places. Please break the bad part, level it again and finish it with cement.",
+    "hi": "फ़र्श में कई जगह दरारें और टूटे हुए हिस्से हैं। कृपया खराब हिस्सा तोड़कर दोबारा समतल करें और सीमेंट से फ़िनिश करें।",
+    "hinglish": "Floor mein kai jagah dararen aur toote hue hisse hain. Kharab hissa tod kar dobara level karo aur cement se finish karo."
+  },
+  "tplSmallConstructionTitle": {
+    "en": "Small construction",
+    "hi": "छोटा निर्माण कार्य",
+    "hinglish": "Chhota construction kaam"
+  },
+  "tplSmallConstructionText": {
+    "en": "I need a small construction job such as a water tank, a step or a small room extension. Please visit, see the place and quote.",
+    "hi": "एक छोटा निर्माण कार्य करवाना है जैसे पानी की टंकी, सीढ़ी या छोटा कमरा बढ़ाना। कृपया जगह देखकर रेट बताएँ।",
+    "hinglish": "Ek chhota construction kaam karwana hai jaise paani ki tanki, seedhi ya chhota kamra badhana. Jagah dekh kar rate batao."
+  },
+  "tplFullHouseTitle": {
+    "en": "Full house painting",
+    "hi": "पूरे घर की पुताई",
+    "hinglish": "Poore ghar ki painting"
+  },
+  "tplFullHouseText": {
+    "en": "I want my full house painted inside, about 3 rooms with a kitchen and a hall. Please fill cracks, give putty and two coats of paint.",
+    "hi": "पूरे घर के अंदर की पुताई करवानी है, करीब 3 कमरे, रसोई और हॉल। कृपया दरारें भरें, पुट्टी लगाएँ और पेंट के दो कोट करें।",
+    "hinglish": "Poore ghar ke andar ki painting karwani hai, lagbhag 3 kamre, kitchen aur hall. Cracks bharo, putty lagao aur paint ke do coat karo."
+  },
+  "tplWaterproofingTitle": {
+    "en": "Waterproofing / damp",
+    "hi": "वॉटरप्रूफिंग / सीलन",
+    "hinglish": "Waterproofing / seelan"
+  },
+  "tplWaterproofingText": {
+    "en": "Damp patches and peeling paint on the wall or roof when it rains. Please clean the area and apply waterproofing coating properly.",
+    "hi": "बारिश में दीवार या छत पर सीलन के धब्बे हैं और पेंट उखड़ रहा है। कृपया जगह साफ़ करके वॉटरप्रूफिंग कोटिंग अच्छे से लगाएँ।",
+    "hinglish": "Baarish mein deewar ya chhat par seelan ke daag hain aur paint ukhad raha hai. Jagah saaf karke waterproofing coating achhe se lagao."
+  },
+  "tplDoorGrillPaintTitle": {
+    "en": "Door / grill painting",
+    "hi": "दरवाज़े / ग्रिल की पेंटिंग",
+    "hinglish": "Darwaza / grill painting"
+  },
+  "tplDoorGrillPaintText": {
+    "en": "I need the main door, window grills and the gate painted. The old paint and rust must be cleaned first, then a primer and two coats.",
+    "hi": "मुख्य दरवाज़े, खिड़की की ग्रिल और गेट को पेंट करवाना है। पहले पुराना पेंट और जंग साफ़ करें, फिर प्राइमर और दो कोट लगाएँ।",
+    "hinglish": "Main door, khidki ki grill aur gate paint karwana hai. Pehle purana paint aur jung saaf karo, phir primer aur do coat lagao."
+  },
+  "tplTexturePuttyTitle": {
+    "en": "Texture / putty work",
+    "hi": "टेक्सचर / पुट्टी का काम",
+    "hinglish": "Texture / putty ka kaam"
+  },
+  "tplTexturePuttyText": {
+    "en": "I want putty on the rough walls and a texture design on one wall of the hall. Please show a sample design before starting the work.",
+    "hi": "खुरदरी दीवारों पर पुट्टी और हॉल की एक दीवार पर टेक्सचर डिज़ाइन करवाना है। काम शुरू करने से पहले नमूना दिखाएँ।",
+    "hinglish": "Khurdari deewaron par putty aur hall ki ek deewar par texture design karwana hai. Kaam shuru karne se pehle sample dikhao."
+  },
+  "tplShiftingTitle": {
+    "en": "Shifting / loading",
+    "hi": "सामान शिफ्ट / लोडिंग",
+    "hinglish": "Saaman shifting / loading"
+  },
+  "tplShiftingText": {
+    "en": "I need helpers to load, unload and shift household things to a new place nearby. Heavy items like a bed and a fridge are included.",
+    "hi": "घर का सामान पास की नई जगह पर चढ़ाने, उतारने और शिफ्ट करने के लिए हेल्पर चाहिए। बेड और फ्रिज जैसा भारी सामान भी है।",
+    "hinglish": "Ghar ka saaman paas ki nayi jagah par chadhane, utaarne aur shift karne ke liye helper chahiye. Bed aur fridge jaisa bhaari saaman bhi hai."
+  },
+  "tplSiteCleaningTitle": {
+    "en": "Site cleaning",
+    "hi": "साइट की सफ़ाई",
+    "hinglish": "Site ki safai"
+  },
+  "tplSiteCleaningText": {
+    "en": "I need the site cleaned after the work: remove the debris, sweep and wash the floor and put the waste in one place for pickup.",
+    "hi": "काम के बाद साइट की सफ़ाई करवानी है: मलबा हटाना, झाड़ू-पोछा लगाना और कचरा एक जगह इकट्ठा करना।",
+    "hinglish": "Kaam ke baad site ki safai karwani hai: malba hatana, jhadu-pocha lagana aur kachra ek jagah ikattha karna."
+  },
+  "tplMaterialCarryTitle": {
+    "en": "Material carrying",
+    "hi": "सामान उठाना",
+    "hinglish": "Material uthana"
+  },
+  "tplMaterialCarryText": {
+    "en": "I need helpers to carry bricks, cement bags and sand to the upper floor. About 50 bags and 1000 bricks need to be moved.",
+    "hi": "ईंट, सीमेंट की बोरियाँ और रेत ऊपर की मंज़िल तक पहुँचाने के लिए हेल्पर चाहिए। करीब 50 बोरी और 1000 ईंट उठानी हैं।",
+    "hinglish": "Eent, cement ki boriyan aur ret upar ki manzil tak pahunchane ke liye helper chahiye. Lagbhag 50 bori aur 1000 eent uthani hain."
+  },
+  "pjWhatKind": {
+    "en": "What kind of work?",
+    "hi": "किस तरह का काम चाहिए?",
+    "hinglish": "Kis tarah ka kaam chahiye?"
+  },
+  "pjJobsFor": {
+    "en": "{trade}: what is the job?",
+    "hi": "{trade}: क्या काम करवाना है?",
+    "hinglish": "{trade}: kya kaam karwana hai?",
+    "placeholders": {
+      "trade": "String"
+    }
+  },
+  "pjOtherWork": {
+    "en": "Other work — I'll explain",
+    "hi": "दूसरा काम — अगले चरण में बताएँ",
+    "hinglish": "Doosra kaam — agle step mein batayein"
+  },
+  "pjPickTradeFirst": {
+    "en": "Choose a kind of work above to see the common jobs.",
+    "hi": "आम काम देखने के लिए ऊपर से काम का प्रकार चुनें।",
+    "hinglish": "Common kaam dekhne ke liye upar se kaam ka type chuno."
+  },
+  "pjNeedJob": {
+    "en": "Pick a job for {trade}, or choose \"Other work\".",
+    "hi": "{trade} के लिए कोई काम चुनें, या \"दूसरा काम\" चुनें।",
+    "hinglish": "{trade} ke liye koi kaam chuno, ya \"Doosra kaam\" chuno.",
+    "placeholders": {
+      "trade": "String"
+    }
+  },
+  "pjVoiceHint": {
+    "en": "Try to speak in Hindi and in detail — say what is broken, where, and how big. Workers understand voice notes best.",
+    "hi": "हो सके तो हिंदी में और विस्तार से बोलें — क्या टूटा है, कहाँ है और कितना बड़ा है। कारीगर आवाज़ संदेश सबसे अच्छे से समझते हैं।",
+    "hinglish": "Ho sake to Hindi mein aur detail mein bolo — kya toota hai, kahan hai aur kitna bada hai. Workers voice note sabse achhe se samajhte hain."
+  },
+  "fwHeadline": {
+    "en": "Finding your worker…",
+    "hi": "आपके लिए कारीगर ढूँढ रहे हैं…",
+    "hinglish": "Aapke liye worker dhundh rahe hain…"
+  },
+  "fwNotified": {
+    "en": "{count, plural, =1{1 worker nearby has been told about your job} other{{count} workers nearby have been told about your job}}",
+    "hi": "{count, plural, =1{आस-पास के 1 कारीगर को आपके काम की खबर दे दी गई है} other{आस-पास के {count} कारीगरों को आपके काम की खबर दे दी गई है}}",
+    "hinglish": "{count, plural, =1{Aas-paas ke 1 worker ko aapke kaam ki khabar de di gayi hai} other{Aas-paas ke {count} workers ko aapke kaam ki khabar de di gayi hai}}",
+    "placeholders": {
+      "count": "int"
+    }
+  },
+  "fwDirect": {
+    "en": "Sent to {name} first. They have 2 hours to reply.",
+    "hi": "पहले {name} को भेजा गया है। जवाब देने के लिए उनके पास 2 घंटे हैं।",
+    "hinglish": "Pehle {name} ko bheja gaya hai. Unke paas jawab dene ke liye 2 ghante hain.",
+    "placeholders": {
+      "name": "String"
+    }
+  },
+  "fwWaiting": {
+    "en": "Waiting {time}",
+    "hi": "इंतज़ार {time}",
+    "hinglish": "Intezaar {time}",
+    "placeholders": {
+      "time": "String"
+    }
+  },
+  "fwQuotesTitle": {
+    "en": "Quotes so far",
+    "hi": "अब तक के दाम",
+    "hinglish": "Ab tak ke rates"
+  },
+  "fwNoQuotes": {
+    "en": "No quotes yet. Workers are looking at your photos and details.",
+    "hi": "अभी कोई दाम नहीं आया। कारीगर आपकी फ़ोटो और जानकारी देख रहे हैं।",
+    "hinglish": "Abhi koi rate nahi aaya. Workers aapki photo aur details dekh rahe hain."
+  },
+  "fwTip1": {
+    "en": "Workers usually reply within 15–30 minutes.",
+    "hi": "कारीगर आमतौर पर 15–30 मिनट में जवाब देते हैं।",
+    "hinglish": "Workers aam taur par 15–30 minute mein jawab dete hain."
+  },
+  "fwTip2": {
+    "en": "Add a voice note to get more quotes.",
+    "hi": "ज़्यादा दाम पाने के लिए आवाज़ संदेश जोड़ें।",
+    "hinglish": "Zyada rates paane ke liye voice note jodo."
+  },
+  "fwTip3": {
+    "en": "You can leave this screen. We will tell you as soon as a quote arrives.",
+    "hi": "आप इस स्क्रीन से जा सकते हैं। दाम आते ही हम आपको बता देंगे।",
+    "hinglish": "Aap is screen se ja sakte hain. Rate aate hi hum aapko bata denge."
+  },
+  "fwNewQuote": {
+    "en": "New quote from {name}: {price}",
+    "hi": "{name} का नया दाम: {price}",
+    "hinglish": "{name} ka naya rate: {price}",
+    "placeholders": {
+      "name": "String",
+      "price": "String"
+    }
+  },
+  "fwCardSub": {
+    "en": "{count, plural, =0{No quotes yet} =1{1 quote so far} other{{count} quotes so far}} · posted {ago}",
+    "hi": "{count, plural, =0{अभी कोई दाम नहीं} =1{अब तक 1 दाम} other{अब तक {count} दाम}} · {ago} डाला गया",
+    "hinglish": "{count, plural, =0{Abhi koi rate nahi} =1{Ab tak 1 rate} other{Ab tak {count} rates}} · {ago} post kiya",
+    "placeholders": {
+      "count": "int",
+      "ago": "String"
+    }
+  },
+  "postJobHeroSub": {
+    "en": "Get prices in minutes",
+    "hi": "मिनटों में दाम पाएँ",
+    "hinglish": "Minutes mein rate paao"
+  }
+}

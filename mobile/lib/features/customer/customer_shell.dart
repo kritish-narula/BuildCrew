@@ -11,6 +11,7 @@ import '../common/update_ui.dart';
 import 'customer_home.dart';
 import 'contractor.dart';
 import 'customer_job.dart';
+import 'finding_worker.dart';
 import 'post_job.dart';
 import 'team_job.dart';
 import 'workers.dart';
@@ -113,10 +114,13 @@ class _CustomerShellState extends State<CustomerShell> {
   Future<void> _post({bool team = false}) async {
     final posted = await Navigator.of(context).push<bool>(customerRoute<bool>(builder: (_) => PostJobScreen(state: _s, team: team)));
     if (!mounted) return;
-    // contractors: Team tab (1) for team jobs, Bookings (2) for single jobs; everyone else: Bookings (1)
-    if (posted == true) setState(() => _tab = _contractor ? (team ? 1 : 2) : 1);
+    // team jobs: Team tab (1); a single job opens "Finding your worker", and Home (0) carries its live card
+    if (posted == true) setState(() => _tab = team ? 1 : 0);
     _reload();
   }
+
+  /// The live "Finding your worker" screen of a job that is still collecting quotes (Home card).
+  void _openFinding(String id) => _push(FindingWorkerScreen(state: _s, jobId: id));
 
   /// Team jobs have their own screen (applicants per trade, roster, pay the team).
   void _openJob(String id) {
@@ -128,7 +132,7 @@ class _CustomerShellState extends State<CustomerShell> {
   Future<void> _hireAgain({String? jobId, String? workerId}) async {
     final posted = await hireAgain(context, _s, jobId: jobId, workerId: workerId);
     if (!mounted) return;
-    if (posted == true) setState(() => _tab = _contractor ? 2 : 1);
+    if (posted == true) setState(() => _tab = 0);
     _reload();
   }
 
@@ -172,6 +176,7 @@ class _CustomerShellState extends State<CustomerShell> {
             failed: _failed,
             onReload: _reload,
             onOpenJob: _openJob,
+            onFinding: _openFinding,
             onPost: _post,
             onPostTeam: contractor ? () => _post(team: true) : null,
             onAddBusiness: contractor ? _addBusiness : null,
