@@ -2508,5 +2508,173 @@
   "tplHelperDayTitle": "Helper for a day",
   "@tplHelperDayTitle": {},
   "tplHelperDayText": "I need one helper for a full day to shift furniture, carry material and clean up the work area after the work is done.",
-  "@tplHelperDayText": {}
+  "@tplHelperDayText": {},
+  "tplPipeLeakTitle": "Pipe leak",
+  "@tplPipeLeakTitle": {},
+  "tplPipeLeakText": "A water pipe is leaking in the wall or under the sink and the area stays wet. Please find the leak and repair or change the pipe.",
+  "@tplPipeLeakText": {},
+  "tplToiletFlushTitle": "Toilet / flush repair",
+  "@tplToiletFlushTitle": {},
+  "tplToiletFlushText": "The toilet flush does not work properly and water keeps running. Please check the flush tank and the seat fitting, then repair or change the parts.",
+  "@tplToiletFlushText": {},
+  "tplTankMotorTitle": "Water tank / motor connection",
+  "@tplTankMotorTitle": {},
+  "tplTankMotorText": "I need a water tank and a motor pump connected with pipes and a float valve. The tank and motor are bought. Please fit and test the water flow.",
+  "@tplTankMotorText": {},
+  "tplDrainBlockTitle": "Drain block",
+  "@tplDrainBlockTitle": {},
+  "tplDrainBlockText": "The kitchen or bathroom drain is blocked and water is not going down. Please open the blockage and clean the drain pipe properly.",
+  "@tplDrainBlockText": {},
+  "tplLightFittingTitle": "Light / tube fitting",
+  "@tplLightFittingTitle": {},
+  "tplLightFittingText": "I need new lights or tube lights fitted in the room, with the wire and switch point checked. Lights are bought and ready at home.",
+  "@tplLightFittingText": {},
+  "tplMCBFuseTitle": "MCB / fuse problem",
+  "@tplMCBFuseTitle": {},
+  "tplMCBFuseText": "The MCB or fuse trips again and again, or the power goes off in some rooms. Please find the fault in the wiring and fix it safely.",
+  "@tplMCBFuseText": {},
+  "tplInverterGeyserTitle": "Inverter / geyser connection",
+  "@tplInverterGeyserTitle": {},
+  "tplInverterGeyserText": "I need an inverter or a geyser connected to the main board with a proper wire and a separate switch. The item is bought and ready.",
+  "@tplInverterGeyserText": {},
+  "tplCupboardTitle": "Cupboard / wardrobe repair",
+  "@tplCupboardTitle": {},
+  "tplCupboardText": "The wardrobe door is loose and the shelves are broken. Please repair the hinges, shelves and handles so it opens and closes well.",
+  "@tplCupboardText": {},
+  "tplNewShelfTitle": "New shelf / rack",
+  "@tplNewShelfTitle": {},
+  "tplNewShelfText": "I need a new wooden shelf or rack made and fixed on the wall. Size is about 4 feet by 1 foot. The exact place will be shown at the site.",
+  "@tplNewShelfText": {},
+  "tplWindowFrameTitle": "Window / frame repair",
+  "@tplWindowFrameTitle": {},
+  "tplWindowFrameText": "The wooden window or door frame is loose and does not close well. Please fix the frame, the hinges and the latch properly.",
+  "@tplWindowFrameText": {},
+  "tplModularKitchenTitle": "Modular kitchen fix",
+  "@tplModularKitchenTitle": {},
+  "tplModularKitchenText": "Some modular kitchen cabinet doors and drawers are loose or broken. Please repair the hinges and channels and set them straight.",
+  "@tplModularKitchenText": {},
+  "tplBrickPartitionTitle": "Brick wall / partition",
+  "@tplBrickPartitionTitle": {},
+  "tplBrickPartitionText": "I need a small brick partition wall built inside a room, about 8 feet long and 10 feet high. Bricks and cement are arranged by me.",
+  "@tplBrickPartitionText": {},
+  "tplFloorRepairTitle": "Floor repair",
+  "@tplFloorRepairTitle": {},
+  "tplFloorRepairText": "The floor has cracks and broken patches in a few places. Please break the bad part, level it again and finish it with cement.",
+  "@tplFloorRepairText": {},
+  "tplSmallConstructionTitle": "Small construction",
+  "@tplSmallConstructionTitle": {},
+  "tplSmallConstructionText": "I need a small construction job such as a water tank, a step or a small room extension. Please visit, see the place and quote.",
+  "@tplSmallConstructionText": {},
+  "tplFullHouseTitle": "Full house painting",
+  "@tplFullHouseTitle": {},
+  "tplFullHouseText": "I want my full house painted inside, about 3 rooms with a kitchen and a hall. Please fill cracks, give putty and two coats of paint.",
+  "@tplFullHouseText": {},
+  "tplWaterproofingTitle": "Waterproofing / damp",
+  "@tplWaterproofingTitle": {},
+  "tplWaterproofingText": "Damp patches and peeling paint on the wall or roof when it rains. Please clean the area and apply waterproofing coating properly.",
+  "@tplWaterproofingText": {},
+  "tplDoorGrillPaintTitle": "Door / grill painting",
+  "@tplDoorGrillPaintTitle": {},
+  "tplDoorGrillPaintText": "I need the main door, window grills and the gate painted. The old paint and rust must be cleaned first, then a primer and two coats.",
+  "@tplDoorGrillPaintText": {},
+  "tplTexturePuttyTitle": "Texture / putty work",
+  "@tplTexturePuttyTitle": {},
+  "tplTexturePuttyText": "I want putty on the rough walls and a texture design on one wall of the hall. Please show a sample design before starting the work.",
+  "@tplTexturePuttyText": {},
+  "tplShiftingTitle": "Shifting / loading",
+  "@tplShiftingTitle": {},
+  "tplShiftingText": "I need helpers to load, unload and shift household things to a new place nearby. Heavy items like a bed and a fridge are included.",
+  "@tplShiftingText": {},
+  "tplSiteCleaningTitle": "Site cleaning",
+  "@tplSiteCleaningTitle": {},
+  "tplSiteCleaningText": "I need the site cleaned after the work: remove the debris, sweep and wash the floor and put the waste in one place for pickup.",
+  "@tplSiteCleaningText": {},
+  "tplMaterialCarryTitle": "Material carrying",
+  "@tplMaterialCarryTitle": {},
+  "tplMaterialCarryText": "I need helpers to carry bricks, cement bags and sand to the upper floor. About 50 bags and 1000 bricks need to be moved.",
+  "@tplMaterialCarryText": {},
+  "pjWhatKind": "What kind of work?",
+  "@pjWhatKind": {},
+  "pjJobsFor": "{trade}: what is the job?",
+  "@pjJobsFor": {
+    "placeholders": {
+      "trade": {
+        "type": "String"
+      }
+    }
+  },
+  "pjOtherWork": "Other work — I'll explain",
+  "@pjOtherWork": {},
+  "pjPickTradeFirst": "Choose a kind of work above to see the common jobs.",
+  "@pjPickTradeFirst": {},
+  "pjNeedJob": "Pick a job for {trade}, or choose \"Other work\".",
+  "@pjNeedJob": {
+    "placeholders": {
+      "trade": {
+        "type": "String"
+      }
+    }
+  },
+  "pjVoiceHint": "Try to speak in Hindi and in detail — say what is broken, where, and how big. Workers understand voice notes best.",
+  "@pjVoiceHint": {},
+  "fwHeadline": "Finding your worker…",
+  "@fwHeadline": {},
+  "fwNotified": "{count, plural, =1{1 worker nearby has been told about your job} other{{count} workers nearby have been told about your job}}",
+  "@fwNotified": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fwDirect": "Sent to {name} first. They have 2 hours to reply.",
+  "@fwDirect": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fwWaiting": "Waiting {time}",
+  "@fwWaiting": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "fwQuotesTitle": "Quotes so far",
+  "@fwQuotesTitle": {},
+  "fwNoQuotes": "No quotes yet. Workers are looking at your photos and details.",
+  "@fwNoQuotes": {},
+  "fwTip1": "Workers usually reply within 15–30 minutes.",
+  "@fwTip1": {},
+  "fwTip2": "Add a voice note to get more quotes.",
+  "@fwTip2": {},
+  "fwTip3": "You can leave this screen. We will tell you as soon as a quote arrives.",
+  "@fwTip3": {},
+  "fwNewQuote": "New quote from {name}: {price}",
+  "@fwNewQuote": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "fwCardSub": "{count, plural, =0{No quotes yet} =1{1 quote so far} other{{count} quotes so far}} · posted {ago}",
+  "@fwCardSub": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "ago": {
+        "type": "String"
+      }
+    }
+  },
+  "postJobHeroSub": "Get prices in minutes",
+  "@postJobHeroSub": {}
 }
